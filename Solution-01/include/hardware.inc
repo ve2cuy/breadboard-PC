@@ -229,6 +229,13 @@ BRIDGE_EXPECT_OFF   equ 0FC64h  ; (octet) 1 = une reponse est attendue (mis par 
 ; --- propre demarrage) juste apres l'effacement de VAR_SEG - voir start:. ---
 CLOCK_FREQ_HZ_OFF   equ 0FC65h  ; (double mot) frequence courante en Hz
 
+; --- heure de DEPART (secondes depuis minuit, RTC du pont - horloge
+; --- INDEPENDANTE de celle du 8088) du banc d'essai "2) Test CPU speed"
+; --- (cpu_speed_test_action, solution-01.asm) - voir aussi
+; --- cpu_test_rtc_to_seconds/cpu_test_elapsed_seconds. Local a cette seule
+; --- action (pas de persistance requise entre 2 lancements du test). ---
+CPU_TEST_START_SEC_OFF equ 0FC69h  ; (double mot)
+
 ; --- etat du BIOS (lib/bios.asm) dans VAR_SEG: pile du programme appelant memorisee pendant qu'un
 ; --- service BIOS travaille sur sa pile privee (1000:FE00-FEFF), touche en attente, etc. ---
 BIOS_SP_OFF         equ 0FCB0h  ; (mot) SP du programme appelant (pointe sur son DS sauve)

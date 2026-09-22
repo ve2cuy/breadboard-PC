@@ -67,6 +67,28 @@ LCD_LINE4       equ     11010100b       ; Set DDRAM Address = 80h | 54h
         call    i2c_lcd_print
 %endmacro
 
+; %1 = LCD_LINE1..4, %2 = colonne (0-19, CONSTANTE au moment de
+; l'assemblage) - positionne le curseur DDRAM (LCD I2C) a une colonne
+; ARBITRAIRE de cette ligne, en ajoutant %2 a l'adresse de base %1 (les
+; adresses DDRAM d'une meme ligne sont contigues - meme principe que
+; i2c_lcd_goto, juste decale). A UTILISER a la place de "gotoxy ..,
+; LCDI2C" chaque fois qu'AUCUN "print" ne suit immediatement (gotoxy/
+; AH=02h ne positionne que le curseur LOGIQUE, en RAM - voir l'en-tete
+; de int10h_handler: seul un "print"/AH=09h qui suit physiquement le
+; curseur AU FUR ET A MESURE le fait vraiment avancer sur l'afficheur.
+; Sans lui, une routine "brute" comme i2c_lcd_data/i2c_lcd_tx_dec3/
+; i2c_lcd_tx_hex_word continuerait de la ou le PRECEDENT write a
+; physiquement laisse le curseur - comportement "TTY", jamais a la
+; position voulue - bug trouve et corrige dans clock_show/
+; clock_main_speed_print/cpu_test_show_progress/cpu_test_show_result,
+; voir Directives.md).
+%macro i2c_lcd_goto_col 2
+        push    ax
+        mov     al, %1 + %2
+        call    i2c_lcd_command
+        pop     ax
+%endmacro
+
 ; --- Constantes de "device" pour gotoxy/print (INT 10h - voir
 ; --- int10h_handler dans solution-01.asm) - memes valeurs que BH
 ; --- pour AH=02h/09h. ---

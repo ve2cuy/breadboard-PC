@@ -506,12 +506,19 @@ start:
         print   txt_menu_config, UART
         gotoxy  0, 0, LCDI2C
         print   lcd_txt_menu_config_l1, LCDI2C
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_menu_config_l2, LCDI2C
 
         call    ps2_get_char
 
         cmp     al, '1'
-        jne     .config_esc
+        jne     .config_2
         call    clock_speed_action      ; affiche/regle la frequence du 8088 - voir plus bas
+        jmp     .config_menu
+.config_2:
+        cmp     al, '2'
+        jne     .config_esc
+        call    cpu_speed_test_action   ; banc d'essai de vitesse CPU - voir plus bas
         jmp     .config_menu
 .config_esc:
         cmp     al, 27
@@ -3230,10 +3237,12 @@ clock_speed_action:
         ret
 
 ; clock_hz_to_wholefrac: DX:AX = frequence en Hz -> BL = partie entiere
-; (1-10), BH = partie decimale (0-99), en centiemes de MHz (DX:AX / 10000,
-; puis /100 - division 32 bits / 16 bits classique, le quotient tient sur
-; 16 bits: aucune frequence de ce projet ne depasse 10 000 000 Hz). Detruit
-; AX/CX/DX (PAS BP/SI/ES). Utilisee par clock_show et clock_main_speed_print.
+; (1-10), BH = partie decimale (0-99), en centiemes de MHz (DX:AX / 10000 -
+; division 32 bits / 16 bits classique, le quotient tient sur 16 bits:
+; aucune frequence de ce projet ne depasse 10 000 000 Hz), puis
+; centihz_to_wholefrac (partagee avec cpu_test_show_result, qui calcule
+; directement des centiemes de MHz sans partir d'un Hz). Detruit AX/CX/DX
+; (PAS BP/SI/ES). Utilisee par clock_show et clock_main_speed_print.
 clock_hz_to_wholefrac:
         mov     cx, 10000
         mov     bx, ax                   ; BX = poids faible du Hz d'origine
@@ -3242,11 +3251,20 @@ clock_hz_to_wholefrac:
         div     cx                       ; AX = poids fort / 10000 (0 en pratique), DX = reste
         xchg    ax, bx                   ; BX = quotient (inutilise), AX = poids faible d'origine
         div     cx                       ; AX = centiemes de MHz (0-1000), DX = reste (ignore)
-        mov     bx, ax                   ; BX = centiemes de MHz
+        jmp     centihz_to_wholefrac     ; AX -> BL/BH (le RET de centihz_to_wholefrac
+                                          ; sert aussi de retour a NOTRE appelant - CX/DX
+                                          ; ci-dessus n'ont plus besoin d'etre preserves)
+
+; centihz_to_wholefrac: AX = centiemes de MHz -> BL = partie entiere, BH =
+; partie decimale (0-99) - simple division par 100. Detruit AX/CX/DX (PAS
+; BP/SI/ES). Utilisee par clock_hz_to_wholefrac ci-dessus ET directement
+; par cpu_test_show_result (plus bas), qui calcule ses propres centiemes
+; de MHz (477 * CPU_TEST_REF_SECONDS / temps_ecoule) sans jamais passer
+; par un Hz.
+centihz_to_wholefrac:
         mov     cx, 100
         xor     dx, dx
-        mov     ax, bx
-        div     cx                       ; AX = partie entiere (1-10), DX = partie decimale (0-99)
+        div     cx                       ; AX = partie entiere (1-10...), DX = partie decimale (0-99)
         mov     bh, dl                   ; BH = partie decimale
         mov     bl, al                   ; BL = partie entiere
         ret
@@ -3349,11 +3367,16 @@ clock_show:
         mov     [es:CLOCK_FREQ_HZ_OFF], ax
         mov     [es:CLOCK_FREQ_HZ_OFF+2], dx
 
-        gotoxy  0, 0, LCDI2C             ; toujours la meme ligne LCD (0 - le sous-menu
+        i2c_lcd_goto_col LCD_LINE1, 0     ; toujours la meme ligne LCD (0 - le sous-menu
                                           ; n'a plus de titre statique separe, voir
                                           ; clock_speed_action), quel que soit l'endroit
                                           ; ou i2c_lcd_init/les lignes fixes ont laisse
-                                          ; le curseur
+                                          ; le curseur PHYSIQUE - "gotoxy" seul (AH=02h)
+                                          ; ne positionne que le curseur LOGIQUE, en RAM:
+                                          ; sans "print" a la suite (ici clock_print_digits/
+                                          ; clock_print_str, des ecritures BRUTES), le
+                                          ; curseur physique ne bougeait jamais reellement -
+                                          ; bug trouve et corrige, voir Directives.md
 
         call    clock_hz_to_wholefrac    ; DX:AX -> BL/BH
 
@@ -3417,7 +3440,9 @@ clock_main_speed_print:
 .no_uart_sep:
         test    bp, 2
         jz      .no_lcd_pos
-        gotoxy  0, 15, LCDI2C
+        i2c_lcd_goto_col LCD_LINE1, 15    ; positionnement PHYSIQUE requis - voir
+                                           ; clock_show ci-dessus (aucun "print" ne
+                                           ; suit, clock_print_digits ecrit en brut)
 .no_lcd_pos:
 
         mov     cx, VAR_SEG
@@ -3441,6 +3466,351 @@ clock_main_speed_print:
         pop     cx
         pop     bx
         pop     ax
+        ret
+
+; ============================================================
+; cpu_speed_test_action
+; Option "2) Test CPU speed" du sous-menu Configuration: lance un banc
+; d'essai a CHARGE FIXE (CPU_TEST_CHECKPOINTS x CPU_TEST_INNER_REPS x
+; 65536 iterations d'une boucle "dec bx / loop" - voir les constantes
+; ci-dessous), calibre pour durer AU MOINS 30 secondes a 4,77 MHz.
+; La duree REELLE est mesuree via la RTC du pont (rtc_get, lib/bridge.asm)
+; - INDEPENDANTE de l'horloge du 8088 (contrairement a un comptage de
+; cycles logiciel, qui serait circulaire ici puisque c'est PRECISEMENT
+; la vitesse du CPU que ce test cherche a mesurer) - et comparee a
+; CPU_TEST_REF_SECONDS pour estimer la vitesse REELLE en pourcentage et
+; en MHz, quelle que soit la frequence actuellement reglee (sous-menu
+; Clock speed): le test peut se lancer a n'importe quelle vitesse, pas
+; seulement 4,77 MHz.
+; Pendant le test: la ligne "Ecoule: NNN s" se redessine a chaque
+; "checkpoint" (CPU_TEST_CHECKPOINTS au total, environ 1 par seconde si
+; la calibration est bonne) - permet de constater que le test avance.
+; Echap (verification NON BLOQUANTE a chaque checkpoint via
+; ps2_key_available, meme technique que dump_memory_action) interrompt
+; le test et retourne immediatement au sous-menu Configuration.
+; A la fin (cpu_test_show_result): affiche le temps ecoule, le
+; pourcentage par rapport a une execution a 4,77 MHz (ex: "20% plus
+; vite"), et la vitesse ESTIMEE en MHz - PAS forcement egale au reglage
+; actuel du sous-menu Clock speed: un ecart important pourrait reveler
+; un probleme materiel (etats d'attente inattendus, horloge instable).
+; Attend ensuite une touche (n'importe laquelle) avant de retourner au
+; sous-menu Configuration, le temps de lire le resultat.
+; ============================================================
+CPU_TEST_CHECKPOINTS equ 30                    ; nombre de mises a jour de la ligne
+                                                ; "Ecoule: ..." (granularite d'affichage,
+                                                ; PAS forcement 1/seconde - depend de la
+                                                ; calibration ci-dessous)
+CPU_TEST_INNER_REPS  equ 8                     ; boucles CX=0 (65536 iterations "dec bx /
+                                                ; loop") par checkpoint - LE reglage a
+                                                ; ajuster apres mesure sur le materiel reel
+                                                ; (augmenter si le test est trop court,
+                                                ; diminuer s'il est trop long) - calibre ICI
+                                                ; par ESTIMATION SEULEMENT (jamais mesure
+                                                ; sur un vrai 8088), voir Directives.md
+CPU_TEST_REF_SECONDS equ 60                    ; duree ESTIMEE (PAS mesuree) du banc
+                                                ; d'essai ci-dessus (CPU_TEST_CHECKPOINTS x
+                                                ; CPU_TEST_INNER_REPS x 65536 iterations) a
+                                                ; 4,77 MHz EXACTEMENT - A REMPLACER par la
+                                                ; valeur REELLEMENT affichee ("Ecoule: ...")
+                                                ; en lancant ce test une fois avec le
+                                                ; sous-menu Clock speed regle a 4,77 MHz
+                                                ; (option 5, le reglage par defaut) - sans
+                                                ; quoi le pourcentage/la vitesse estimee
+                                                ; restent approximatifs
+
+cpu_speed_test_action:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    es
+
+        mov     ax, VAR_SEG
+        mov     es, ax                   ; ES = VAR_SEG pour toute la duree du test
+                                          ; (BIOS_RTC_OFF, CPU_TEST_START_SEC_OFF -
+                                          ; gotoxy/print sauvegardent/restaurent leur
+                                          ; propre ES en interne, sans danger)
+
+        call    i2c_lcd_init
+        print   txt_cpu_test_head, UART
+        gotoxy  0, 0, LCDI2C
+        print   lcd_txt_cpu_test_elapsed, LCDI2C     ; "Ecoule: 000 s" - les chiffres
+                                                      ; (colonne 8) seront redessines par
+                                                      ; cpu_test_show_progress/show_result
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_cpu_test_title, LCDI2C       ; "Test CPU speed"
+        gotoxy  2, 0, LCDI2C
+        print   lcd_txt_cpu_test_cancel, LCDI2C      ; "Echap: annuler"
+
+        mov     di, BIOS_RTC_OFF
+        call    rtc_get
+        jc      .tmo
+        call    cpu_test_rtc_to_seconds       ; BIOS_RTC_OFF (h/m/s) -> DX:AX (secondes
+                                                ; depuis minuit)
+        mov     [es:CPU_TEST_START_SEC_OFF], ax
+        mov     [es:CPU_TEST_START_SEC_OFF+2], dx
+
+        mov     si, CPU_TEST_CHECKPOINTS
+.checkpoint:
+        mov     di, CPU_TEST_INNER_REPS
+.inner_reps:
+        mov     cx, 0                    ; CX=0 -> LOOP fait 65536 passages (le
+                                          ; "travail" du banc d'essai - seul le NOMBRE
+                                          ; d'iterations compte, pas la valeur de BX)
+.busy:
+        dec     bx
+        loop    .busy
+        dec     di
+        jnz     .inner_reps
+
+        ; --- 1 checkpoint termine: verifie Echap (non bloquant, meme
+        ; technique que dump_memory_action - voir son en-tete) et
+        ; redessine la progression ---
+        call    ps2_key_available
+        jc      .no_key                  ; rien a lire
+        call    ps2_get_char
+        cmp     al, 27
+        je      .aborted
+.no_key:
+        push    si                        ; SI = compteur de checkpoints (le NOTRE) -
+        call    cpu_test_show_progress    ; cpu_test_show_progress detruit SI (pointeurs
+        pop     si                        ; de texte internes) - a preserver ici sans quoi
+                                           ; "dec si / jnz .checkpoint" ci-dessous n'a plus
+                                           ; aucun rapport avec le nombre de checkpoints
+                                           ; restants (bug trouve via un banc Unicorn: le
+                                           ; test ne s'arretait jamais - voir Directives.md)
+
+        dec     si
+        jnz     .checkpoint
+
+        ; --- test termine: calcule et affiche le resultat final ---
+        call    cpu_test_show_result
+        jmp     .wait_key
+.aborted:
+        mov     si, txt_cpu_test_aborted
+        call    bios_puts
+        jmp     .out
+.tmo:
+        mov     si, dm_e_tmo             ; lib/bios.asm (dos_menu): "The bridge does not answer."
+        call    bios_puts
+        jmp     .out
+.wait_key:
+        call    ps2_get_char             ; laisse le temps de lire le resultat -
+                                          ; n'importe quelle touche continue
+.out:
+        pop     es
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; cpu_test_rtc_to_seconds: ES:BIOS_RTC_OFF (rempli par rtc_get: annee,
+; mois, jour, heures, minutes, secondes, centiemes) -> DX:AX = secondes
+; ecoulees depuis minuit (32 bits: h*3600 + m*60 + s, jusqu'a 86399 - MUL
+; 16x16->32 necessaire pour h*3600 seul, qui depasse 65535 des que
+; h >= 19). Detruit AX/BX/CX/DX.
+cpu_test_rtc_to_seconds:
+        mov     al, [es:BIOS_RTC_OFF+4]  ; heures (0-23)
+        xor     ah, ah
+        mov     cx, 3600
+        mul     cx                        ; DX:AX = h*3600 (32 bits)
+        push    ax
+        push    dx
+
+        mov     al, [es:BIOS_RTC_OFF+5]  ; minutes (0-59)
+        xor     ah, ah
+        mov     cx, 60
+        mul     cx                        ; AX = m*60 (0-3540, tient sur 16 bits)
+        mov     bl, [es:BIOS_RTC_OFF+6]  ; + secondes (0-59)
+        xor     bh, bh
+        add     ax, bx                    ; AX = m*60+s (0-3599)
+
+        pop     dx                        ; DX = poids fort de h*3600
+        pop     bx                        ; BX = poids faible de h*3600
+        add     ax, bx
+        adc     dx, 0                     ; DX:AX = total (h*3600 + m*60 + s)
+        ret
+
+; cpu_test_elapsed_seconds: DX:AX = "maintenant" (secondes depuis minuit,
+; deja calcule par cpu_test_rtc_to_seconds), ES:CPU_TEST_START_SEC_OFF =
+; depart (meme convention) -> DX:AX = secondes ECOULEES (32 bits). Corrige
+; un passage de minuit (depart proche de 86399, "maintenant" ayant boucle
+; a une petite valeur - improbable pour un test de quelques dizaines de
+; secondes, mais gere quand meme): si la soustraction produit une
+; retenue (CF=1), ajoute 86400 (1 jour, en secondes - 15180h). Detruit
+; BX/CX.
+cpu_test_elapsed_seconds:
+        push    bx
+        push    cx
+        mov     bx, ax                    ; sauve "maintenant" poids faible
+        mov     cx, dx                    ; sauve "maintenant" poids fort
+        sub     bx, [es:CPU_TEST_START_SEC_OFF]
+        sbb     cx, [es:CPU_TEST_START_SEC_OFF+2]
+        jnc     .ok                       ; pas de retenue: pas de passage de minuit
+        add     bx, 5180h                 ; 86400 (86 400 s/jour = 15180h), poids faible
+        adc     cx, 1                     ;                                 poids fort
+.ok:
+        mov     ax, bx
+        mov     dx, cx
+        pop     cx
+        pop     bx
+        ret
+
+; cpu_test_show_progress: ES = VAR_SEG (deja etabli par l'appelant),
+; CPU_TEST_START_SEC_OFF deja rempli -> interroge la RTC du pont, calcule
+; le temps ecoule, et affiche "Ecoule: NNN s" sur l'UART, PUIS redessine
+; seulement les 3 chiffres (colonne 8, ligne 0 du LCD - meme convention
+; que clock_show: largeur CONSTANTE, zero-remplie via i2c_lcd_tx_dec3,
+; jamais de caractere perime). Sur timeout du pont (CF=1 apres rtc_get):
+; ignore silencieusement CETTE mise a jour (le test continue - un pont
+; temporairement muet ne doit pas interrompre le banc d'essai, seulement
+; priver l'utilisateur d'UNE mise a jour de progression). Detruit
+; AX/BX/CX/DX/SI/DI.
+cpu_test_show_progress:
+        mov     di, BIOS_RTC_OFF
+        call    rtc_get
+        jc      .skip
+        call    cpu_test_rtc_to_seconds
+        call    cpu_test_elapsed_seconds   ; DX:AX = T (secondes ecoulees)
+
+        mov     si, txt_cpu_test_elapsed         ; "Ecoule: "
+        call    bios_puts
+        call    uart_tx_dec_word
+        mov     si, txt_cpu_test_seconds         ; " s"
+        call    bios_puts
+        mov     si, txt_crlf
+        call    bios_puts
+
+        i2c_lcd_goto_col LCD_LINE1, 8    ; positionnement PHYSIQUE requis (i2c_lcd_tx_dec3
+                                          ; ecrit en brut, "gotoxy" seul ne suffit pas -
+                                          ; voir clock_show)
+        call    i2c_lcd_tx_dec3
+.skip:
+        ret
+
+; cpu_test_show_result
+; Calcule et affiche (UART + LCD) le resultat FINAL du banc d'essai: temps
+; ecoule REEL, pourcentage par rapport a une execution du MEME banc a
+; 4,77 MHz EXACTEMENT (CPU_TEST_REF_SECONDS - duree ESTIMEE, voir sa
+; definition pour la procedure de recalibration), et vitesse ESTIMEE en
+; MHz (4,77 * CPU_TEST_REF_SECONDS / temps_ecoule). Suppose ES = VAR_SEG
+; et CPU_TEST_START_SEC_OFF deja remplis (voir cpu_speed_test_action).
+; N'attend PAS de touche (voir cpu_speed_test_action, apres l'appel).
+; Detruit AX/BX/CX/DX/SI/BP.
+cpu_test_show_result:
+        mov     di, BIOS_RTC_OFF
+        call    rtc_get
+        jc      .tmo
+        call    cpu_test_rtc_to_seconds     ; DX:AX = "maintenant"
+        call    cpu_test_elapsed_seconds    ; DX:AX = T (secondes ecoulees)
+        mov     bp, ax                       ; BP = T (16 bits - largement suffisant: le
+                                              ; test dure au plus quelques minutes)
+        or      bp, bp
+        jnz     .t_ok
+        mov     bp, 1                        ; protection division par 0 (cas jamais
+                                              ; atteint en pratique)
+.t_ok:
+        ; --- ligne "Ecoule: NNN s" (valeur FINALE - peut differer
+        ; legerement du dernier checkpoint affiche) ---
+        mov     si, txt_cpu_test_elapsed
+        call    bios_puts
+        mov     ax, bp
+        call    uart_tx_dec_word
+        mov     si, txt_cpu_test_seconds
+        call    bios_puts
+        mov     si, txt_crlf
+        call    bios_puts
+        i2c_lcd_goto_col LCD_LINE1, 8    ; positionnement PHYSIQUE requis - voir
+                                          ; cpu_test_show_progress
+        mov     ax, bp
+        call    i2c_lcd_tx_dec3
+
+        ; --- pourcentage: AX = |R-T|, BX = 1 si plus RAPIDE (T<=R), 0 si
+        ; plus LENT (T>R) - BP reste T tout du long, jamais touche ---
+        mov     ax, CPU_TEST_REF_SECONDS
+        mov     cx, bp
+        sub     ax, cx                       ; AX = R-T (signe: >=0 si T<=R)
+        jns     .is_faster
+        neg     ax                            ; T>R: AX = |R-T| = T-R
+        mov     bx, 0
+        jmp     .diff_ok
+.is_faster:
+        mov     bx, 1
+.diff_ok:
+        mov     cx, 100
+        mul     cx                            ; DX:AX = |R-T|*100 (R,T petits: tient
+                                                ; largement sur 32 bits)
+        mov     cx, bp                        ; CX = T (diviseur)
+        div     cx                            ; AX = pourcentage entier (DX = reste, ignore)
+
+        push    ax                            ; le pourcentage sert 2 fois (UART, LCD)
+        mov     si, txt_cpu_test_result_prefix   ; "Le 8088 roule "
+        call    bios_puts
+        pop     ax
+        push    ax
+        call    uart_tx_dec_word
+        or      bx, bx
+        jz      .slower_uart
+        mov     si, txt_cpu_test_faster          ; "% plus vite qu'un 8088 a 4,77 MHz." + CRLF
+        jmp     .uart_msg
+.slower_uart:
+        mov     si, txt_cpu_test_slower           ; "% plus lent qu'un 8088 a 4,77 MHz." + CRLF
+.uart_msg:
+        call    bios_puts
+
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_cpu_test_vs, LCDI2C       ; "vs 4.77MHz: " (complete a 20 caracteres
+                                                    ; par lcd_text - repositionnement PHYSIQUE
+                                                    ; explicite juste apres: le curseur serait
+                                                    ; sinon a la colonne 20 pour le signe qui
+                                                    ; suit, et "gotoxy" seul ne suffirait pas -
+                                                    ; voir clock_show)
+        i2c_lcd_goto_col LCD_LINE2, 12
+        mov     al, '+'
+        or      bx, bx
+        jnz     .lcd_sign_ok
+        mov     al, '-'
+.lcd_sign_ok:
+        call    i2c_lcd_data
+        pop     ax                                 ; AX = pourcentage (dernier usage)
+        call    i2c_lcd_tx_dec3
+        mov     al, '%'
+        call    i2c_lcd_data
+
+        ; --- vitesse estimee: centiemes de MHz = 477 * CPU_TEST_REF_SECONDS / T ---
+        mov     ax, 477
+        mov     cx, CPU_TEST_REF_SECONDS
+        mul     cx                            ; DX:AX = 477*R (largement dans les 32 bits)
+        mov     cx, bp                        ; CX = T (dernier usage de BP comme "T")
+        div     cx                            ; AX = centiemes de MHz
+        call    centihz_to_wholefrac          ; AX -> BL/BH (partie entiere/decimale)
+
+        mov     si, txt_cpu_test_estimated       ; "Vitesse estimee: " - UART seul (pas
+        call    bios_puts                         ; la place sur le LCD, voir ci-dessous)
+        gotoxy  2, 0, LCDI2C
+        print   lcd_txt_cpu_test_est, LCDI2C      ; "Est: "
+        i2c_lcd_goto_col LCD_LINE3, 5             ; positionnement PHYSIQUE requis (idem
+                                                    ; ci-dessus - clock_print_digits ecrit
+                                                    ; en brut)
+        mov     bp, 3                              ; cible UART + LCD (BP n'est plus "T" a
+                                                     ; partir d'ici - dernier calcul deja fait)
+        call    clock_print_digits
+        mov     si, txt_clock_freq_suffix          ; " MHz" - UART ET LCD
+        call    clock_print_str
+        mov     si, txt_crlf
+        call    bios_puts
+
+        gotoxy  3, 0, LCDI2C
+        print   lcd_txt_cpu_test_done, LCDI2C      ; "Echap: retour"
+        ret
+.tmo:
+        mov     si, dm_e_tmo
+        call    bios_puts
         ret
 
 ; ============================================================
@@ -4728,6 +5098,7 @@ usb_opt1_on:            db      '1) USB: ON', 0
 
 txt_menu_config:        db      27,'[36m','--- Sous-menu Configuration ---',27,'[0m',13,10
                         db      '1) Clock speed',13,10
+                        db      '2) Test CPU speed',13,10
                         db      '(Echap: retour au menu principal)',13,10,13,10,0
 
 ; ---- option "1) Clock speed" du sous-menu Configuration (clock_speed_action
@@ -4745,6 +5116,20 @@ txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
                         db      '(Echap: retour au sous-menu Configuration)',13,10,13,10,0
 txt_clock_freq_prefix:  db      'Current speed: ', 0
 txt_clock_freq_suffix:  db      ' MHz', 0
+
+; ---- option "2) Test CPU speed" du sous-menu Configuration
+; ---- (cpu_speed_test_action / cpu_test_show_progress / cpu_test_show_result,
+; ---- plus haut): banc d'essai a charge fixe, mesure la vitesse REELLE du
+; ---- 8088 via la RTC du pont (independante de l'horloge du 8088) ----
+txt_cpu_test_head:        db      27,'[36m','--- Test CPU speed ---',27,'[0m',13,10
+                          db      'Banc d', 27h, 'essai en cours (Echap pour annuler)...',13,10,13,10,0
+txt_cpu_test_elapsed:     db      'Ecoule: ', 0
+txt_cpu_test_seconds:     db      ' s', 0
+txt_cpu_test_aborted:     db      13,10,'*** Test interrompu (Echap) ***',13,10,13,10,0
+txt_cpu_test_result_prefix: db    'Le 8088 roule ', 0
+txt_cpu_test_faster:      db      '% plus vite qu', 27h, 'un 8088 a 4,77 MHz.',13,10,0
+txt_cpu_test_slower:      db      '% plus lent qu', 27h, 'un 8088 a 4,77 MHz.',13,10,0
+txt_cpu_test_estimated:   db      'Vitesse estimee: ', 0
 
 ; ---- option "1) USB ON/OFF" du sous-menu USB Disk (usb_toggle_action)
 ; ---- - bascule: le message "actuellement ..." part AVANT la
@@ -4854,9 +5239,10 @@ lcd_text lcd_txt_menu_dump_l6, '6) Test RAM', 20
 lcd_text lcd_txt_menu_usb_l2, '2) List files', 20
 lcd_text lcd_txt_menu_usb_l3, '3) Boot disk image', 20
 
-; ---- sous-menu Configuration (voir .config_menu, start:) - 1 seule
-; ---- option pour l'instant ----
+; ---- sous-menu Configuration (voir .config_menu, start:) - 2 options,
+; ---- tiennent sur le LCD sans pagination ----
 lcd_text lcd_txt_menu_config_l1, '1) Clock speed', 20
+lcd_text lcd_txt_menu_config_l2, '2) Test CPU speed', 20
 
 ; ---- option "1) Clock speed" (voir clock_speed_action) - ligne 0 (index
 ; ---- 0, gotoxy) reste libre: clock_show y ecrit "N.NN MHz" (la frequence
@@ -4866,6 +5252,21 @@ lcd_text lcd_txt_menu_config_l1, '1) Clock speed', 20
 lcd_text lcd_txt_clock_opts_l1, '1)+0.1 2)-0.1', 20
 lcd_text lcd_txt_clock_opts_l2, '3)+1MHz 4)-1MHz', 20
 lcd_text lcd_txt_clock_opts_l3, '5)4.77 6)8.0 ESC=Fin', 20
+
+; ---- option "2) Test CPU speed" (voir cpu_speed_test_action et suite,
+; ---- plus haut). Ligne 0: "Ecoule: 000 s" - dessinee UNE SEULE FOIS
+; ---- (par cpu_speed_test_action), seuls les 3 chiffres (colonne 8) sont
+; ---- redessines ensuite (cpu_test_show_progress/cpu_test_show_result) -
+; ---- largeur CONSTANTE, meme principe que clock_show. Lignes 1-2:
+; ---- titre/aide PENDANT le test, REMPLACEES par le resultat a la fin
+; ---- (cpu_test_show_result) - prefixes seulement, les valeurs
+; ---- (pourcentage/vitesse) sont ajoutees juste apres ----
+lcd_text lcd_txt_cpu_test_elapsed, 'Ecoule: 000 s', 20
+lcd_text lcd_txt_cpu_test_title,   'Test CPU speed', 20
+lcd_text lcd_txt_cpu_test_cancel,  'Echap: annuler', 20
+lcd_text lcd_txt_cpu_test_vs,      'vs 4.77MHz: ', 20
+lcd_text lcd_txt_cpu_test_est,     'Est: ', 20
+lcd_text lcd_txt_cpu_test_done,    'Echap: retour', 20
 
 ; ---- message affiche pendant le dump UART de ivt_dump_action (avant
 ; ---- que la grille LCD reelle ne s'affiche) ----
