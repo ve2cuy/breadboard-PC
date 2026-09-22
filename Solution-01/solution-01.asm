@@ -495,7 +495,7 @@ start:
 
         cmp     al, '1'
         jne     .config_esc
-        print   txt_config_clock_tbd, UART
+        call    clock_speed_action      ; affiche/regle la frequence du 8088 - voir plus bas
         jmp     .config_menu
 .config_esc:
         cmp     al, 27
@@ -3140,6 +3140,168 @@ usb_state_print:
         ret
 
 ; ============================================================
+; clock_speed_action
+; Option "1) Clock speed" du sous-menu Configuration: affiche la frequence
+; COURANTE de l'horloge du 8088 (pont STM32, PWM materiel sur PA3 - voir
+; arduino/8088_bridge_stm32) et permet de la regler, entre 1 et 10 MHz par
+; pas de 1 MHz plus 4,77 MHz (vitesse du PC IBM d'origine, ET valeur PAR
+; DEFAUT au demarrage du pont - fs_clock_cmd, lib/bridge.asm):
+;   Fleches Haut/Bas - +-1 MHz
+;   D/d              - directement 4,77 MHz
+;   8                - directement 8 MHz
+;   Echap            - retour au sous-menu Configuration
+; Chaque touche envoie IMMEDIATEMENT la nouvelle frequence au pont (pas de
+; "valider" separe - comme le potentiometre d'origine, projets/Clock-8088):
+; changer la frequence du CPU en direct est sans risque (contrairement a
+; une ecriture en RAM), donc pas besoin d'un tampon/annulation comme Edit
+; RAM. Sans reponse du pont (delai - ancien firmware qui ne connait pas
+; encore cette commande, ou pont muet): message d'erreur, retour immediat
+; au sous-menu.
+; ============================================================
+clock_speed_action:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+
+        call    i2c_lcd_init
+        gotoxy  0, 0, LCDI2C
+        print   lcd_txt_clock_l1, LCDI2C
+        gotoxy  2, 0, LCDI2C
+        print   lcd_txt_clock_l3, LCDI2C
+        gotoxy  3, 0, LCDI2C
+        print   lcd_txt_clock_l4, LCDI2C
+
+        xor     dl, dl                   ; action 0 = lire seulement
+        call    fs_clock_cmd
+        jc      .tmo
+        call    clock_show
+.wait:
+        call    ps2_get_char
+        cmp     al, 27
+        je      .out
+        cmp     al, PS2_KEY_UP
+        jne     .not_up
+        mov     dl, 1
+        jmp     .go
+.not_up:
+        cmp     al, PS2_KEY_DOWN
+        jne     .not_down
+        mov     dl, 2
+        jmp     .go
+.not_down:
+        cmp     al, 'd'
+        je      .go_d
+        cmp     al, 'D'
+        jne     .not_d
+.go_d:
+        mov     dl, 3
+        jmp     .go
+.not_d:
+        cmp     al, '8'
+        jne     .wait                    ; touche non pertinente: reboucle sans rien envoyer
+        mov     dl, 4
+.go:
+        call    fs_clock_cmd
+        jc      .tmo
+        call    clock_show
+        jmp     .wait
+.tmo:
+        mov     si, dm_e_tmo             ; lib/bios.asm (dos_menu): "The bridge does not answer."
+        call    bios_puts
+.out:
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; clock_show: affiche DX:AX (frequence en Hz) sous la forme "N.NN MHz" (2 chiffres
+; TOUJOURS pour la partie entiere - espace au lieu d'un zero de tete si < 10 - et 2
+; pour la partie decimale - zero de tete si besoin: la ligne LCD garde ainsi
+; TOUJOURS la meme largeur, jamais de caractere perime a la fin d'une valeur plus
+; courte que la precedente, comme quand on passe de "10.00" a "4,77"). DX:AX / 10000
+; -> centiemes de MHz (0-1000): division 32 bits / 16 bits classique (le quotient
+; tient sur 16 bits - la table de frequences ne depasse jamais 10 000 000).
+; Preserve tout.
+clock_show:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+
+        gotoxy  1, 0, LCDI2C             ; toujours la meme ligne LCD, quel que soit
+                                          ; l'endroit ou i2c_lcd_init/les lignes fixes
+                                          ; ont laisse le curseur
+        mov     cx, 10000
+        mov     bx, ax                   ; BX = poids faible du Hz d'origine
+        mov     ax, dx                   ; AX = poids fort
+        xor     dx, dx
+        div     cx                       ; AX = poids fort / 10000 (0 en pratique), DX = reste
+        xchg    ax, bx                   ; BX = quotient (inutilise), AX = poids faible d'origine
+        div     cx                       ; AX = centiemes de MHz (0-1000), DX = reste (ignore)
+        mov     bx, ax                   ; BX = centiemes de MHz
+        mov     cx, 100
+        xor     dx, dx
+        mov     ax, bx
+        div     cx                       ; AX = partie entiere (1-10), DX = partie decimale (0-99)
+        mov     bh, dl                   ; BH = partie decimale (survit aux affichages)
+        mov     bl, al                   ; BL = partie entiere
+
+        mov     si, txt_clock_freq_prefix       ; "Frequence: "
+        call    bios_puts
+
+        cmp     bl, 10
+        je      .tens
+        mov     al, ' '
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     al, bl
+        add     al, '0'
+        jmp     .units
+.tens:
+        mov     al, '1'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     al, '0'
+.units:
+        call    uart_tx_byte
+        call    i2c_lcd_data
+
+        mov     al, '.'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+
+        mov     al, bh
+        xor     ah, ah
+        mov     cl, 10
+        div     cl                       ; AL = dizaines, AH = unites (du pourcentage decimal)
+        add     al, '0'
+        push    ax
+        call    uart_tx_byte
+        pop     ax
+        call    i2c_lcd_data
+        mov     al, ah
+        add     al, '0'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+
+        mov     si, txt_clock_freq_suffix       ; " MHz"
+        call    bios_puts
+        mov     si, txt_crlf
+        call    bios_puts
+
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; ============================================================
 ; usb_toggle_action
 ; Option "1) USB ON/OFF" du sous-menu USB Disk: bascule le disque
 ; (la flash du pont) entre le 8088 et le PC, selon l'etat memorise
@@ -4420,12 +4582,14 @@ usb_opt1_off:           db      '1) USB: OFF', 0
 usb_opt1_on:            db      '1) USB: ON', 0
 
 txt_menu_config:        db      27,'[36m','--- Sous-menu Configuration ---',27,'[0m',13,10
-                        db      '1) Clock speed (a venir)',13,10
+                        db      '1) Clock speed',13,10
                         db      '(Echap: retour au menu principal)',13,10,13,10,0
 
-; ---- option "1) Clock speed" du sous-menu Configuration: pas encore
-; ---- implementee (reglage de l'horloge du 8088/de l'Arduino) ----
-txt_config_clock_tbd:   db      27,'[33m',"Vitesse d'horloge: a venir (non implemente pour le moment).",27,'[0m',13,10,13,10,0
+; ---- option "1) Clock speed" du sous-menu Configuration (clock_speed_action
+; ---- / clock_show, plus bas): affiche et regle la frequence de l'horloge
+; ---- du 8088, generee par le pont (fs_clock_cmd, lib/bridge.asm) ----
+txt_clock_freq_prefix:  db      'Frequence: ', 0
+txt_clock_freq_suffix:  db      ' MHz', 0
 
 ; ---- option "1) USB ON/OFF" du sous-menu USB Disk (usb_toggle_action)
 ; ---- - bascule: le message "actuellement ..." part AVANT la
@@ -4536,6 +4700,13 @@ lcd_text lcd_txt_menu_usb_l3, '3) Boot disk image', 20
 ; ---- sous-menu Configuration (voir .config_menu, start:) - 1 seule
 ; ---- option pour l'instant ----
 lcd_text lcd_txt_menu_config_l1, '1) Clock speed', 20
+
+; ---- option "1) Clock speed" (voir clock_speed_action) - ligne 1 (index
+; ---- 1, gotoxy) reste libre: clock_show y ecrit la frequence courante,
+; ---- redessinee a chaque touche ----
+lcd_text lcd_txt_clock_l1, 'Clock speed', 20
+lcd_text lcd_txt_clock_l3, 'Haut/Bas: +-1 MHz', 20
+lcd_text lcd_txt_clock_l4, 'D=4.77 8=8 Echap=fin', 20
 
 ; ---- message affiche pendant le dump UART de ivt_dump_action (avant
 ; ---- que la grille LCD reelle ne s'affiche) ----

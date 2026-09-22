@@ -27,12 +27,16 @@
 //     10h-19h = DISQUE: fichiers FAT (racine, noms 8.3) sur la flash SPI (W25Q64, 8 Mo) de la carte
 //     (PA4 = CS, SPI1 PA5/PA6/PA7): statut, formater, ouvrir, lire, ecrire, fermer,
 //     repertoire (debut / suivant), supprimer, espace libre. Voir lib/bridge.asm.
+//     2Ch + 1 octet (action) = HORLOGE du 8088 (PA3, PWM materiel, voir clockExec ci-dessous):
+//     0 lire, 1 +1 MHz, 2 -1 MHz, 3 -> 4,77 MHz, 4 -> 8 MHz -> reponse 4 octets = Hz resultant.
 //
 // CABLAGE (voir le tableau du README.md)
 //   D0-D3 <-> PB12-PB15 et D4-D7 <-> PB6-PB9  <->  8255 PA0-PA7 (bus de donnees)
 //   PB0 -> ACK# (PC6)   PB1 -> STB# (PC4)   PA8 <- OBF# (PC7)   PB4 -> TAG (PC0)
 //   PA9 <- canal bit 0 (8255 PB0)   PA10 <- canal bit 1 (8255 PB1)
-//   PA15 <- IBF (PC5, facultatif)   PB5 -> TAG1 (PC1)   PA3 -> TAG2 (PC2)
+//   PA15 <- IBF (PC5, facultatif)   PB5 -> TAG1 (PC1)
+//   PA3 -> CLK du 8088 (broche 19, PWM materiel TIM2 CH4 - remplace le fil depuis l'Arduino UNO
+//   R4 de projets/Clock-8088/; PA3 servait a TAG2/PC2, jamais cablee sur ce montage - libre)
 //   PA1 <- CLK PS/2   PA2 <- DATA PS/2   PB10 = SCL, PB3 = SDA (LCD I2C2)
 //   PA11/PA12 = USB, PA13/PA14 = SWD, PC13 = LED, PA4-PA7 = flash SPI (reservees),
 //   PB2 = BOOT1 (ne rien y brancher), PA0 = bouton K1 de la carte
@@ -41,6 +45,7 @@
 // utilisee qu'en SORTIE (TAG1). Ne jamais y relier une sortie 5 V.
 // ============================================================================
 #include <Wire.h>
+#include <HardwareTimer.h>
 #include <STM32RTC.h>
 #include <SPI.h>
 #include <SdFat.h>
@@ -118,9 +123,12 @@
 #define PS2_DATA_BIT 2               // GPIOA
 const uint32_t PIN_ACK = PB0, PIN_STB = PB1, PIN_TAG = PB4;
 const uint32_t PIN_OBF = PA8, PIN_CH0 = PA9, PIN_CH1 = PA10, PIN_IBF = PA15;
-const uint32_t PIN_TAG1 = PB5, PIN_TAG2 = PA3;         // PC1, PC2 (etiquette etendue, futur)
+const uint32_t PIN_TAG1 = PB5;                         // PC1 (etiquette etendue, futur)
 const uint32_t PIN_PS2_CLK = PA1, PIN_PS2_DATA = PA2;
 const uint32_t PIN_SCL = PB10, PIN_SDA = PB3;          // I2C2 (AF4 / AF9)
+const uint32_t PIN_CLK8088 = PA3;                      // TIM2 CH4: horloge du 8088 (broche CLK, 19) -
+                                                         // remplace le fil depuis l'Arduino UNO R4 (projets/Clock-8088)
+                                                         // - PA3 servait a TAG2/PC2, jamais cablee sur ce montage
 
 // Bus de donnees sur GPIOB, en deux quartets: D0-D3 = PB12-PB15, D4-D7 = PB6-PB9
 #define BUS_ODR_MASK   ((0xFUL << 12) | (0xFUL << 6))
@@ -262,6 +270,52 @@ static void applyTime(const uint8_t *a) {  // annee (2 octets), mois, jour, h, m
       a[4] > 23 || a[5] > 59 || a[6] > 59) return;               // valeurs invalides: ignore
   rtc.setDate(a[3], a[2], (uint8_t)(year - 2000));
   rtc.setTime(a[4], a[5], a[6]);
+}
+
+// ============================================================================
+// Horloge du 8088 (PA3 = TIM2 CH4, PWM materiel, duty cycle fixe 1/3 - voir
+// projets/Clock-8088/src/main.cpp, meme principe mais sur l'Arduino UNO R4 separe
+// d'origine: ici, l'horloge est generee par CE MEME pont, plus besoin de 2e carte).
+// clockSetup() DOIT etre appelee EN PREMIER dans setup() (avant SPI/USB/RTC, qui
+// prennent du temps): le 8088 a besoin d'une horloge stable des sa mise sous tension.
+// Table fixe de 11 frequences (1-10 MHz, plus 4,77 MHz inseree a sa place - vitesse
+// du PC IBM d'origine, et frequence PAR DEFAUT au demarrage de ce pont). Commande
+// 2Ch (1 octet d'argument, le CODE D'ACTION) -> reponse 4 octets = la frequence
+// resultante en Hz (poids faible d'abord, meme convention que fs_free/fs_dir_next -
+// voir Solution-01/lib/bridge.asm): 0 = ne rien changer (sert de LIRE), 1 = +1 MHz
+// (jusqu'a 10), 2 = -1 MHz (jusqu'a 1), 3 = aller a 4,77 MHz, 4 = aller a 8 MHz.
+// ============================================================================
+static const uint32_t CLOCK_STEPS_HZ[] = {
+  1000000, 2000000, 3000000, 4000000, 4770000, 5000000, 6000000, 7000000, 8000000, 9000000, 10000000
+};
+#define CLOCK_STEP_COUNT (sizeof(CLOCK_STEPS_HZ) / sizeof(CLOCK_STEPS_HZ[0]))
+#define CLOCK_DEFAULT_IDX 4                        // 4,77 MHz
+#define CLOCK_8MHZ_IDX    8
+static HardwareTimer clockTimer(TIM2);
+static uint8_t clockIdx = CLOCK_DEFAULT_IDX;
+
+static void clockApply() {                         // (re)configure le PWM sur la frequence courante
+  clockTimer.setPWM(4, PIN_CLK8088, CLOCK_STEPS_HZ[clockIdx], 33);
+}
+
+// clockSetup: PREMIERE chose faite dans setup() - demarre l'horloge du 8088 a 4,77 MHz
+// avant tout le reste (SPI/USB/RTC peuvent prendre plusieurs dizaines de ms).
+static void clockSetup() {
+  clockApply();
+}
+
+static void clockExec(uint8_t action) {
+  switch (action) {
+    case 1: if (clockIdx < CLOCK_STEP_COUNT - 1) clockIdx++; break;   // +1 MHz
+    case 2: if (clockIdx > 0) clockIdx--; break;                     // -1 MHz
+    case 3: clockIdx = CLOCK_DEFAULT_IDX; break;                     // 4,77 MHz
+    case 4: clockIdx = CLOCK_8MHZ_IDX; break;                        // 8 MHz
+    default: break;                                                  // 0 (ou inconnu) = lire seulement
+  }
+  if (action >= 1 && action <= 4) clockApply();
+  uint32_t hz = CLOCK_STEPS_HZ[clockIdx];
+  replyByte((uint8_t)hz); replyByte((uint8_t)(hz >> 8));
+  replyByte((uint8_t)(hz >> 16)); replyByte((uint8_t)(hz >> 24));
 }
 
 // ============================================================================
@@ -600,6 +654,7 @@ static int cmdNeed() {                     // nombre total d'octets de la comman
     case 0x27: return cmdLen >= 2 ? 2 + cmdBuf[1] : 2;
     case 0x22: return 2;
     case 0x23: return 34;
+    case 0x2C: return 2;
     case 0x12: return cmdLen >= 3 ? 3 + cmdBuf[2] : 3;
     case 0x14: return cmdLen >= 2 ? 2 + cmdBuf[1] : 2;
     case 0x18: return cmdLen >= 2 ? 2 + cmdBuf[1] : 2;
@@ -633,6 +688,7 @@ static void cmdByte(uint8_t v) {
   else if (op >= 0x20 && op <= 0x24) secExec(cmdBuf);
   else if (op >= 0x27 && op <= 0x2A) imgExec(cmdBuf);
   else if (op == 0x2B) secSum();
+  else if (op == 0x2C) clockExec(cmdBuf[1]);
   uartHoldUntil = millis() + CMD_HOLD_MS;  // le 8088 est occupe avec sa commande: pas de collage pour l'instant
   cmdLen = 0;
 }
@@ -808,7 +864,6 @@ static void initPins() {
   pinMode(PIN_STB, OUTPUT_OPEN_DRAIN);  stbHigh();  pullUp(GPIOB, STB_BIT);
   pinMode(PIN_TAG, OUTPUT);   digitalWrite(PIN_TAG, LOW);
   pinMode(PIN_TAG1, OUTPUT);  digitalWrite(PIN_TAG1, LOW);   // PC1 (inutilise pour l'instant)
-  pinMode(PIN_TAG2, OUTPUT);  digitalWrite(PIN_TAG2, LOW);   // PC2 (inutilise pour l'instant)
   pinMode(PIN_OBF, INPUT_PULLUP);          // 8255 absent/hors tension = "rien"
   pinMode(PIN_CH0, INPUT);
   pinMode(PIN_CH1, INPUT);
@@ -824,6 +879,8 @@ static void initPins() {
 
 // ============================================================================
 void setup() {
+  clockSetup();                            // EN PREMIER: le 8088 a besoin d'une horloge des la mise
+                                            // sous tension - avant tout ce qui suit (SPI/USB/RTC, lent)
 #ifdef USE_TINYUSB
   fsMount();                               // la flash d'abord: le lecteur de masse en a besoin
   // Ce coeur n'appelle pas TinyUSB_Device_Init(): sans begin(0) le port USB ne demarre jamais

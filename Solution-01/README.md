@@ -1130,8 +1130,28 @@ principal (voir plus bas).
 1) Clock speed
 ```
 
-Réglage de vitesse à venir — non implémenté pour le moment, la touche
-n'affiche qu'un message.
+`1) Clock speed` affiche la **fréquence courante** de l'horloge du 8088 —
+générée par le pont STM32 (`PA3`, PWM matériel `TIM2` canal 4), qui a
+**remplacé l'Arduino UNO R4 séparé** de `projets/Clock-8088/` : plus besoin
+d'une deuxième carte. Réglable entre **1 et 10 MHz**, par pas de 1 MHz, plus
+`4,77 MHz` (vitesse du PC IBM d'origine, et valeur **par défaut** au
+démarrage du pont) :
+
+| Touche | Effet |
+|---|---|
+| Flèche haut | `+1 MHz` |
+| Flèche bas | `-1 MHz` |
+| `D` / `d` | Directement `4,77 MHz` |
+| `8` | Directement `8 MHz` |
+| Échap | Retour au sous-menu Configuration |
+
+Chaque touche envoie **immédiatement** la nouvelle fréquence au pont (pas de
+validation séparée — comme le potentiomètre d'origine) : changer la vitesse
+du CPU en direct est sans risque, contrairement à une écriture en RAM,
+donc pas de tampon/annulation comme `Edit RAM`. Sans réponse du pont (pont
+trop ancien qui ne connaît pas encore cette commande, ou muet) : message
+d'erreur, retour immédiat au sous-menu. Voir `arduino/8088_bridge_stm32/README.md`
+(câblage `PA3`, protocole `2Ch`) pour le détail côté pont.
 
 **Dump memory** (option 1 du menu Memory functions) : demande une adresse de
 **départ** puis une adresse de **fin**, chacune saisie au format

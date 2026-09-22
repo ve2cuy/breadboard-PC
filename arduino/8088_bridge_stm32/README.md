@@ -22,7 +22,7 @@ Portage de `../ve2cuy_bridge/ve2cuy_bridge.ino` (Arduino UNO) sur une
 | `TAG` | **PB4** | `PC0` | sortie : `0` = scan code, `1` = octet UART |
 | `IBF` (facultatif) | **PA15** | `PC5` | voir `USE_IBF` ; non câblé = « libre » (pull-down interne) |
 | `TAG1` (**réponses**) | **PB5** | `PC1` (broche 15 du 8255A) | **sortie seulement** (PB5 n'est pas tolérante 5 V). **À câbler** pour l'horloge RTC, avec une **résistance de 10 kΩ vers la masse** sur `PC1` : `1` = l'octet envoyé est une réponse à une commande |
-| `TAG2` (futur) | **PA3** | `PC2` | sortie à 0 pour l'instant ; peut ne pas être câblée |
+| **Horloge du 8088** | **PA3** | broche `CLK` (19) du 8088 | **PWM matériel** (`TIM2` canal 4), duty cycle fixe 1/3, 1-10 MHz (défaut 4,77 MHz) — remplace le fil depuis l'Arduino UNO R4 de `projets/Clock-8088/`. `PA3` servait à `TAG2`/`PC2` (jamais câblée) : **si votre montage câble `TAG2`, cette broche est prise et ne convient plus** |
 | PS/2 `CLK` | **PA1** | connecteur clavier | interruption EXTI1 ; pull-up 4,7-10 kΩ vers +5 V conseillé |
 | PS/2 `DATA` | **PA2** | connecteur clavier | idem |
 | LCD I2C `SCL` / `SDA` | **PB10 / PB3** | module PCF8574 | I2C2 (AF4 / AF9) ; pull-ups 5 V du module ; adresse `0x27` (`LCD_ADDR`) |
@@ -149,6 +149,7 @@ PlatformIO : `Adafruit SPIFlash` et `SdFat - Adafruit Fork`.
 | `29h`, LBA (4 octets) | LIRE le secteur LBA de l'image dans le tampon du pont → état (puis `22h`) |
 | `2Ah`, LBA (4 octets) | ÉCRIRE le tampon (déposé par `23h`) dans le secteur LBA de l'image → état |
 | `2Bh` | SOMME de contrôle : somme (16 bits) des 512 octets du tampon → 2 octets (poids faible d'abord). Le 8088 la demande après chaque secteur lu (`21h`/`29h`), la compare à celle des octets reçus et relit le secteur (3 essais) si elles diffèrent |
+| `2Ch`, action | HORLOGE du 8088 : `0` lire (ne rien changer), `1` +1 MHz, `2` -1 MHz (1-10 MHz), `3` → 4,77 MHz (défaut), `4` → 8 MHz → 4 octets (fréquence résultante en Hz, poids faible d'abord) |
 | `25h` | USB ON : le PC prend le disque (lecteur de masse) → état ; état 9 = pile USB sans lecteur de masse |
 | `26h` | USB OFF : le pont reprend le disque (remonte le volume) → état |
 
