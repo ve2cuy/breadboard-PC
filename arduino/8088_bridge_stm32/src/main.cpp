@@ -28,7 +28,8 @@
 //     (PA4 = CS, SPI1 PA5/PA6/PA7): statut, formater, ouvrir, lire, ecrire, fermer,
 //     repertoire (debut / suivant), supprimer, espace libre. Voir lib/bridge.asm.
 //     2Ch + 1 octet (action) = HORLOGE du 8088 (PA3, PWM materiel, voir clockExec ci-dessous):
-//     0 lire, 1 +1 MHz, 2 -1 MHz, 3 -> 4,77 MHz, 4 -> 8 MHz -> reponse 4 octets = Hz resultant.
+//     0 lire, 1 +0,1 MHz, 2 -0,1 MHz, 3 +1 MHz, 4 -1 MHz, 5 -> 4,77 MHz, 6 -> 8 MHz
+//     -> reponse 4 octets = Hz resultant.
 //
 // CABLAGE (voir le tableau du README.md)
 //   D0-D3 <-> PB12-PB15 et D4-D7 <-> PB6-PB9  <->  8255 PA0-PA7 (bus de donnees)
@@ -278,24 +279,25 @@ static void applyTime(const uint8_t *a) {  // annee (2 octets), mois, jour, h, m
 // d'origine: ici, l'horloge est generee par CE MEME pont, plus besoin de 2e carte).
 // clockSetup() DOIT etre appelee EN PREMIER dans setup() (avant SPI/USB/RTC, qui
 // prennent du temps): le 8088 a besoin d'une horloge stable des sa mise sous tension.
-// Table fixe de 11 frequences (1-10 MHz, plus 4,77 MHz inseree a sa place - vitesse
-// du PC IBM d'origine, et frequence PAR DEFAUT au demarrage de ce pont). Commande
-// 2Ch (1 octet d'argument, le CODE D'ACTION) -> reponse 4 octets = la frequence
-// resultante en Hz (poids faible d'abord, meme convention que fs_free/fs_dir_next -
-// voir Solution-01/lib/bridge.asm): 0 = ne rien changer (sert de LIRE), 1 = +1 MHz
-// (jusqu'a 10), 2 = -1 MHz (jusqu'a 1), 3 = aller a 4,77 MHz, 4 = aller a 8 MHz.
+// Valeur courante en Hz (pas de table fixe - reglage continu par pas de 100 kHz ou
+// 1 MHz), bornee a [1, 10] MHz, 4,77 MHz par defaut au demarrage de ce pont (vitesse
+// du PC IBM d'origine). Commande 2Ch (1 octet d'argument, le CODE D'ACTION, numerote
+// comme les options du sous-menu Clock speed - voir Solution-01/solution-01.asm) ->
+// reponse 4 octets = la frequence resultante en Hz (poids faible d'abord, meme
+// convention que fs_free/fs_dir_next - voir Solution-01/lib/bridge.asm):
+//   0 = ne rien changer (sert de LIRE), 1 = +0,1 MHz, 2 = -0,1 MHz, 3 = +1 MHz,
+//   4 = -1 MHz, 5 = aller a 4,77 MHz, 6 = aller a 8 MHz.
 // ============================================================================
-static const uint32_t CLOCK_STEPS_HZ[] = {
-  1000000, 2000000, 3000000, 4000000, 4770000, 5000000, 6000000, 7000000, 8000000, 9000000, 10000000
-};
-#define CLOCK_STEP_COUNT (sizeof(CLOCK_STEPS_HZ) / sizeof(CLOCK_STEPS_HZ[0]))
-#define CLOCK_DEFAULT_IDX 4                        // 4,77 MHz
-#define CLOCK_8MHZ_IDX    8
+#define CLOCK_MIN_HZ     1000000UL
+#define CLOCK_MAX_HZ    10000000UL
+#define CLOCK_DEFAULT_HZ 4770000UL
+#define CLOCK_STEP_SMALL  100000UL                 // 0,1 MHz
+#define CLOCK_STEP_BIG   1000000UL                 // 1 MHz
 static HardwareTimer clockTimer(TIM2);
-static uint8_t clockIdx = CLOCK_DEFAULT_IDX;
+static uint32_t clockHz = CLOCK_DEFAULT_HZ;
 
 static void clockApply() {                         // (re)configure le PWM sur la frequence courante
-  clockTimer.setPWM(4, PIN_CLK8088, CLOCK_STEPS_HZ[clockIdx], 33);
+  clockTimer.setPWM(4, PIN_CLK8088, clockHz, 33);
 }
 
 // clockSetup: PREMIERE chose faite dans setup() - demarre l'horloge du 8088 a 4,77 MHz
@@ -306,16 +308,25 @@ static void clockSetup() {
 
 static void clockExec(uint8_t action) {
   switch (action) {
-    case 1: if (clockIdx < CLOCK_STEP_COUNT - 1) clockIdx++; break;   // +1 MHz
-    case 2: if (clockIdx > 0) clockIdx--; break;                     // -1 MHz
-    case 3: clockIdx = CLOCK_DEFAULT_IDX; break;                     // 4,77 MHz
-    case 4: clockIdx = CLOCK_8MHZ_IDX; break;                        // 8 MHz
-    default: break;                                                  // 0 (ou inconnu) = lire seulement
+    case 1:                                          // +0,1 MHz
+      clockHz = (clockHz + CLOCK_STEP_SMALL > CLOCK_MAX_HZ) ? CLOCK_MAX_HZ : clockHz + CLOCK_STEP_SMALL;
+      break;
+    case 2:                                          // -0,1 MHz
+      clockHz = (clockHz < CLOCK_MIN_HZ + CLOCK_STEP_SMALL) ? CLOCK_MIN_HZ : clockHz - CLOCK_STEP_SMALL;
+      break;
+    case 3:                                          // +1 MHz
+      clockHz = (clockHz + CLOCK_STEP_BIG > CLOCK_MAX_HZ) ? CLOCK_MAX_HZ : clockHz + CLOCK_STEP_BIG;
+      break;
+    case 4:                                          // -1 MHz
+      clockHz = (clockHz < CLOCK_MIN_HZ + CLOCK_STEP_BIG) ? CLOCK_MIN_HZ : clockHz - CLOCK_STEP_BIG;
+      break;
+    case 5: clockHz = CLOCK_DEFAULT_HZ; break;        // 4,77 MHz
+    case 6: clockHz = 8000000UL; break;               // 8 MHz
+    default: break;                                   // 0 (ou inconnu) = lire seulement
   }
-  if (action >= 1 && action <= 4) clockApply();
-  uint32_t hz = CLOCK_STEPS_HZ[clockIdx];
-  replyByte((uint8_t)hz); replyByte((uint8_t)(hz >> 8));
-  replyByte((uint8_t)(hz >> 16)); replyByte((uint8_t)(hz >> 24));
+  if (action >= 1 && action <= 6) clockApply();
+  replyByte((uint8_t)clockHz); replyByte((uint8_t)(clockHz >> 8));
+  replyByte((uint8_t)(clockHz >> 16)); replyByte((uint8_t)(clockHz >> 24));
 }
 
 // ============================================================================

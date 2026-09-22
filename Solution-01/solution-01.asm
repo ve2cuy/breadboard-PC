@@ -173,6 +173,15 @@ start:
         mov     cx, 8000h       ; segment 1000h (STACK_SEG/VAR_SEG)
         rep     stosw
 
+        ; --- Valeur par defaut de CLOCK_FREQ_HZ_OFF (VAR_SEG), affichee au
+        ; menu principal AVANT toute visite du sous-menu Configuration/Clock
+        ; speed: correspond a la frequence PAR DEFAUT du pont a SON PROPRE
+        ; demarrage (clockSetup(), voir arduino/8088_bridge_stm32/src/main.cpp)
+        ; - mise a jour ensuite a la VRAIE valeur des que clock_show
+        ; interroge le pont. ES = VAR_SEG ici (mov es,cx juste au-dessus). ---
+        mov     word [es:CLOCK_FREQ_HZ_OFF], 0C8D0h    ; 4 770 000 Hz, poids faible
+        mov     word [es:CLOCK_FREQ_HZ_OFF+2], 0048h   ;               poids fort
+
         mov     ax, cs
         mov     ds, ax          ; DS = CS en PERMANENCE: tous les messages et
                                  ; la table hexadecimale vivent dans la ROM.
@@ -278,7 +287,12 @@ start:
 ; ============================================================
 .main_menu:
         call    i2c_lcd_init                ; ecran propre pour le menu
-        print   txt_menu_main, UART
+        print   txt_menu_main_head, UART    ; jusqu'a "1) Basic" inclus, SANS CRLF -
+                                             ; la frequence d'horloge continue la
+                                             ; meme ligne, voir clock_main_speed_print
+        mov     bp, 1                       ; UART seul (le LCD n'est pas encore dessine)
+        call    clock_main_speed_print      ; "   N.NN MHz" + CRLF
+        print   txt_menu_main_rest, UART    ; options 2-4 + ligne vide
         gotoxy  0, 0, LCDI2C
         print   lcd_txt_menu_main_l1, LCDI2C
         gotoxy  1, 0, LCDI2C
@@ -287,6 +301,8 @@ start:
         print   lcd_txt_menu_main_l3, LCDI2C
         gotoxy  3, 0, LCDI2C
         print   lcd_txt_menu_main_l4, LCDI2C
+        mov     bp, 2                       ; LCD seul, APRES lcd_txt_menu_main_l1 (sinon
+        call    clock_main_speed_print      ; ecrase par son padding pleine largeur)
 
         call    ps2_get_char            ; bloque jusqu'a une touche reconnue
 
@@ -3143,13 +3159,11 @@ usb_state_print:
 ; clock_speed_action
 ; Option "1) Clock speed" du sous-menu Configuration: affiche la frequence
 ; COURANTE de l'horloge du 8088 (pont STM32, PWM materiel sur PA3 - voir
-; arduino/8088_bridge_stm32) et permet de la regler, entre 1 et 10 MHz par
-; pas de 1 MHz plus 4,77 MHz (vitesse du PC IBM d'origine, ET valeur PAR
-; DEFAUT au demarrage du pont - fs_clock_cmd, lib/bridge.asm):
-;   Fleches Haut/Bas - +-1 MHz
-;   D/d              - directement 4,77 MHz
-;   8                - directement 8 MHz
-;   Echap            - retour au sous-menu Configuration
+; arduino/8088_bridge_stm32) et permet de la regler, entre 1 et 10 MHz:
+;   1) +0,1 MHz   2) -0,1 MHz   3) +1 MHz   4) -1 MHz
+;   5) 4,77 MHz (vitesse du PC IBM d'origine, ET valeur PAR DEFAUT au
+;      demarrage du pont)   6) 8 MHz
+;   Echap - retour au sous-menu Configuration
 ; Chaque touche envoie IMMEDIATEMENT la nouvelle frequence au pont (pas de
 ; "valider" separe - comme le potentiometre d'origine, projets/Clock-8088):
 ; changer la frequence du CPU en direct est sans risque (contrairement a
@@ -3157,6 +3171,13 @@ usb_state_print:
 ; RAM. Sans reponse du pont (delai - ancien firmware qui ne connait pas
 ; encore cette commande, ou pont muet): message d'erreur, retour immediat
 ; au sous-menu.
+; Les options (1-6 + Echap) sont affichees UNE SEULE FOIS a l'entree, sur
+; l'UART ET le LCD (texte fixe - contrairement a la frequence courante, qui
+; change et est redessinee par clock_show a chaque touche). Bug rapporte et
+; corrige (voir Directives.md): auparavant, ce texte n'etait envoye QU'AU
+; LCD, jamais a l'UART (seule la ligne "Frequence: ..." l'etait) - un
+; utilisateur au clavier PS/2 via un terminal serie ne voyait donc aucune
+; des touches disponibles, seulement le resultat.
 ; ============================================================
 clock_speed_action:
         push    ax
@@ -3166,12 +3187,16 @@ clock_speed_action:
         push    si
 
         call    i2c_lcd_init
-        gotoxy  0, 0, LCDI2C
-        print   lcd_txt_clock_l1, LCDI2C
+
+        print   txt_menu_clock_head, UART
+        print   txt_menu_clock_opts, UART
+
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_clock_opts_l1, LCDI2C
         gotoxy  2, 0, LCDI2C
-        print   lcd_txt_clock_l3, LCDI2C
+        print   lcd_txt_clock_opts_l2, LCDI2C
         gotoxy  3, 0, LCDI2C
-        print   lcd_txt_clock_l4, LCDI2C
+        print   lcd_txt_clock_opts_l3, LCDI2C
 
         xor     dl, dl                   ; action 0 = lire seulement
         call    fs_clock_cmd
@@ -3181,28 +3206,14 @@ clock_speed_action:
         call    ps2_get_char
         cmp     al, 27
         je      .out
-        cmp     al, PS2_KEY_UP
-        jne     .not_up
-        mov     dl, 1
-        jmp     .go
-.not_up:
-        cmp     al, PS2_KEY_DOWN
-        jne     .not_down
-        mov     dl, 2
-        jmp     .go
-.not_down:
-        cmp     al, 'd'
-        je      .go_d
-        cmp     al, 'D'
-        jne     .not_d
-.go_d:
-        mov     dl, 3
-        jmp     .go
-.not_d:
-        cmp     al, '8'
-        jne     .wait                    ; touche non pertinente: reboucle sans rien envoyer
-        mov     dl, 4
-.go:
+        cmp     al, '1'
+        jl      .wait                    ; touche non pertinente: reboucle sans rien envoyer
+        cmp     al, '6'
+        jg      .wait
+        mov     dl, al
+        sub     dl, '0'                  ; '1'-'6' -> 1-6: numerotation IDENTIQUE au code
+                                          ; d'action attendu par fs_clock_cmd/clockExec
+                                          ; (voir arduino/8088_bridge_stm32/src/main.cpp)
         call    fs_clock_cmd
         jc      .tmo
         call    clock_show
@@ -3218,24 +3229,12 @@ clock_speed_action:
         pop     ax
         ret
 
-; clock_show: affiche DX:AX (frequence en Hz) sous la forme "N.NN MHz" (2 chiffres
-; TOUJOURS pour la partie entiere - espace au lieu d'un zero de tete si < 10 - et 2
-; pour la partie decimale - zero de tete si besoin: la ligne LCD garde ainsi
-; TOUJOURS la meme largeur, jamais de caractere perime a la fin d'une valeur plus
-; courte que la precedente, comme quand on passe de "10.00" a "4,77"). DX:AX / 10000
-; -> centiemes de MHz (0-1000): division 32 bits / 16 bits classique (le quotient
-; tient sur 16 bits - la table de frequences ne depasse jamais 10 000 000).
-; Preserve tout.
-clock_show:
-        push    ax
-        push    bx
-        push    cx
-        push    dx
-        push    si
-
-        gotoxy  1, 0, LCDI2C             ; toujours la meme ligne LCD, quel que soit
-                                          ; l'endroit ou i2c_lcd_init/les lignes fixes
-                                          ; ont laisse le curseur
+; clock_hz_to_wholefrac: DX:AX = frequence en Hz -> BL = partie entiere
+; (1-10), BH = partie decimale (0-99), en centiemes de MHz (DX:AX / 10000,
+; puis /100 - division 32 bits / 16 bits classique, le quotient tient sur
+; 16 bits: aucune frequence de ce projet ne depasse 10 000 000 Hz). Detruit
+; AX/CX/DX (PAS BP/SI/ES). Utilisee par clock_show et clock_main_speed_print.
+clock_hz_to_wholefrac:
         mov     cx, 10000
         mov     bx, ax                   ; BX = poids faible du Hz d'origine
         mov     ax, dx                   ; AX = poids fort
@@ -3248,32 +3247,37 @@ clock_show:
         xor     dx, dx
         mov     ax, bx
         div     cx                       ; AX = partie entiere (1-10), DX = partie decimale (0-99)
-        mov     bh, dl                   ; BH = partie decimale (survit aux affichages)
+        mov     bh, dl                   ; BH = partie decimale
         mov     bl, al                   ; BL = partie entiere
+        ret
 
-        mov     si, txt_clock_freq_prefix       ; "Frequence: "
-        call    bios_puts
+; clock_print_digits: BL = partie entiere (1-10), BH = partie decimale
+; (0-99), BP = cible (bit0 = UART, bit1 = LCD I2C - le curseur LCD doit deja
+; etre positionne par l'appelant) -> affiche "N.NN" (TOUJOURS 5 caracteres:
+; 2 pour la partie entiere - espace de tete si < 10 - puis '.', puis 2 pour
+; la partie decimale - largeur CONSTANTE, jamais de caractere perime a la
+; fin d'une valeur plus courte que la precedente, ex. de "10.00" a "4,77").
+; Detruit AX/CX. Preserve BX/BP.
+clock_print_digits:
+        push    ax
+        push    cx
 
         cmp     bl, 10
         je      .tens
         mov     al, ' '
-        call    uart_tx_byte
-        call    i2c_lcd_data
+        call    .out
         mov     al, bl
         add     al, '0'
         jmp     .units
 .tens:
         mov     al, '1'
-        call    uart_tx_byte
-        call    i2c_lcd_data
+        call    .out
         mov     al, '0'
 .units:
-        call    uart_tx_byte
-        call    i2c_lcd_data
+        call    .out
 
         mov     al, '.'
-        call    uart_tx_byte
-        call    i2c_lcd_data
+        call    .out
 
         mov     al, bh
         xor     ah, ah
@@ -3281,19 +3285,157 @@ clock_show:
         div     cl                       ; AL = dizaines, AH = unites (du pourcentage decimal)
         add     al, '0'
         push    ax
-        call    uart_tx_byte
+        call    .out
         pop     ax
-        call    i2c_lcd_data
         mov     al, ah
         add     al, '0'
-        call    uart_tx_byte
-        call    i2c_lcd_data
+        call    .out
 
-        mov     si, txt_clock_freq_suffix       ; " MHz"
-        call    bios_puts
+        pop     cx
+        pop     ax
+        ret
+.out:                                    ; AL = caractere -> UART et/ou LCD selon BP
+        test    bp, 1
+        jz      .out_lcd
+        call    uart_tx_byte
+.out_lcd:
+        test    bp, 2
+        jz      .out_done
+        call    i2c_lcd_data
+.out_done:
+        ret
+
+; clock_print_str: CS:SI = texte termine par 0, BP = cible (bit0 UART,
+; bit1 LCD I2C - meme convention que clock_print_digits) -> affiche chaque
+; caractere sur la/les cible(s) demandee(s) (le curseur LCD doit deja etre
+; positionne par l'appelant). Detruit AX/SI.
+clock_print_str:
+.l:
+        mov     al, [cs:si]
+        or      al, al
+        jz      .r
+        test    bp, 1
+        jz      .no_u
+        call    uart_tx_byte
+.no_u:
+        test    bp, 2
+        jz      .no_l
+        call    i2c_lcd_data
+.no_l:
+        inc     si
+        jmp     .l
+.r:
+        ret
+
+; clock_show: affiche DX:AX (frequence en Hz) sous la forme "Current speed:
+; N.NN MHz" sur l'UART, et "N.NN MHz" (sans le prefixe "Current speed: " -
+; pas la place sur 20 colonnes) a la ligne 0 du LCD I2C (toujours la meme
+; position, quel que soit l'endroit ou l'appelant a laisse le curseur - voir
+; clock_speed_action). Met AUSSI a jour CLOCK_FREQ_HZ_OFF (VAR_SEG, voir
+; hardware.inc): clock_main_speed_print l'utilise ensuite pour afficher la
+; vitesse courante au menu principal SANS repasser par le pont a chaque
+; redessin. Preserve tout.
+clock_show:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    bp
+        push    es
+
+        mov     cx, VAR_SEG
+        mov     es, cx
+        mov     [es:CLOCK_FREQ_HZ_OFF], ax
+        mov     [es:CLOCK_FREQ_HZ_OFF+2], dx
+
+        gotoxy  0, 0, LCDI2C             ; toujours la meme ligne LCD (0 - le sous-menu
+                                          ; n'a plus de titre statique separe, voir
+                                          ; clock_speed_action), quel que soit l'endroit
+                                          ; ou i2c_lcd_init/les lignes fixes ont laisse
+                                          ; le curseur
+
+        call    clock_hz_to_wholefrac    ; DX:AX -> BL/BH
+
+        mov     si, txt_clock_freq_prefix        ; "Current speed: " - UART seul
+        call    bios_puts                         ; (pas de place sur le LCD)
+
+        mov     bp, 3                    ; UART + LCD I2C
+        call    clock_print_digits
+
+        mov     si, txt_clock_freq_suffix        ; " MHz" - UART ET LCD cette fois
+        call    clock_print_str
+
         mov     si, txt_crlf
         call    bios_puts
 
+        pop     es
+        pop     bp
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; ============================================================
+; clock_main_speed_print
+; Affiche, a droite de la ligne "1) Basic" du menu principal, la frequence
+; COURANTE de l'horloge du 8088 - LUE DANS LE CACHE CLOCK_FREQ_HZ_OFF
+; (VAR_SEG), sans aller-retour au pont a chaque redessin du menu principal
+; (frequent: apres chaque action, comme tous les sous-menus). Le cache est
+; mis a jour par clock_show a chaque visite du sous-menu Configuration/Clock
+; speed; une valeur par defaut plausible (4,77 MHz - la valeur reelle PAR
+; DEFAUT du pont a SON PROPRE demarrage) y est ecrite au demarrage du 8088
+; (voir start:), pour un affichage correct meme avant toute visite du
+; sous-menu.
+; Appelee 2 FOIS par .main_menu (solution-01.asm), car "1) Basic" (UART) et
+; la ligne 0 du LCD (lcd_txt_menu_main_l1) ne sont PAS dessines au meme
+; moment:
+;   BP=1 (UART seul), juste apres le texte "1) Basic" (avant le CRLF -
+;        continue la meme ligne): "   N.NN MHz"
+;   BP=2 (LCD I2C seul), APRES le dessin complet de la ligne 0 du LCD -
+;        sinon lcd_txt_menu_main_l1 (largeur fixe, 20 colonnes) ecraserait
+;        ces chiffres: gotoxy 0,15 ici, puis juste "N.NN" (5 caracteres,
+;        colonnes 15-19 - pas de place pour "MHz" sur le LCD).
+; Preserve AX/BX/CX/DX/SI/ES (BP est le parametre d'entree, ecrase).
+; ============================================================
+clock_main_speed_print:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    es
+
+        test    bp, 1
+        jz      .no_uart_sep
+        mov     al, ' '
+        call    uart_tx_byte
+        call    uart_tx_byte
+        call    uart_tx_byte
+.no_uart_sep:
+        test    bp, 2
+        jz      .no_lcd_pos
+        gotoxy  0, 15, LCDI2C
+.no_lcd_pos:
+
+        mov     cx, VAR_SEG
+        mov     es, cx
+        mov     ax, [es:CLOCK_FREQ_HZ_OFF]
+        mov     dx, [es:CLOCK_FREQ_HZ_OFF+2]
+        call    clock_hz_to_wholefrac    ; DX:AX -> BL/BH (PAS BP/SI/ES)
+        call    clock_print_digits
+
+        test    bp, 1
+        jz      .no_uart_suffix
+        mov     si, txt_clock_freq_suffix        ; " MHz"
+        call    bios_puts
+        mov     si, txt_crlf
+        call    bios_puts
+.no_uart_suffix:
+
+        pop     es
         pop     si
         pop     dx
         pop     cx
@@ -4547,9 +4689,12 @@ txt_auteur:             db      '8088 sur breadboard version 2026',13,10
 ; ---- disk image" du sous-menu USB Disk. "4) Edit RAM" retire du menu
 ; ---- principal de longue date: disponible en "2) Edit RAM" du
 ; ---- sous-menu Memory functions ----
-txt_menu_main:          db      27,'[36m','=== VE2CUY PCx86 ===',27,'[0m',13,10
-                        db      '1) Basic',13,10
-                        db      '2) Memory functions',13,10
+; ---- menu principal (voir .main_menu): "1) Basic" n'a PAS de CRLF final -
+; ---- clock_main_speed_print y ajoute la frequence courante de l'horloge,
+; ---- AVANT de continuer avec txt_menu_main_rest ----
+txt_menu_main_head:     db      27,'[36m','=== VE2CUY PCx86 ===',27,'[0m',13,10
+                        db      '1) Basic', 0
+txt_menu_main_rest:     db      '2) Memory functions',13,10
                         db      '3) USB Disk',13,10
                         db      '4) Configuration',13,10,13,10,0
 
@@ -4587,8 +4732,18 @@ txt_menu_config:        db      27,'[36m','--- Sous-menu Configuration ---',27,'
 
 ; ---- option "1) Clock speed" du sous-menu Configuration (clock_speed_action
 ; ---- / clock_show, plus bas): affiche et regle la frequence de l'horloge
-; ---- du 8088, generee par le pont (fs_clock_cmd, lib/bridge.asm) ----
-txt_clock_freq_prefix:  db      'Frequence: ', 0
+; ---- du 8088, generee par le pont (fs_clock_cmd, lib/bridge.asm). Menu
+; ---- affiche UNE SEULE FOIS a l'entree (texte fixe) - la ligne "Current
+; ---- speed: ..." est SEPAREE (clock_show), redessinee a chaque touche ----
+txt_menu_clock_head:    db      27,'[36m','--- Clock speed ---',27,'[0m',13,10,0
+txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
+                        db      '2) Down : 0.1 MHz',13,10
+                        db      '3) Up   : 1 MHz',13,10
+                        db      '4) Down : 1 MHz',13,10
+                        db      '5) 4.77 MHz',13,10
+                        db      '6) 8.0 MHz',13,10
+                        db      '(Echap: retour au sous-menu Configuration)',13,10,13,10,0
+txt_clock_freq_prefix:  db      'Current speed: ', 0
 txt_clock_freq_suffix:  db      ' MHz', 0
 
 ; ---- option "1) USB ON/OFF" du sous-menu USB Disk (usb_toggle_action)
@@ -4655,7 +4810,9 @@ lcd_text lcd_txt_splash_l4, '(c) VE2CUY 2026', 20
 
 ; ---- menu principal (voir start:) - 1 ligne LCD par option, 4
 ; ---- sous-menus (Basic, Memory functions, USB Disk, Configuration -
-; ---- meme texte que le menu UART, txt_menu_main) ----
+; ---- meme texte que le menu UART, txt_menu_main_head/rest). La frequence
+; ---- d'horloge courante ecrase les colonnes 15-19 de la ligne 0 apres
+; ---- coup (clock_main_speed_print) ----
 lcd_text lcd_txt_menu_main_l1, '1) Basic', 20
 lcd_text lcd_txt_menu_main_l2, '2) Memory functions', 20
 lcd_text lcd_txt_menu_main_l3, '3) USB Disk', 20
@@ -4701,12 +4858,14 @@ lcd_text lcd_txt_menu_usb_l3, '3) Boot disk image', 20
 ; ---- option pour l'instant ----
 lcd_text lcd_txt_menu_config_l1, '1) Clock speed', 20
 
-; ---- option "1) Clock speed" (voir clock_speed_action) - ligne 1 (index
-; ---- 1, gotoxy) reste libre: clock_show y ecrit la frequence courante,
-; ---- redessinee a chaque touche ----
-lcd_text lcd_txt_clock_l1, 'Clock speed', 20
-lcd_text lcd_txt_clock_l3, 'Haut/Bas: +-1 MHz', 20
-lcd_text lcd_txt_clock_l4, 'D=4.77 8=8 Echap=fin', 20
+; ---- option "1) Clock speed" (voir clock_speed_action) - ligne 0 (index
+; ---- 0, gotoxy) reste libre: clock_show y ecrit "N.NN MHz" (la frequence
+; ---- courante), redessinee a chaque touche - PAS de titre statique separe
+; ---- ici (contrairement a l'ancienne version - voir Directives.md), les
+; ---- options 1-6 + Echap sont ci-dessous, sur les lignes 1-3 ----
+lcd_text lcd_txt_clock_opts_l1, '1)+0.1 2)-0.1', 20
+lcd_text lcd_txt_clock_opts_l2, '3)+1MHz 4)-1MHz', 20
+lcd_text lcd_txt_clock_opts_l3, '5)4.77 6)8.0 ESC=Fin', 20
 
 ; ---- message affiche pendant le dump UART de ivt_dump_action (avant
 ; ---- que la grille LCD reelle ne s'affiche) ----

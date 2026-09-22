@@ -44,8 +44,10 @@
 ;   2Bh                     SOMME du tampon du pont (512 octets, mot de 16 bits) -> 2 octets (poids faible d'abord):
 ;                           le 8088 la compare a celle des 512 octets recus et rend FSE_BADSUM si elles different
 ;   2Ch action              HORLOGE du 8088 (PWM materiel du pont STM32 - remplace l'Arduino UNO R4 separe
-;                           de projets/Clock-8088): action 0 = lire (ne rien changer), 1 = +1 MHz, 2 = -1 MHz
-;                           (1-10 MHz), 3 = aller a 4,77 MHz (defaut au demarrage du pont), 4 = aller a 8 MHz
+;                           de projets/Clock-8088): action 0 = lire (ne rien changer), 1 = +0,1 MHz,
+;                           2 = -0,1 MHz, 3 = +1 MHz, 4 = -1 MHz (bornes 1-10 MHz), 5 = aller a 4,77 MHz
+;                           (defaut au demarrage du pont), 6 = aller a 8 MHz - meme numerotation que les
+;                           options du sous-menu Clock speed (solution-01.asm)
 ;                           -> 4 octets: la frequence resultante en Hz (poids faible d'abord)
 ; La RTC du STM32 ne gere que 2000-2099. Un pont sans ces commandes (UNO) ne repond
 ; pas: les routines rendent CF = 1 apres le delai (environ 0,5 s a 4,77 MHz par
@@ -495,11 +497,12 @@ fs_cmd4:
         pop     cx
         jmp     fs_end
 
-; fs_clock_cmd: DL = code d'action pour l'horloge du 8088 (0 lire, 1 +1 MHz, 2 -1 MHz,
-; 3 -> 4,77 MHz, 4 -> 8 MHz) -> DX:AX = frequence resultante en Hz (poids faible
-; d'abord, meme convention que fs_cmd4 ci-dessus - mais avec un octet d'ARGUMENT en
-; plus, donc pas une simple variante de fs_cmd4). CF = 1: delai (pont sans cette
-; commande, ou muet).
+; fs_clock_cmd: DL = code d'action pour l'horloge du 8088 (0 lire, 1 +0,1 MHz,
+; 2 -0,1 MHz, 3 +1 MHz, 4 -1 MHz, 5 -> 4,77 MHz, 6 -> 8 MHz - meme numerotation que
+; les options du sous-menu Clock speed, solution-01.asm) -> DX:AX = frequence
+; resultante en Hz (poids faible d'abord, meme convention que fs_cmd4 ci-dessus -
+; mais avec un octet d'ARGUMENT en plus, donc pas une simple variante de fs_cmd4).
+; CF = 1: delai (pont sans cette commande, ou muet).
 fs_clock_cmd:
         push    cx
         push    dx

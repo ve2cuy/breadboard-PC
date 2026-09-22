@@ -1133,16 +1133,29 @@ principal (voir plus bas).
 `1) Clock speed` affiche la **fréquence courante** de l'horloge du 8088 —
 générée par le pont STM32 (`PA3`, PWM matériel `TIM2` canal 4), qui a
 **remplacé l'Arduino UNO R4 séparé** de `projets/Clock-8088/` : plus besoin
-d'une deuxième carte. Réglable entre **1 et 10 MHz**, par pas de 1 MHz, plus
-`4,77 MHz` (vitesse du PC IBM d'origine, et valeur **par défaut** au
-démarrage du pont) :
+d'une deuxième carte — et permet de la régler entre **1 et 10 MHz** :
+
+```
+--- Clock speed ---
+1) Up   : 0.1 MHz
+2) Down : 0.1 MHz
+3) Up   : 1 MHz
+4) Down : 1 MHz
+5) 4.77 MHz
+6) 8.0 MHz
+(Echap: retour au sous-menu Configuration)
+
+Current speed:  4.77 MHz
+```
 
 | Touche | Effet |
 |---|---|
-| Flèche haut | `+1 MHz` |
-| Flèche bas | `-1 MHz` |
-| `D` / `d` | Directement `4,77 MHz` |
-| `8` | Directement `8 MHz` |
+| `1` | `+0,1 MHz` |
+| `2` | `-0,1 MHz` |
+| `3` | `+1 MHz` |
+| `4` | `-1 MHz` |
+| `5` | Directement `4,77 MHz` (vitesse du PC IBM d'origine, et valeur **par défaut** au démarrage du pont) |
+| `6` | Directement `8 MHz` |
 | Échap | Retour au sous-menu Configuration |
 
 Chaque touche envoie **immédiatement** la nouvelle fréquence au pont (pas de
@@ -1150,8 +1163,16 @@ validation séparée — comme le potentiomètre d'origine) : changer la vitesse
 du CPU en direct est sans risque, contrairement à une écriture en RAM,
 donc pas de tampon/annulation comme `Edit RAM`. Sans réponse du pont (pont
 trop ancien qui ne connaît pas encore cette commande, ou muet) : message
-d'erreur, retour immédiat au sous-menu. Voir `arduino/8088_bridge_stm32/README.md`
-(câblage `PA3`, protocole `2Ch`) pour le détail côté pont.
+d'erreur, retour immédiat au sous-menu. Le menu (options + touche Échap) est
+affiché **une seule fois** à l'entrée, sur l'UART **et** le LCD (texte fixe) ;
+seule la ligne `Current speed: ...` change et se redessine à chaque touche.
+Voir `arduino/8088_bridge_stm32/README.md` (câblage `PA3`, protocole `2Ch`)
+pour le détail côté pont.
+
+La **fréquence courante** est aussi affichée à droite de la première ligne du
+**menu principal** (`1) Basic          4,77 MHz`), lue depuis un cache côté
+8088 (pas d'aller-retour au pont à chaque redessin du menu principal) — mis
+à jour à chaque visite du sous-menu `Clock speed`.
 
 **Dump memory** (option 1 du menu Memory functions) : demande une adresse de
 **départ** puis une adresse de **fin**, chacune saisie au format

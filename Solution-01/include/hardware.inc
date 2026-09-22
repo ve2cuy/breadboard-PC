@@ -220,6 +220,15 @@ BRIDGE_RX_TAIL_OFF  equ 0FC53h  ; (octet)
 BRIDGE_RX_BUF_OFF   equ 0FC70h  ; (64 octets: 0FC70h-0FCAFh)
 BRIDGE_EXPECT_OFF   equ 0FC64h  ; (octet) 1 = une reponse est attendue (mis par rtc_get)
 
+; --- frequence COURANTE de l'horloge du 8088, mise en cache cote 8088 (Hz) -
+; --- evite un aller-retour au pont (fs_clock_cmd, lib/bridge.asm) a chaque
+; --- redessin du menu principal: clock_show (solution-01.asm) la met a jour
+; --- a chaque lecture/reglage reussi depuis le sous-menu Configuration/Clock
+; --- speed; clock_main_speed_print l'utilise pour l'afficher au menu
+; --- principal. Initialisee a 4 770 000 (valeur par defaut du pont a SON
+; --- propre demarrage) juste apres l'effacement de VAR_SEG - voir start:. ---
+CLOCK_FREQ_HZ_OFF   equ 0FC65h  ; (double mot) frequence courante en Hz
+
 ; --- etat du BIOS (lib/bios.asm) dans VAR_SEG: pile du programme appelant memorisee pendant qu'un
 ; --- service BIOS travaille sur sa pile privee (1000:FE00-FEFF), touche en attente, etc. ---
 BIOS_SP_OFF         equ 0FCB0h  ; (mot) SP du programme appelant (pointe sur son DS sauve)
