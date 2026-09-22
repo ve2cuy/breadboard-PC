@@ -3606,6 +3606,10 @@ cpu_speed_test_action:
         call    bios_puts
         jmp     .out
 .tmo:
+        mov     si, txt_crlf              ; termine la ligne de points de progression en
+        call    bios_puts                 ; cours (cpu_test_show_progress, UART) s'il y en
+                                           ; avait une - inoffensif sinon (juste une ligne
+                                           ; vide de plus)
         mov     si, dm_e_tmo             ; lib/bios.asm (dos_menu): "The bridge does not answer."
         call    bios_puts
         jmp     .out
@@ -3676,35 +3680,38 @@ cpu_test_elapsed_seconds:
 
 ; cpu_test_show_progress: ES = VAR_SEG (deja etabli par l'appelant),
 ; CPU_TEST_START_SEC_OFF deja rempli -> interroge la RTC du pont, calcule
-; le temps ecoule, et affiche "Ecoule: NNN s" sur l'UART, PUIS redessine
-; seulement les 3 chiffres (colonne 8, ligne 0 du LCD - meme convention
-; que clock_show: largeur CONSTANTE, zero-remplie via i2c_lcd_tx_dec3,
-; jamais de caractere perime). CF = 1 si le pont ne repond pas (comme
-; rtc_get): a la charge de l'APPELANT d'abandonner le banc d'essai dans
-; ce cas (voir cpu_speed_test_action, ".tmo") - NE PAS ignorer
-; silencieusement un timeout ici et laisser le test continuer: sans
-; retour visible pendant potentiellement les ~30 checkpoints restants,
-; un pont devenu muet en cours de route serait indiscernable d'un test
-; simplement bloque (rapporte sur le materiel reel - voir Directives.md).
-; Detruit AX/BX/CX/DX/SI/DI.
+; le temps ecoule, et affiche un SEUL "." sur l'UART (pas de CRLF - tous
+; les points d'un meme test s'accumulent sur la MEME ligne, simple
+; indicateur de progression compact - demande, voir Manifest.md; le
+; nombre de secondes exact n'est plus repete a chaque checkpoint sur
+; l'UART, seulement dans le resultat final, cpu_test_show_result), PUIS
+; redessine les 3 chiffres (colonne 8, ligne 0 du LCD - INCHANGE, toujours
+; numerique - meme convention que clock_show: largeur CONSTANTE,
+; zero-remplie via i2c_lcd_tx_dec3, jamais de caractere perime). CF = 1
+; si le pont ne repond pas (comme rtc_get): a la charge de l'APPELANT
+; d'abandonner le banc d'essai dans ce cas (voir cpu_speed_test_action,
+; ".tmo") - NE PAS ignorer silencieusement un timeout ici et laisser le
+; test continuer: sans retour visible pendant potentiellement les ~30
+; checkpoints restants, un pont devenu muet en cours de route serait
+; indiscernable d'un test simplement bloque (rapporte sur le materiel
+; reel - voir Directives.md). Detruit AX/BX/CX/DX/SI/DI.
 cpu_test_show_progress:
         mov     di, BIOS_RTC_OFF
         call    rtc_get
         jc      .skip                     ; CF deja a 1 - propage tel quel a l'appelant
         call    cpu_test_rtc_to_seconds
         call    cpu_test_elapsed_seconds   ; DX:AX = T (secondes ecoulees)
+        mov     bx, ax                     ; BX = T (poids faible) - sauve AVANT de detruire
+                                            ; AL pour le "." ci-dessous (uart_tx_byte
+                                            ; preserve tout, mais "mov al,'.'" ecraserait T)
 
-        mov     si, txt_cpu_test_elapsed         ; "Ecoule: "
-        call    bios_puts
-        call    uart_tx_dec_word
-        mov     si, txt_cpu_test_seconds         ; " s"
-        call    bios_puts
-        mov     si, txt_crlf
-        call    bios_puts
+        mov     al, '.'
+        call    uart_tx_byte
 
         i2c_lcd_goto_col LCD_LINE1, 8    ; positionnement PHYSIQUE requis (i2c_lcd_tx_dec3
                                           ; ecrit en brut, "gotoxy" seul ne suffit pas -
                                           ; voir clock_show)
+        mov     ax, bx                    ; AX = T (restaure pour le LCD)
         call    i2c_lcd_tx_dec3
         clc                               ; succes: CF=0 pour l'appelant
 .skip:
@@ -3732,6 +3739,12 @@ cpu_test_show_result:
         mov     bp, 1                        ; protection division par 0 (cas jamais
                                               ; atteint en pratique)
 .t_ok:
+        ; --- termine la ligne de points de progression (cpu_test_show_progress,
+        ; UART) AVANT le resultat - sans quoi "Ecoule: ..." suivrait les points
+        ; sur la MEME ligne ---
+        mov     si, txt_crlf
+        call    bios_puts
+
         ; --- ligne "Ecoule: NNN s" (valeur FINALE - peut differer
         ; legerement du dernier checkpoint affiche) ---
         mov     si, txt_cpu_test_elapsed
@@ -3826,6 +3839,8 @@ cpu_test_show_result:
         print   lcd_txt_cpu_test_done, LCDI2C      ; "Echap: retour"
         ret
 .tmo:
+        mov     si, txt_crlf              ; termine la ligne de points de progression
+        call    bios_puts                 ; (cpu_test_show_progress, UART) avant le message
         mov     si, dm_e_tmo
         call    bios_puts
         ret
@@ -5139,7 +5154,8 @@ txt_clock_freq_suffix:  db      ' MHz', 0
 ; ---- plus haut): banc d'essai a charge fixe, mesure la vitesse REELLE du
 ; ---- 8088 via la RTC du pont (independante de l'horloge du 8088) ----
 txt_cpu_test_head:        db      27,'[36m','--- Test CPU speed ---',27,'[0m',13,10
-                          db      'Banc d', 27h, 'essai en cours (Echap pour annuler)...',13,10,13,10,0
+                          db      'Banc d', 27h, 'essai en cours, duree: environ 30 secondes'
+                          db      ' (Echap pour annuler)...',13,10,0
 txt_cpu_test_elapsed:     db      'Ecoule: ', 0
 txt_cpu_test_seconds:     db      ' s', 0
 txt_cpu_test_aborted:     db      13,10,'*** Test interrompu (Echap) ***',13,10,13,10,0

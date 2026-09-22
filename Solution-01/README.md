@@ -1182,22 +1182,22 @@ exactement** :
 
 ```
 --- Test CPU speed ---
-Banc d'essai en cours (Echap pour annuler)...
-
-Ecoule: 11 s
-Ecoule: 22 s
+Banc d'essai en cours, duree: environ 30 secondes (Echap pour annuler)...
+..............................
 Ecoule: 34 s
 Le 8088 roule 0% plus vite qu'un 8088 a 4,77 MHz.
 Vitesse estimee:  4.77 MHz
 ```
 
-Pendant le test, la ligne `Ecoule: ...` se redessine à intervalles réguliers
-(≈ 30 fois au total, sur l'UART **et** le LCD) pour que la progression
-reste visible. `Échap` (vérification non bloquante, comme le dump
-mémoire) interrompt le test et revient immédiatement au sous-menu. Si le
-pont cesse de répondre **en cours de test** (et pas seulement à son
-lancement), le banc d'essai s'arrête aussitôt avec un message d'erreur —
-plutôt que de continuer silencieusement les checkpoints restants sans
+Pendant le test, l'UART affiche un `.` par checkpoint (≈ 30 au total, tous
+sur la même ligne — simple indicateur de progression compact) plutôt que
+le nombre de secondes à chaque fois ; le LCD, lui, continue d'afficher
+`Ecoule: NNN s` en direct (redessiné à chaque checkpoint). `Échap`
+(vérification non bloquante, comme le dump mémoire) interrompt le test et
+revient immédiatement au sous-menu. Si le pont cesse de répondre **en
+cours de test** (et pas seulement à son lancement), le banc d'essai
+s'arrête aussitôt avec un message d'erreur — plutôt que de continuer
+silencieusement les checkpoints restants sans
 aucun retour visible, ce qui ressemblerait à un blocage. À la fin,
 n'importe quelle touche referme l'écran de résultat.
 
