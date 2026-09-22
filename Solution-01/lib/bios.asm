@@ -1579,11 +1579,24 @@ bios_puts:
         pop     ax
         ret
 
+; ---- Bilinguisme FR/EN (Manifest.md, meme mecanisme que
+; ---- solution-01.asm - voir sa section donnees): ces messages
+; ---- etaient DEJA en anglais uniquement (aucune version francaise
+; ---- n'existait) - desormais dupliques, anglais dans %ifdef LANG_EN,
+; ---- francais par defaut (%else), memes etiquettes ----
+%ifdef LANG_EN
 bios_msg_boot:  db      13, 10, 'Boot: flash disk...  (Ctrl-\ = back to the menu)', 13, 10, 0
 bios_msg_bootA: db      13, 10, 'Boot: floppy image (A:)...  (Ctrl-\ = back to the menu)', 13, 10, 0
 bios_msg_nosig: db      'Boot: no boot signature (55AA)', 13, 10, 0
 bios_msg_nodisk: db     'Boot: disk not ready / read error', 13, 10, 0
 bios_msg_tmo:   db      'Boot: bridge does not answer', 13, 10, 0
+%else
+bios_msg_boot:  db      13, 10, 'Amorce: disque flash...  (Ctrl-\ = retour au menu)', 13, 10, 0
+bios_msg_bootA: db      13, 10, 'Amorce: image disquette (A:)...  (Ctrl-\ = retour au menu)', 13, 10, 0
+bios_msg_nosig: db      'Amorce: signature de demarrage absente (55AA)', 13, 10, 0
+bios_msg_nodisk: db     'Amorce: disque non pret / erreur de lecture', 13, 10, 0
+bios_msg_tmo:   db      'Amorce: le pont ne repond pas', 13, 10, 0
+%endif
 
 ; bios_puts_ds: chaine en RAM (DS:SI, zero final) -> UART
 bios_puts_ds:
@@ -1751,9 +1764,13 @@ dos_menu:
         pop     ax
         ret
 
-dm_title:       db      13, 10, 27, '[36m', '--- DOS: boot from a disk image (.IMG on the flash disk) ---', 27, '[0m', 13, 10, 0
+; ---- Bilinguisme FR/EN (Manifest.md) - meme mecanisme, memes
+; ---- etiquettes dans les 2 branches; dm_sp/dm_crlf PARTAGES (pas de
+; ---- texte, juste separateur/CRLF) ----
 dm_sp:          db      '  ', 0
 dm_crlf:        db      13, 10, 0
+%ifdef LANG_EN
+dm_title:       db      13, 10, 27, '[36m', '--- DOS: boot from a disk image (.IMG on the flash disk) ---', 27, '[0m', 13, 10, 0
 dm_prompt:      db      'Image number (Esc = cancel): ', 0
 dm_cancel:      db      13, 10, 'Cancelled.', 13, 10, 0
 dm_none:        db      'No .IMG file found on the disk.', 13, 10, 0
@@ -1762,6 +1779,17 @@ dm_e_tmo:       db      'The bridge does not answer.', 13, 10, 0
 dm_e_size:      db      13, 10, 'Unsupported image size (160K, 180K, 320K, 360K, 720K, 1.2M or 1.44M expected).', 13, 10, 0
 dm_e_nf:        db      13, 10, 'Image not found.', 13, 10, 0
 dm_e_mount:     db      13, 10, 'Cannot mount the image.', 13, 10, 0
+%else
+dm_title:       db      13, 10, 27, '[36m', '--- DOS: demarrer depuis une image disquette (.IMG sur la flash) ---', 27, '[0m', 13, 10, 0
+dm_prompt:      db      'Numero d', 27h, 'image (Echap = annuler): ', 0
+dm_cancel:      db      13, 10, 'Annule.', 13, 10, 0
+dm_none:        db      'Aucun fichier .IMG trouve sur le disque.', 13, 10, 0
+dm_e_disk:      db      'Disque non pret.', 13, 10, 0
+dm_e_tmo:       db      'Le pont ne repond pas.', 13, 10, 0
+dm_e_size:      db      13, 10, 'Taille d', 27h, 'image non supportee (160K, 180K, 320K, 360K, 720K, 1,2M ou 1,44M attendue).', 13, 10, 0
+dm_e_nf:        db      13, 10, 'Image introuvable.', 13, 10, 0
+dm_e_mount:     db      13, 10, 'Impossible de monter l', 27h, 'image.', 13, 10, 0
+%endif
 
 ; ------------------------------------------------------------
 ; INT 10h - fonctions STANDARD (teletype, mode video...) sur le terminal UART. Appelee (JMP) par
@@ -1940,9 +1968,17 @@ int_not_implemented:
         pop     ax
         iret
 
+; ---- Bilinguisme FR/EN (Manifest.md) - seuls txt_ini_1/3 contiennent
+; ---- du texte a traduire; txt_ini_2/4/5 sont PARTAGES (mnemoniques/
+; ---- ponctuation/ANSI, deja identiques dans les 2 langues) ----
+%ifdef LANG_EN
+txt_ini_1:      db      27, '[31m', '*** Interrupt not implemented: INT ', 0
+txt_ini_3:      db      'h, called from ', 0
+%else
 txt_ini_1:      db      27, '[31m', '*** Interruption non implementee: INT ', 0
-txt_ini_2:      db      'h, AH=', 0
 txt_ini_3:      db      'h, appelee depuis ', 0
+%endif
+txt_ini_2:      db      'h, AH=', 0
 txt_ini_4:      db      '***', 27, '[0m', 13, 10, 0
 txt_ini_5:      db      ', code ', 0
 

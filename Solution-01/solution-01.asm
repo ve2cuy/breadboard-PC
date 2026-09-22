@@ -4976,14 +4976,166 @@ ANSI_BLANC:             db      27,'[0m',0      ; reset
 CLS:                    db      27,'[2J',27,'[H',0
 
 ; --- messages ---------------------------------------------------
+; ---- Bilinguisme FR/EN (Manifest.md): tous les textes UART/LCD du
+; ---- moniteur sont desormais dupliques en francais (branche %else,
+; ---- PAR DEFAUT) et en anglais (branche %ifdef LANG_EN) - MEME
+; ---- etiquette dans les 2 branches (un seul jeu de labels est
+; ---- reellement assemble a la fois, selon -dLANG_EN - voir Makefile,
+; ---- cibles "rom-fr"/"rom-en"). Textes PUREMENT techniques
+; ---- (mnemoniques de registres AX=/BX=/.., drapeaux DEBUG.COM
+; ---- OV/NV/.., sequences ANSI, "OK", donnees binaires) restent
+; ---- PARTAGES (une seule definition, hors %ifdef) - deja
+; ---- "universels", rien a traduire. Piege verifie AVANT de traduire
+; ---- (voir Directives.md): certains textes LCD sont suivis d'un
+; ---- positionnement de colonne CODE EN DUR (i2c_lcd_goto_col) qui
+; ---- suppose une largeur de PREFIXE precise (cpu_test_show_progress/
+; ---- show_result, colonne 8 apres "Ecoule: ") - la traduction
+; ---- anglaise ("Elapsed:", SANS espace) a ete choisie pour garder
+; ---- EXACTEMENT 8 caracteres, sans avoir a rendre cette colonne elle
+; ---- aussi conditionnelle.
+%ifdef LANG_EN
+
+%ifdef TEST_PS2
+txt_ps2_attente:        db      27,'[36m','=== PS/2 test (TEST_PS2): waiting for key presses (raw Set 2) ===',27,'[0m',13,10,0
+txt_ps2_recu:           db      'Scan code received: 0x',0
+txt_ps2_erreur:         db      ' <<< ERROR (invalid parity or stop bit)',13,10,0
+%endif
+
+txt_defaut_court:       db      'FAULT',27,'[0m',13,10,0
+txt_attendu:            db      '  expected=',0
+txt_lu:                 db      '  read=',0
+txt_defaut_detail:      db      '  >> MEMORY FAULT @ ',0
+
+txt_banniere1:          db      27,'[0m','=== RAM Test 128K (VE2CUY, UART report 9600 8N1, PA7) ===',27,'[0m',13,10,0
+txt_banniere2:          db      'Plan: seg 0000h (00000h-0FFFFh, 64 blocks) + seg 1000h (10000h-1F7FFh, 62 blocks)',13,10,'2 KB reserved for the stack + Edit RAM buffer + PA7 shadow copy: 1F800h-1FFFFh (not tested)',13,10,13,10,0
+
+txt_ram_ok:             db      27,'[32m','*** RAM OK - 129024 bytes tested (126 blocks of 1 KB), no errors ***',27,'[0m',13,10,13,10,0
+txt_ram_defaut:         db      27,'[31m','*** FAULTY RAM - see fault details above ***',27,'[0m',13,10,13,10,0
+txt_total_defaut:       db      'TOTAL FAULTS: ',0
+txt_total_defaut_fin:   db      ' byte(s)',13,10,13,10,0
+
+txt_dump_banniere1:      db      27,'[34m','=== Memory dump: ',0
+txt_dump_banniere2:      db      ' to ',0
+txt_dump_banniere3:      db      ' ===',27,'[0m',13,10,0
+
+txt_dump_fin:            db      27,'[32m','*** Dump complete ***',27,'[0m',13,10,13,10,0
+
+txt_dump_invalid_range: db      27,'[31m','*** End address < start address - dump cancelled ***',27,'[0m',13,10,13,10,0
+
+txt_dump_interrupted:   db      27,'[33m','*** Dump interrupted (Esc) ***',27,'[0m',13,10,13,10,0
+
+txt_reg_banniere:       db      27,'[34m','=== CPU Registers (8088) ===',27,'[0m',13,10,0
+
+txt_irq0_test:          db      27,'[35m','*** IRQ0 triggered (pushbutton, 8259) ***',27,'[0m',13,10,0
+
+txt_ivt_banniere:       db      27,'[36m',"=== Interrupt Vector Table (IVT, INT 00h-27h) ===",27,'[0m',13,10,13,10,0
+txt_ivt_10h:            db      27,'[32m',"int10h_handler -> Display handling (LCD I2C/UART)",27,'[0m',0
+txt_ivt_16h:            db      27,'[32m','int16h_handler -> Keyboard read (non-blocking)',27,'[0m',0
+txt_ivt_irq0:           db      27,'[32m','irq0_test_handler -> IRQ0 test (pushbutton, 8259)',27,'[0m',0
+txt_ivt_irq1:           db      27,'[32m','irq1_arduino_handler -> Keyboard/UART received (Arduino, 8255 mode 2, IR1)',27,'[0m',0
+txt_ivt_not_impl:       db      'int_not_implemented -> Not implemented',0
+txt_ivt_bios:           db      27,'[32m','handler installed (BIOS / DOS)',27,'[0m',0
+
+txt_auteur:             db      '8088 on breadboard, version 2026',13,10
+                        db      'By Alain Boudreault, aka VE2CUY',13,10
+                        db      '--------------------------------',13,10,13,10,0
+
+txt_menu_main_head:     db      27,'[36m','=== VE2CUY PCx86 ===',27,'[0m',13,10
+                        db      '1) Basic', 0
+txt_menu_main_rest:     db      '2) Memory functions',13,10
+                        db      '3) USB Disk',13,10
+                        db      '4) Configuration',13,10,13,10,0
+
+txt_menu_basic:         db      27,'[36m','--- Basic Submenu ---',27,'[0m',13,10
+                        db      '1) Tiny Basic',13,10
+                        db      '2) BASIC',13,10
+                        db      '(Esc: back to main menu)',13,10,13,10,0
+
+txt_menu_dump:          db      27,'[36m','--- Memory functions Menu ---',27,'[0m',13,10
+                        db      '1) Dump memory',13,10
+                        db      '2) Edit RAM',13,10
+                        db      '3) CPU Registers',13,10
+                        db      '4) Edit+Run RAM',13,10
+                        db      '5) IVT',13,10
+                        db      '6) Test RAM',13,10
+                        db      '(Esc: back to main menu)',13,10,13,10,0
+
+txt_menu_usb_head:      db      27,'[36m','--- USB Disk Submenu ---',27,'[0m',13,10,0
+txt_menu_usb_rest:      db      '2) List files',13,10
+                        db      '3) Boot disk image',13,10
+                        db      '(Esc: back to main menu)',13,10,13,10,0
+
+txt_menu_config:        db      27,'[36m','--- Configuration Submenu ---',27,'[0m',13,10
+                        db      '1) Clock speed',13,10
+                        db      '2) Test CPU speed',13,10
+                        db      '(Esc: back to main menu)',13,10,13,10,0
+
+txt_menu_clock_head:    db      27,'[36m','--- Clock speed ---',27,'[0m',13,10,0
+txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
+                        db      '2) Down : 0.1 MHz',13,10
+                        db      '3) Up   : 1 MHz',13,10
+                        db      '4) Down : 1 MHz',13,10
+                        db      '5) 4.77 MHz',13,10
+                        db      '6) 8.0 MHz',13,10
+                        db      '(Esc: back to Configuration submenu)',13,10,13,10,0
+
+txt_cpu_test_head:        db      27,'[36m','--- Test CPU speed ---',27,'[0m',13,10
+                          db      'Benchmark running, duration: about 30 seconds'
+                          db      ' (Esc to cancel)...',13,10,0
+txt_cpu_test_elapsed:     db      'Elapsed: ', 0
+txt_cpu_test_aborted:     db      13,10,'*** Test interrupted (Esc) ***',13,10,13,10,0
+txt_cpu_test_result_prefix: db    'The 8088 is running ', 0
+txt_cpu_test_faster:      db      '% faster than an 8088 at 4.77 MHz.',13,10,0
+txt_cpu_test_slower:      db      '% slower than an 8088 at 4.77 MHz.',13,10,0
+txt_cpu_test_estimated:   db      'Estimated speed: ', 0
+
+usb_msg_activating:     db      13,10,'USB currently OFF - activating...',13,10,0
+usb_msg_deactivating:   db      13,10,'USB currently ON - deactivating...',13,10,0
+usb_msg_on:             db      27,'[32m','USB ON: the PC has the disk (eject the drive before OFF).',27,'[0m',13,10,13,10,0
+usb_msg_off:            db      27,'[32m','USB OFF: the bridge has taken back the disk.',27,'[0m',13,10,13,10,0
+usb_msg_nosupport:      db      27,'[31m',"*** This bridge has no USB mass storage ***",27,'[0m',13,10,13,10,0
+usb_msg_err:            db      27,'[31m','*** USB Error ***',27,'[0m',13,10,13,10,0
+
+lf_title:               db      13,10,27,'[36m','--- Files ---',27,'[0m',13,10,0
+lf_free_suffix:         db      ' bytes free',13,10,13,10,0
+
+txt_term_title_edit:    db      27,'[36m','=== RAM Editor ===',27,'[0m',0
+txt_term_help_edit:     db      27,'[33m','Arrows:move 0-9/A-F:value Enter:confirm Q:save Esc:cancel',27,'[0m',0
+txt_term_title_run:     db      27,'[36m','=== Edit+Run RAM (1000:0000, 255 bytes) ===',27,'[0m',0
+txt_term_help_run:      db      27,'[33m','Arrows:move 0-9/A-F:value Q:save R:run Esc:cancel',27,'[0m',0
+txt_edit_help:           db     27,'[36m','L/R arrows: column | U/D arrows: row (scroll) | hex digit: edit | Enter: confirm cell | Q: save all | Esc: cancel all',27,'[0m',13,10,13,10,0
+
+txt_edit_ivt_reject:    db      27,'[31m',"*** Address in the IVT (< 0x0400) - edit cancelled ***",27,'[0m',13,10,13,10,0
+txt_edit_size_invalid:  db      27,'[31m','*** Invalid size (1-1024 bytes, within segment bounds) - edit cancelled ***',27,'[0m',13,10,13,10,0
+
+txt_run_address:        db      27,'[36m',"Fixed address: 1000:0000 (2nd 64K block, 255 bytes)",27,'[0m',13,10,0
+txt_run_help:            db     27,'[36m','L/R arrows: column | U/D arrows: row (scroll) | hex digit: edit (2nd digit auto-confirms, Enter optional for a single digit) | Q: save (without running) | R: save and run (RETF expected at the end, recognized even while typing) | Esc: cancel all',27,'[0m',13,10,13,10,0
+txt_run_result_banner:  db      27,'[34m','=== Execution complete (1000:0000, RETF) - Registers ===',27,'[0m',13,10,0
+
+; ---- textes LCD (anglais, 20 caracteres - voir la remarque sur
+; ---- "Elapsed:" en tete de bloc pour lcd_txt_cpu_test_elapsed) ----
+lcd_text lcd_txt_menu_dump_l3, '3) CPU Registers', 20
+lcd_text lcd_txt_tb_l3, 'BYE or Ctrl-X: menu', 20
+lcd_text lcd_txt_bas_l1, 'BASIC (GW-type)', 20
+lcd_text lcd_txt_clock_opts_l3, '5)4.77 6)8.0 ESC=End', 20
+lcd_text lcd_txt_cpu_test_elapsed, 'Elapsed:000 s', 20
+lcd_text lcd_txt_cpu_test_cancel,  'Esc: cancel', 20
+lcd_text lcd_txt_cpu_test_done,    'Esc: back', 20
+lcd_text txt_lcd_ivt_loading, 'Loading IVT...', 20
+lcd_text lcd_txt_run_ram_l2, 'Running...', 20
+lcd_text lcd_txt_etat_ok, 'Status: OK', 20
+lcd_text lcd_txt_etat_defaut, 'Status: FAULT', 20
+lcd_txt_bloc_prefix:    db      'Blk:', 0
+lcd_txt_bloc_mid:       db      '/126 Flt:', 0
+
+%else
+
 %ifdef TEST_PS2
 txt_ps2_attente:        db      27,'[36m','=== Test PS/2 (TEST_PS2): en attente de frappes clavier (Set 2, brut) ===',27,'[0m',13,10,0
 txt_ps2_recu:           db      'Scan code recu: 0x',0
 txt_ps2_erreur:         db      ' <<< ERREUR (parite ou bit stop invalide)',13,10,0
 %endif
 
-txt_crlf:               db      13,10,0
-txt_ok_court:           db      'OK',27,'[0m',13,10,0
 txt_defaut_court:       db      'DEFAUT',27,'[0m',13,10,0
 txt_attendu:            db      '  attendu=',0
 txt_lu:                 db      '  lu=',0
@@ -5010,66 +5162,11 @@ txt_dump_invalid_range: db      27,'[31m','*** Adresse de fin < adresse de depar
 
 txt_dump_interrupted:   db      27,'[33m','*** Dump interrompu (Echap) ***',27,'[0m',13,10,13,10,0
 
-; ---- registres CPU (voir registers_dump_action) - affichage UART,
-; ---- format "DEBUG.COM" etendu (hexa + BINAIRE - voir
-; ---- print_reg_hex_bin_uart), 2 registres par ligne: "AX=.. BX=.."
-; ---- / "CX=.. DX=.." / "SI=.. DI=.." / "SP=.. BP=.." / "DS=.. ES=.."
-; ---- / "SS=.. CS=.." / "IP=..", puis FLAGS SEUL sur sa ligne
-; ---- ("FLAGS=xxxx  " suivi des 8 mnemoniques, txt_flag_*_set/clear
-; ---- plus bas) ----
 txt_reg_banniere:       db      27,'[34m','=== Registres CPU (8088) ===',27,'[0m',13,10,0
-txt_reg_ax:             db      'AX=', 0
-txt_reg_bx:             db      'BX=', 0
-txt_reg_cx:             db      'CX=', 0
-txt_reg_dx:             db      'DX=', 0
-txt_reg_sp:             db      'SP=', 0
-txt_reg_bp:             db      'BP=', 0
-txt_reg_si:             db      'SI=', 0
-txt_reg_di:             db      'DI=', 0
-txt_reg_ds:             db      'DS=', 0
-txt_reg_es:             db      'ES=', 0
-txt_reg_ss:             db      'SS=', 0
-txt_reg_cs:             db      'CS=', 0
-txt_reg_ip:             db      'IP=', 0
-txt_reg_pair_sep:       db      '    ', 0       ; separateur entre 2 registres
-                                                 ; sur la meme ligne UART
-txt_reg_flags_prefix:   db      'FLAGS=', 0
-txt_reg_flags_sep:      db      '  ', 0
 
-; ---- mnemoniques FLAGS (convention DEBUG.COM: OV/NV=overflow,
-; ---- DN/UP=direction, EI/DI=interruptions, NG/PL=signe, ZR/NZ=zero,
-; ---- AC/NA=retenue auxiliaire, PE/PO=parite, CY/NC=retenue) -
-; ---- l'etat "actif" (bit=1) est en jaune (voir uart_flag_bit,
-; ---- section macros) pour ressortir a l'oeil sur le terminal ----
-txt_flag_of_set:        db      27,'[33m','OV',27,'[0m',' ',0
-txt_flag_of_clear:      db      'NV', ' ', 0
-txt_flag_df_set:        db      27,'[33m','DN',27,'[0m',' ',0
-txt_flag_df_clear:      db      'UP', ' ', 0
-txt_flag_if_set:        db      27,'[33m','EI',27,'[0m',' ',0
-txt_flag_if_clear:      db      'DI', ' ', 0
-txt_flag_sf_set:        db      27,'[33m','NG',27,'[0m',' ',0
-txt_flag_sf_clear:      db      'PL', ' ', 0
-txt_flag_zf_set:        db      27,'[33m','ZR',27,'[0m',' ',0
-txt_flag_zf_clear:      db      'NZ', ' ', 0
-txt_flag_af_set:        db      27,'[33m','AC',27,'[0m',' ',0
-txt_flag_af_clear:      db      'NA', ' ', 0
-txt_flag_pf_set:        db      27,'[33m','PE',27,'[0m',' ',0
-txt_flag_pf_clear:      db      'PO', ' ', 0
-txt_flag_cf_set:        db      27,'[33m','CY',27,'[0m',' ',0
-txt_flag_cf_clear:      db      'NC', ' ', 0
-
-; ---- gestionnaire par defaut de l'IVT (voir init_ivt_not_implemented/
-; ---- int_not_implemented) ----
-
-; ---- IR0 du 8259 (voir init_8259/irq0_test_handler) - IR1 est
-; ---- silencieux (irq1_arduino_handler, voir son en-tete) ----
 txt_irq0_test:          db      27,'[35m','*** IRQ0 declenchee (bouton-poussoir, 8259) ***',27,'[0m',13,10,0
 
-; ---- table des vecteurs (voir ivt_dump_action) ----
 txt_ivt_banniere:       db      27,'[36m',"=== Table des vecteurs d'interruption (IVT, INT 00h-27h) ===",27,'[0m',13,10,13,10,0
-txt_ivt_int_prefix:     db      'INT ', 0
-txt_ivt_h_arrow:        db      'h -> ', 0
-txt_ivt_sep:            db      ' : ', 0
 txt_ivt_10h:            db      27,'[32m',"int10h_handler -> Gestion de l'affichage (LCD I2C/UART)",27,'[0m',0
 txt_ivt_16h:            db      27,'[32m','int16h_handler -> Lecture clavier (non bloquante)',27,'[0m',0
 txt_ivt_irq0:           db      27,'[32m','irq0_test_handler -> Test IRQ0 (bouton-poussoir, 8259)',27,'[0m',0
@@ -5123,11 +5220,6 @@ txt_menu_usb_rest:      db      '2) List files',13,10
                         db      '3) Boot disk image',13,10
                         db      '(Echap: retour au menu principal)',13,10,13,10,0
 
-; ---- option "1) USB ON/OFF" du sous-menu USB Disk (usb_state_print):
-; les deux etats de BIOS_USB_STATE ----
-usb_opt1_off:           db      '1) USB: OFF', 0
-usb_opt1_on:            db      '1) USB: ON', 0
-
 txt_menu_config:        db      27,'[36m','--- Sous-menu Configuration ---',27,'[0m',13,10
                         db      '1) Clock speed',13,10
                         db      '2) Test CPU speed',13,10
@@ -5146,8 +5238,6 @@ txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
                         db      '5) 4.77 MHz',13,10
                         db      '6) 8.0 MHz',13,10
                         db      '(Echap: retour au sous-menu Configuration)',13,10,13,10,0
-txt_clock_freq_prefix:  db      'Current speed: ', 0
-txt_clock_freq_suffix:  db      ' MHz', 0
 
 ; ---- option "2) Test CPU speed" du sous-menu Configuration
 ; ---- (cpu_speed_test_action / cpu_test_show_progress / cpu_test_show_result,
@@ -5157,7 +5247,6 @@ txt_cpu_test_head:        db      27,'[36m','--- Test CPU speed ---',27,'[0m',13
                           db      'Banc d', 27h, 'essai en cours, duree: environ 30 secondes'
                           db      ' (Echap pour annuler)...',13,10,0
 txt_cpu_test_elapsed:     db      'Ecoule: ', 0
-txt_cpu_test_seconds:     db      ' s', 0
 txt_cpu_test_aborted:     db      13,10,'*** Test interrompu (Echap) ***',13,10,13,10,0
 txt_cpu_test_result_prefix: db    'Le 8088 roule ', 0
 txt_cpu_test_faster:      db      '% plus vite qu', 27h, 'un 8088 a 4,77 MHz.',13,10,0
@@ -5178,16 +5267,10 @@ usb_msg_err:            db      27,'[31m','*** Erreur USB ***',27,'[0m',13,10,13
 ; ---- - meme esprit que FILES au BASIC (nom, taille, puis espace
 ; ---- libre), mais sur l'UART seulement ----
 lf_title:               db      13,10,27,'[36m','--- Files ---',27,'[0m',13,10,0
-lf_crlf:                db      13,10,0
 lf_free_suffix:         db      ' octets libres',13,10,13,10,0
 
 ; ---- invite "Edit RAM" (voir edit_ram_action) ----
-txt_edit_address_prefix: db     'Address: 0x', 0
-txt_edit_size_prefix:   db      'Size:    0x', 0
 ; ---- vue terminal de l'editeur (voir edit_ram_draw_terminal) ----
-txt_ansi_cls:           db      27,'[2J',27,'[H',0
-txt_ansi_eol:           db      27,'[K',0
-txt_ansi_eos:           db      27,'[J',0
 txt_term_title_edit:    db      27,'[36m','=== Editeur RAM ===',27,'[0m',0
 txt_term_help_edit:     db      27,'[33m','Fleches:deplacer 0-9/A-F:valeur Entree:valider Q:enregistrer Echap:annuler',27,'[0m',0
 txt_term_title_run:     db      27,'[36m','=== Edit+Run RAM (1000:0000, 255 octets) ===',27,'[0m',0
@@ -5201,6 +5284,86 @@ txt_edit_size_invalid:  db      27,'[31m','*** Taille invalide (1-1024 octets, d
 txt_run_address:        db      27,'[36m',"Adresse fixe: 1000:0000 (2e bloc de 64K, 255 octets)",27,'[0m',13,10,0
 txt_run_help:            db     27,'[36m','Fleches G/D: colonne | Fleches H/B: ligne (defilement) | chiffre hexa: editer (2e chiffre valide automatiquement, Entree optionnelle pour 1 seul chiffre) | Q: enregistrer (sans executer) | R: enregistrer et executer (RETF attendu a la fin, reconnue meme pendant la saisie) | Echap: annuler tout',27,'[0m',13,10,13,10,0
 txt_run_result_banner:  db      27,'[34m','=== Execution terminee (1000:0000, RETF) - Registres ===',27,'[0m',13,10,0
+
+; ---- textes LCD (francais, 20 caracteres) ----
+lcd_text lcd_txt_menu_dump_l3, '3) Registres CPU', 20
+lcd_text lcd_txt_tb_l3, 'BYE ou Ctrl-X: menu', 20
+lcd_text lcd_txt_bas_l1, 'BASIC (type GW)', 20
+lcd_text lcd_txt_clock_opts_l3, '5)4.77 6)8.0 ESC=Fin', 20
+lcd_text lcd_txt_cpu_test_elapsed, 'Ecoule: 000 s', 20
+lcd_text lcd_txt_cpu_test_cancel,  'Echap: annuler', 20
+lcd_text lcd_txt_cpu_test_done,    'Echap: retour', 20
+lcd_text txt_lcd_ivt_loading, 'Chargement IVT...', 20
+lcd_text lcd_txt_run_ram_l2, 'En cours...', 20
+lcd_text lcd_txt_etat_ok, 'Etat: OK', 20
+lcd_text lcd_txt_etat_defaut, 'Etat: DEFAUT', 20
+lcd_txt_bloc_prefix:    db      'Bloc:', 0
+lcd_txt_bloc_mid:       db      '/126 Def:', 0
+
+%endif ; LANG_EN
+
+; ---- textes PARTAGES (identiques FR/EN - mnemoniques, separateurs,
+; ---- sequences ANSI, donnees binaires: rien a traduire) ----
+txt_crlf:               db      13,10,0
+txt_ok_court:           db      'OK',27,'[0m',13,10,0
+txt_reg_ax:             db      'AX=', 0
+txt_reg_bx:             db      'BX=', 0
+txt_reg_cx:             db      'CX=', 0
+txt_reg_dx:             db      'DX=', 0
+txt_reg_sp:             db      'SP=', 0
+txt_reg_bp:             db      'BP=', 0
+txt_reg_si:             db      'SI=', 0
+txt_reg_di:             db      'DI=', 0
+txt_reg_ds:             db      'DS=', 0
+txt_reg_es:             db      'ES=', 0
+txt_reg_ss:             db      'SS=', 0
+txt_reg_cs:             db      'CS=', 0
+txt_reg_ip:             db      'IP=', 0
+txt_reg_pair_sep:       db      '    ', 0       ; separateur entre 2 registres
+                                                 ; sur la meme ligne UART
+txt_reg_flags_prefix:   db      'FLAGS=', 0
+txt_reg_flags_sep:      db      '  ', 0
+
+; ---- mnemoniques FLAGS (convention DEBUG.COM: OV/NV=overflow,
+; ---- DN/UP=direction, EI/DI=interruptions, NG/PL=signe, ZR/NZ=zero,
+; ---- AC/NA=retenue auxiliaire, PE/PO=parite, CY/NC=retenue) -
+; ---- l'etat "actif" (bit=1) est en jaune (voir uart_flag_bit,
+; ---- section macros) pour ressortir a l'oeil sur le terminal ----
+txt_flag_of_set:        db      27,'[33m','OV',27,'[0m',' ',0
+txt_flag_of_clear:      db      'NV', ' ', 0
+txt_flag_df_set:        db      27,'[33m','DN',27,'[0m',' ',0
+txt_flag_df_clear:      db      'UP', ' ', 0
+txt_flag_if_set:        db      27,'[33m','EI',27,'[0m',' ',0
+txt_flag_if_clear:      db      'DI', ' ', 0
+txt_flag_sf_set:        db      27,'[33m','NG',27,'[0m',' ',0
+txt_flag_sf_clear:      db      'PL', ' ', 0
+txt_flag_zf_set:        db      27,'[33m','ZR',27,'[0m',' ',0
+txt_flag_zf_clear:      db      'NZ', ' ', 0
+txt_flag_af_set:        db      27,'[33m','AC',27,'[0m',' ',0
+txt_flag_af_clear:      db      'NA', ' ', 0
+txt_flag_pf_set:        db      27,'[33m','PE',27,'[0m',' ',0
+txt_flag_pf_clear:      db      'PO', ' ', 0
+txt_flag_cf_set:        db      27,'[33m','CY',27,'[0m',' ',0
+txt_flag_cf_clear:      db      'NC', ' ', 0
+
+txt_ivt_int_prefix:     db      'INT ', 0
+txt_ivt_h_arrow:        db      'h -> ', 0
+txt_ivt_sep:            db      ' : ', 0
+
+usb_opt1_off:           db      '1) USB: OFF', 0
+usb_opt1_on:            db      '1) USB: ON', 0
+
+txt_clock_freq_prefix:  db      'Current speed: ', 0
+txt_clock_freq_suffix:  db      ' MHz', 0
+txt_cpu_test_seconds:     db      ' s', 0
+
+lf_crlf:                db      13,10,0
+
+txt_edit_address_prefix: db     'Address: 0x', 0
+txt_edit_size_prefix:   db      'Size:    0x', 0
+txt_ansi_cls:           db      27,'[2J',27,'[H',0
+txt_ansi_eol:           db      27,'[K',0
+txt_ansi_eos:           db      27,'[J',0
 
 ; ---- programme de test par defaut copie dans la RAM reelle a
 ; 1000:0000 a l'entree dans edit_run_action (40 41 F7 E1 83 C3 02 CB =
@@ -5217,7 +5380,8 @@ txt_dump_end_prefix:    db      'End:   0x', 0
 txt_dump_seg_off_sep:   db      ':0x', 0
 
 ; ---- textes LCD (20 caracteres, complete automatiquement par des
-; ---- espaces via "times" - afficheur 4x20) ----
+; ---- espaces via "times" - afficheur 4x20) - PARTAGES: deja en
+; ---- anglais (splash, menus) ou purement numeriques/mnemoniques ----
 
 ; ---- ecran de demarrage (3 secondes, une seule fois - voir start:) ----
 lcd_text lcd_txt_splash_l1, 'Breadboard 8088', 20
@@ -5244,10 +5408,8 @@ lcd_text lcd_txt_menu_basic_l2, '2) BASIC', 20
 ; ---- ecran LCD pendant Tiny Basic (option 1 du sous-menu Basic) ----
 lcd_text lcd_txt_tb_l1, 'Tiny Basic', 20
 lcd_text lcd_txt_tb_l2, 'Terminal UART', 20
-lcd_text lcd_txt_tb_l3, 'BYE ou Ctrl-X: menu', 20
 
 ; ---- ecran LCD pendant BASIC (option 2 du sous-menu Basic) ----
-lcd_text lcd_txt_bas_l1, 'BASIC (type GW)', 20
 lcd_text lcd_txt_bas_l2, 'Terminal UART', 20
 lcd_text lcd_txt_bas_l3, 'SYSTEM/Ctrl-X: menu', 20
 
@@ -5261,7 +5423,6 @@ lcd_text lcd_txt_bas_l3, 'SYSTEM/Ctrl-X: menu', 20
 ; ---- retour au menu principal, sur les 2 pages ----
 lcd_text lcd_txt_menu_dump_l1, '1) Dump memory', 20
 lcd_text lcd_txt_menu_dump_l2, '2) Edit RAM', 20
-lcd_text lcd_txt_menu_dump_l3, '3) Registres CPU', 20
 lcd_text lcd_txt_menu_dump_l4, '4) Edit+Run RAM', 20
 lcd_text lcd_txt_menu_dump_l5, '5) IVT', 20
 lcd_text lcd_txt_menu_dump_l6, '6) Test RAM', 20
@@ -5281,29 +5442,26 @@ lcd_text lcd_txt_menu_config_l2, '2) Test CPU speed', 20
 ; ---- 0, gotoxy) reste libre: clock_show y ecrit "N.NN MHz" (la frequence
 ; ---- courante), redessinee a chaque touche - PAS de titre statique separe
 ; ---- ici (contrairement a l'ancienne version - voir Directives.md), les
-; ---- options 1-6 + Echap sont ci-dessous, sur les lignes 1-3 ----
+; ---- options 1-6 + Echap sont ci-dessous, sur les lignes 1-3 (option
+; ---- "3" - "5)4.77 6)8.0 ESC=Fin/End" - traduite plus haut) ----
 lcd_text lcd_txt_clock_opts_l1, '1)+0.1 2)-0.1', 20
 lcd_text lcd_txt_clock_opts_l2, '3)+1MHz 4)-1MHz', 20
-lcd_text lcd_txt_clock_opts_l3, '5)4.77 6)8.0 ESC=Fin', 20
 
 ; ---- option "2) Test CPU speed" (voir cpu_speed_test_action et suite,
-; ---- plus haut). Ligne 0: "Ecoule: 000 s" - dessinee UNE SEULE FOIS
-; ---- (par cpu_speed_test_action), seuls les 3 chiffres (colonne 8) sont
-; ---- redessines ensuite (cpu_test_show_progress/cpu_test_show_result) -
-; ---- largeur CONSTANTE, meme principe que clock_show. Lignes 1-2:
-; ---- titre/aide PENDANT le test, REMPLACEES par le resultat a la fin
+; ---- plus haut). Ligne 0: "Ecoule/Elapsed: 000 s" (traduite plus haut,
+; ---- largeur de prefixe critique - voir la remarque en tete de bloc) -
+; ---- dessinee UNE SEULE FOIS (par cpu_speed_test_action), seuls les 3
+; ---- chiffres (colonne 8) sont redessines ensuite
+; ---- (cpu_test_show_progress/cpu_test_show_result) - largeur CONSTANTE,
+; ---- meme principe que clock_show. Lignes 1-2: titre/aide PENDANT le
+; ---- test (traduites plus haut), REMPLACEES par le resultat a la fin
 ; ---- (cpu_test_show_result) - prefixes seulement, les valeurs
-; ---- (pourcentage/vitesse) sont ajoutees juste apres ----
-lcd_text lcd_txt_cpu_test_elapsed, 'Ecoule: 000 s', 20
+; ---- (pourcentage/vitesse) sont ajoutees juste apres. "vs 4.77MHz: "/
+; ---- "Est: " deja identiques en anglais (abreviations universelles) -
+; ---- PARTAGES, pas de position de colonne a rendre conditionnelle ----
 lcd_text lcd_txt_cpu_test_title,   'Test CPU speed', 20
-lcd_text lcd_txt_cpu_test_cancel,  'Echap: annuler', 20
 lcd_text lcd_txt_cpu_test_vs,      'vs 4.77MHz: ', 20
 lcd_text lcd_txt_cpu_test_est,     'Est: ', 20
-lcd_text lcd_txt_cpu_test_done,    'Echap: retour', 20
-
-; ---- message affiche pendant le dump UART de ivt_dump_action (avant
-; ---- que la grille LCD reelle ne s'affiche) ----
-lcd_text txt_lcd_ivt_loading, 'Chargement IVT...', 20
 
 ; ---- registres CPU (voir registers_dump_action) - prefixes courts
 ; ---- (LCD 4x20, contrairement aux prefixes UART txt_reg_* qui
@@ -5327,19 +5485,9 @@ txt_lcd_page2:          db      '2/2', 0
 
 ; ---- bandeau ligne1/ligne2 affiche avant chaque action lancee depuis
 ; ---- un menu (lignes 3/4 sont mises a jour en direct par l'action
-; ---- elle-meme - voir start:) ----
+; ---- elle-meme - voir start:) - ligne 2 ("En cours..."/"Running...")
+; ---- traduite plus haut ----
 lcd_text lcd_txt_run_ram_l1, 'Test RAM 128K', 20
-lcd_text lcd_txt_run_ram_l2, 'En cours...', 20
-
-; ---- ligne 3 de l'etape 2 (msg_bloc_progression): etat en toutes
-; ---- lettres, 20 caracteres ----
-lcd_text lcd_txt_etat_ok, 'Etat: OK', 20
-lcd_text lcd_txt_etat_defaut, 'Etat: DEFAUT', 20
-
-; ---- ligne 4 de l'etape 2: "Bloc:" + dec3 + "/126 Def:" + dec3 =
-; ---- 5+3+9+3 = 20 caracteres EXACTEMENT (pas de padding requis) ----
-lcd_txt_bloc_prefix:    db      'Bloc:', 0
-lcd_txt_bloc_mid:       db      '/126 Def:', 0
 
 ; ---- remplissage jusqu'au vecteur de reset            ----
 ; ---- calcul en fonction de la taille de la ROM (256K) ----

@@ -1571,6 +1571,8 @@ dump UART reste toujours exact quelle que soit la taille de la plage).
 ```sh
 make          # construit tout : ROM complète + modules individuels
 make rom      # ROM complète, copiée vers Z:\Partage\Alain\rom.bin
+make rom-fr   # ROM en français (par défaut - identique à "rom"), solution-01-fr.bin
+make rom-en   # ROM en anglais, solution-01-en.bin (voir "Bilinguisme" ci-dessous)
 make lib      # modules individuels (lib/bin/lcd.bin, lib/bin/uart.bin, lib/utils.bin, lib/bin/lcd_i2c.bin, lib/bin/ps2.bin, lib/bin/tiny_basic.bin, lib/bin/basic.bin)
 make check    # assemble la ROM puis valide sa structure (check_rom.py)
 make check-modules  # verifie que chaque module s'assemble seul, sans erreur
@@ -1579,6 +1581,36 @@ make clean    # supprime tous les .bin generes
 ```
 
 Détails complets de chaque cible : voir [Makefile.md](Makefile.md).
+
+### Bilinguisme (FR/EN)
+
+Les textes UART/LCD du moniteur interactif (`solution-01.asm`) et les
+messages partagés du BIOS (`lib/bios.asm` : amorçage DOS, interruption
+non implémentée) existent en français **et** en anglais, sélectionnés à
+la compilation :
+
+```sh
+make rom-fr   # solution-01-fr.bin - français (comportement par défaut)
+make rom-en   # solution-01-en.bin - anglais (nasm -dLANG_EN=1)
+```
+
+Mécanisme : chaque texte traduisible est dupliqué dans une branche
+`%ifdef LANG_EN` (anglais) / `%else` (français, la branche par défaut,
+utilisée par `make`/`make rom` sans aucun changement) — même étiquette
+dans les deux branches, un seul jeu réellement assemblé à la fois. Les
+textes purement techniques (mnémoniques de registres `AX=`/`BX=`/…,
+drapeaux `DEBUG.COM` `OV`/`NV`/…, séquences ANSI) restent **partagés**
+(une seule définition, hors `%ifdef`) — déjà « universels », rien à
+traduire. Les interpréteurs BASIC/Tiny BASIC ne sont **pas** couverts
+par ce mécanisme (hors périmètre pour l'instant).
+
+`make rom-en` demande `-w-error=label-redef-late` en plus (déjà inclus
+dans la cible) : la taille légèrement différente des textes anglais
+retarde la convergence normale de NASM (plusieurs passes) sur certains
+sauts éloignés dans ce gros fichier — sans conséquence (deux
+compilations successives produisent un binaire strictement identique,
+vérifié), juste une convergence un peu plus lente. `make`/`make rom-fr`
+n'en ont jamais eu besoin.
 
 ## Environnement de travail : session WSL sous VS Code
 

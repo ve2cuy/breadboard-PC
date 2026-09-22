@@ -453,7 +453,7 @@ st, mem = boot(bridge)
 dl, sp, ss = mem[0], mem[2] | mem[3] << 8, mem[4] | mem[5] << 8
 check('INT 19h: la partition active est amorcee (le VBR s\'execute a 0000:7C00)', st['done'] and dl == 0x80 and ss == 0 and sp == 0x7C00,
       '%x %x %x %s' % (dl, sp, ss, st.get('err')))
-check('INT 19h: message d\'amorcage sur l\'UART', b'Boot: flash disk' in bytes(st['uart']), repr(bytes(st['uart'])))
+check('INT 19h: message d\'amorcage sur l\'UART', b'Amorce: disque flash' in bytes(st['uart']), repr(bytes(st['uart'])))
 check('INT 19h: le VBR est bien charge (0000:7C00 = code, 55AA a la fin)', bytes(st['uc'].mem_read(0x7C00, 4)) == vbr()[:4] and bytes(st['uc'].mem_read(0x7DFE, 2)) == b'\x55\xAA')
 
 bridge = H.BridgeModel()
@@ -465,15 +465,15 @@ check('INT 19h: sans partition active, la premiere partition FAT (type 0Eh) est 
 bridge = H.BridgeModel()
 bridge.sectors[0] = mbr(sig=False)
 st = run([case(0x19)], bridge=bridge)
-check('INT 19h: MBR sans signature 55AA -> retour CF = 1 + message', st['res'][0].cf and b'no boot signature' in bytes(st['uart']) and frame_ok(st['res'][0]),
+check('INT 19h: MBR sans signature 55AA -> retour CF = 1 + message', st['res'][0].cf and b'signature de demarrage absente' in bytes(st['uart']) and frame_ok(st['res'][0]),
       repr(bytes(st['uart'])))
 bridge = H.BridgeModel()
 bridge.sectors[0] = mbr()
 bridge.sectors[63] = vbr(sig=False)
 st = run([case(0x19)], bridge=bridge)
-check('INT 19h: VBR sans signature -> retour CF = 1', st['res'][0].cf and b'no boot signature' in bytes(st['uart']))
+check('INT 19h: VBR sans signature -> retour CF = 1', st['res'][0].cf and b'signature de demarrage absente' in bytes(st['uart']))
 st = run([case(0x19)], bridge=H.BridgeModel(mute=True), count=900_000_000)
-check('INT 19h: pont muet -> retour CF = 1 + message', st['res'][0].cf and b'does not answer' in bytes(st['uart']))
+check('INT 19h: pont muet -> retour CF = 1 + message', st['res'][0].cf and b'le pont ne repond pas' in bytes(st['uart']))
 bridge = H.BridgeModel()
 sup = bytearray(512)
 body = vbr()[:17]
@@ -563,7 +563,7 @@ bridge = H.BridgeModel(files={'DISK.IMG': bytes(boot)})
 st = run([case(0x13, ax=0xF000, si=0x0000, ds=0x2000), case(0x19)], bridge=bridge, mem={0x20000: NAME})
 mem = bytes(st['uc'].mem_read(0x500, 6))
 check('INT 19h: image montee -> amorce la DISQUETTE A: (DL = 0, 0000:7C00, sans signature)', st['done'] and mem[0] == 0 and mem[2] | mem[3] << 8 == 0x7C00 and mem[4] | mem[5] << 8 == 0
-      and b'floppy image (A:)' in bytes(st['uart']), '%s %s' % (mem.hex(), st.get('err')))
+      and b'image disquette (A:)' in bytes(st['uart']), '%s %s' % (mem.hex(), st.get('err')))
 
 # --- OUT parasites (ports 2F2h-2F7h de MS-DOS 3.30, qui reprogrammeraient le 8255): neutralises (NOP) dans les secteurs LUS
 blk1 = bytes.fromhex('50 53 52 06 B0 FF BA F2 02 EE 42 EE 42 EE 42 EE 42 EE 42 EE B8 00 F0 8E C0')

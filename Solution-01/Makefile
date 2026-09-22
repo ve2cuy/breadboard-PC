@@ -38,7 +38,7 @@ BAS_SRC     = lib/basic.asm lib/basic_tokens.inc lib/basic_float.asm lib/basic_f
 # du fichier de sortie. Un dossier local du projet n'a pas ce probleme.
 CHECK_DIR   = build/check
 
-.PHONY: all rom lib check clean check-modules test map trace trace-nohd
+.PHONY: all rom rom-fr rom-en lib check clean check-modules test map trace trace-nohd
 
 # --- Cible par defaut: la ROM complete + les modules individuels ---
 all: rom lib
@@ -52,6 +52,23 @@ rom: $(ROM_BIN)
 $(ROM_BIN): solution-01.asm include/hardware.inc include/delay.inc include/lcd_macros.inc \
             lib/common.asm lib/lcd.asm lib/uart.asm lib/utils.asm lib/lcd_i2c.asm lib/ps2.asm lib/tiny_basic.asm lib/isr.asm lib/bios.asm $(BAS_SRC)
 	$(NASM) $(NASMFLAGS) solution-01.asm -o $(ROM_BIN)
+
+# --- ROM bilingue (Manifest.md): textes UART/LCD du moniteur et du
+# --- BIOS partage (voir lib/bios.asm) en francais (rom-fr, PAR
+# --- DEFAUT - identique a "rom" ci-dessus) ou en anglais (rom-en,
+# --- -dLANG_EN=1). "-w-error=label-redef-late" pour rom-en seulement:
+# --- la taille legerement differente des textes anglais retarde la
+# --- convergence normale de nasm (plusieurs passes) sur certains sauts
+# --- eloignes dans ce gros fichier - inoffensif (2 compilations
+# --- successives produisent un binaire IDENTIQUE, verifie), juste plus
+# --- lent a converger; "rom"/"rom-fr" n'en ont jamais eu besoin.
+rom-fr: $(BAS_SRC) solution-01.asm lib/bios.asm
+	$(NASM) $(NASMFLAGS) solution-01.asm -o solution-01-fr.bin
+	@echo "ROM (francais): solution-01-fr.bin"
+
+rom-en: $(BAS_SRC) solution-01.asm lib/bios.asm
+	$(NASM) $(NASMFLAGS) -dLANG_EN=1 -w-error=label-redef-late solution-01.asm -o solution-01-en.bin
+	@echo "ROM (anglais): solution-01-en.bin"
 
 # --- ROM de diagnostic: chaque INT 13h / 1Ah est tracee sur l'UART (<nn AX BX CX DX ES -AH CF>); copiee en rom_trace.bin ---
 trace: $(BAS_SRC) solution-01.asm lib/bios.asm
