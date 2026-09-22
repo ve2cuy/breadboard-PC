@@ -3500,23 +3500,30 @@ CPU_TEST_CHECKPOINTS equ 30                    ; nombre de mises a jour de la li
                                                 ; "Ecoule: ..." (granularite d'affichage,
                                                 ; PAS forcement 1/seconde - depend de la
                                                 ; calibration ci-dessous)
-CPU_TEST_INNER_REPS  equ 8                     ; boucles CX=0 (65536 iterations "dec bx /
-                                                ; loop") par checkpoint - LE reglage a
-                                                ; ajuster apres mesure sur le materiel reel
-                                                ; (augmenter si le test est trop court,
-                                                ; diminuer s'il est trop long) - calibre ICI
-                                                ; par ESTIMATION SEULEMENT (jamais mesure
-                                                ; sur un vrai 8088), voir Directives.md
-CPU_TEST_REF_SECONDS equ 60                    ; duree ESTIMEE (PAS mesuree) du banc
-                                                ; d'essai ci-dessus (CPU_TEST_CHECKPOINTS x
-                                                ; CPU_TEST_INNER_REPS x 65536 iterations) a
-                                                ; 4,77 MHz EXACTEMENT - A REMPLACER par la
-                                                ; valeur REELLEMENT affichee ("Ecoule: ...")
-                                                ; en lancant ce test une fois avec le
-                                                ; sous-menu Clock speed regle a 4,77 MHz
-                                                ; (option 5, le reglage par defaut) - sans
-                                                ; quoi le pourcentage/la vitesse estimee
-                                                ; restent approximatifs
+CPU_TEST_INNER_REPS  equ 4                     ; boucles CX=0 (65536 iterations "dec bx /
+                                                ; loop") par checkpoint - reduit de 8 a 4
+                                                ; (confirme sur le materiel reel: 8 donnait
+                                                ; ~69 s a 4,77 MHz, plus que necessaire -
+                                                ; demande explicite: se rapprocher du minimum
+                                                ; de 30 s tout en le respectant AU MOINS -
+                                                ; 4/8 de 69 s = ~34,5 s, projection LINEAIRE
+                                                ; puisque chaque repetition represente un
+                                                ; travail identique). A r'ajuster de nouveau
+                                                ; si la table de cycles 8088 (dec/loop) ou la
+                                                ; vitesse de l'UART/LCD change un jour, voir
+                                                ; Directives.md
+CPU_TEST_REF_SECONDS equ 34                    ; duree MESUREE (calibree sur le materiel
+                                                ; reel, 8088 regle a 4,77 MHz - le reglage
+                                                ; par defaut) a CPU_TEST_INNER_REPS=4: la
+                                                ; projection lineaire initiale (34,5s, arrondie
+                                                ; a 35) etait quasi exacte - retrouvee par
+                                                ; calcul inverse a partir d'un resultat reel
+                                                ; ("2% plus vite", "4,91 MHz") obtenu avec 35:
+                                                ; (35-T)*100/T=2 ET 477*35/T=491 ne sont
+                                                ; simultanement satisfaites, en entiers, que
+                                                ; par T=34. A RECALIBRER de nouveau si la table
+                                                ; de cycles 8088 (dec/loop) ou la vitesse de
+                                                ; l'UART/LCD change un jour, voir Directives.md
 
 cpu_speed_test_action:
         push    ax
@@ -3580,7 +3587,13 @@ cpu_speed_test_action:
                                            ; "dec si / jnz .checkpoint" ci-dessous n'a plus
                                            ; aucun rapport avec le nombre de checkpoints
                                            ; restants (bug trouve via un banc Unicorn: le
-                                           ; test ne s'arretait jamais - voir Directives.md)
+                                           ; test ne s'arretait jamais - voir Directives.md).
+                                           ; "pop" ne modifie pas les indicateurs: CF (mis
+                                           ; par cpu_test_show_progress) survit intact.
+        jc      .tmo                      ; le pont a cesse de repondre EN COURS DE TEST -
+                                           ; abandon immediat (meme sortie qu'un timeout a
+                                           ; l'entree) plutot que de continuer les
+                                           ; checkpoints restants sans aucun retour visible
 
         dec     si
         jnz     .checkpoint
@@ -3666,15 +3679,18 @@ cpu_test_elapsed_seconds:
 ; le temps ecoule, et affiche "Ecoule: NNN s" sur l'UART, PUIS redessine
 ; seulement les 3 chiffres (colonne 8, ligne 0 du LCD - meme convention
 ; que clock_show: largeur CONSTANTE, zero-remplie via i2c_lcd_tx_dec3,
-; jamais de caractere perime). Sur timeout du pont (CF=1 apres rtc_get):
-; ignore silencieusement CETTE mise a jour (le test continue - un pont
-; temporairement muet ne doit pas interrompre le banc d'essai, seulement
-; priver l'utilisateur d'UNE mise a jour de progression). Detruit
-; AX/BX/CX/DX/SI/DI.
+; jamais de caractere perime). CF = 1 si le pont ne repond pas (comme
+; rtc_get): a la charge de l'APPELANT d'abandonner le banc d'essai dans
+; ce cas (voir cpu_speed_test_action, ".tmo") - NE PAS ignorer
+; silencieusement un timeout ici et laisser le test continuer: sans
+; retour visible pendant potentiellement les ~30 checkpoints restants,
+; un pont devenu muet en cours de route serait indiscernable d'un test
+; simplement bloque (rapporte sur le materiel reel - voir Directives.md).
+; Detruit AX/BX/CX/DX/SI/DI.
 cpu_test_show_progress:
         mov     di, BIOS_RTC_OFF
         call    rtc_get
-        jc      .skip
+        jc      .skip                     ; CF deja a 1 - propage tel quel a l'appelant
         call    cpu_test_rtc_to_seconds
         call    cpu_test_elapsed_seconds   ; DX:AX = T (secondes ecoulees)
 
@@ -3690,6 +3706,7 @@ cpu_test_show_progress:
                                           ; ecrit en brut, "gotoxy" seul ne suffit pas -
                                           ; voir clock_show)
         call    i2c_lcd_tx_dec3
+        clc                               ; succes: CF=0 pour l'appelant
 .skip:
         ret
 

@@ -1184,33 +1184,37 @@ exactement** :
 --- Test CPU speed ---
 Banc d'essai en cours (Echap pour annuler)...
 
-Ecoule: 10 s
-Ecoule: 20 s
-Ecoule: 30 s
-...
-Ecoule: 62 s
-Le 8088 roule 20% plus vite qu'un 8088 a 4,77 MHz.
-Vitesse estimee: 5.72 MHz
+Ecoule: 11 s
+Ecoule: 22 s
+Ecoule: 34 s
+Le 8088 roule 0% plus vite qu'un 8088 a 4,77 MHz.
+Vitesse estimee:  4.77 MHz
 ```
 
 Pendant le test, la ligne `Ecoule: ...` se redessine à intervalles réguliers
-(≈ 30 fois au total) pour que la progression reste visible — sur l'UART
-**et** le LCD. `Échap` (vérification non bloquante, comme le dump
-mémoire) interrompt le test et revient immédiatement au sous-menu. À la
-fin, n'importe quelle touche referme l'écran de résultat.
+(≈ 30 fois au total, sur l'UART **et** le LCD) pour que la progression
+reste visible. `Échap` (vérification non bloquante, comme le dump
+mémoire) interrompt le test et revient immédiatement au sous-menu. Si le
+pont cesse de répondre **en cours de test** (et pas seulement à son
+lancement), le banc d'essai s'arrête aussitôt avec un message d'erreur —
+plutôt que de continuer silencieusement les checkpoints restants sans
+aucun retour visible, ce qui ressemblerait à un blocage. À la fin,
+n'importe quelle touche referme l'écran de résultat.
 
-⚠️ **Calibration non vérifiée sur le matériel** : le nombre d'itérations
-du banc d'essai (`CPU_TEST_CHECKPOINTS` × `CPU_TEST_INNER_REPS` ×
-65536, `solution-01.asm`) est dimensionné par **estimation** pour durer
-au moins 30 secondes à 4,77 MHz, et `CPU_TEST_REF_SECONDS` (la durée de
-référence utilisée pour le pourcentage/la vitesse estimée) est fixée à
-`60` par défaut — **également une estimation**. À recalibrer après un
-premier essai réel : lancer le test avec `Clock speed` réglé à `4,77 MHz`
-(option 5, le réglage par défaut), noter la valeur *réelle* affichée par
-`Ecoule: ...` à la fin, et la reporter dans `CPU_TEST_REF_SECONDS`. Sans
-cette étape, le pourcentage et la vitesse estimée restent approximatifs
-(la durée elle-même, `Ecoule: ...`, est en revanche toujours exacte,
-puisqu'elle vient directement de la RTC du pont).
+**Calibration** : le nombre d'itérations du banc d'essai
+(`CPU_TEST_CHECKPOINTS` × `CPU_TEST_INNER_REPS` × 65536,
+`solution-01.asm`) dure **34 secondes à 4,77 MHz**, mesuré sur le
+matériel réel — d'abord à 69 s (`CPU_TEST_INNER_REPS` = 8), puis réduit
+à 4 (34 s mesuré, très proche de la projection linéaire de 34,5 s) pour
+se rapprocher du minimum de 30 s tout en le respectant.
+`CPU_TEST_REF_SECONDS` — la durée de référence utilisée pour le
+pourcentage/la vitesse estimée — est calibrée sur cette mesure (`34`).
+Si la table de cycles du 8088 (donc la durée d'un checkpoint) change un
+jour, relancer le test avec `Clock speed` réglé à `4,77 MHz` (option 5,
+le réglage par défaut), noter la valeur *réelle* affichée par
+`Ecoule: ...` à la fin, et la reporter dans `CPU_TEST_REF_SECONDS`. La
+durée elle-même (`Ecoule: ...`) est, elle, toujours exacte, quelle que
+soit cette calibration, puisqu'elle vient directement de la RTC du pont.
 
 La **fréquence courante** est aussi affichée à droite de la première ligne du
 **menu principal** (`1) Basic          4,77 MHz`), lue depuis un cache côté
