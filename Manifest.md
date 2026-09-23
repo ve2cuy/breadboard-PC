@@ -17,3 +17,21 @@
     * Vitesse CPU: 4.77Mhz
 
 NOTE: le texte en () sont des directives pour Claude.
+
+---
+
+À corriger ultérieurement
+
+1) Clock speed
+--> Current speed:  7.07 MHz
+--- Sous-menu Configuration ---
+1) Test CPU speed
+
+--- Test CPU speed ---
+Banc d'essai en cours, duree: environ 30 secondes (Echap pour annuler)...
+..............................
+Ecoule: 22 s
+Le 8088 roule 54% plus vite qu'un 8088 a 4,77 MHz.
+Vitesse estimee:  7.37 MHz
+
+Mesuré à l'osciloscope, 7.3-4 mhz

@@ -508,6 +508,10 @@ start:
         print   lcd_txt_menu_config_l1, LCDI2C
         gotoxy  1, 0, LCDI2C
         print   lcd_txt_menu_config_l2, LCDI2C
+        gotoxy  2, 0, LCDI2C
+        print   lcd_txt_menu_config_l3, LCDI2C
+        gotoxy  3, 0, LCDI2C
+        print   lcd_txt_menu_config_l4, LCDI2C
 
         call    ps2_get_char
 
@@ -517,8 +521,18 @@ start:
         jmp     .config_menu
 .config_2:
         cmp     al, '2'
-        jne     .config_esc
+        jne     .config_3
         call    cpu_speed_test_action   ; banc d'essai de vitesse CPU - voir plus bas
+        jmp     .config_menu
+.config_3:
+        cmp     al, '3'
+        jne     .config_4
+        call    clock_datetime_action   ; regle la date/heure de la RTC du pont - voir plus bas
+        jmp     .config_menu
+.config_4:
+        cmp     al, '4'
+        jne     .config_esc
+        call    information_action      ; ecran recapitulatif (date/heure, versions, RAM, disque, CPU) - voir plus bas
         jmp     .config_menu
 .config_esc:
         cmp     al, 27
@@ -3345,6 +3359,68 @@ clock_print_str:
 .r:
         ret
 
+; print_dec_n: AX = valeur (0 a 10^CL-1), CL = nombre de chiffres a afficher
+; (largeur FIXE, zeros de tete si besoin), BP = cible (bit0 UART, bit1 LCD
+; I2C - meme convention que clock_print_digits/clock_print_str - le curseur
+; LCD doit deja etre positionne par l'appelant). Utilisee pour la date/
+; l'heure (information_action, plus bas: 2 chiffres jour/mois/heures/
+; minutes/secondes, 4 chiffres annee) et les versions BIOS/firmware STM (1
+; chiffre). Preserve tout SAUF le resultat des calculs internes (AX/BX/CX/
+; DX/SI/DI tous restaures via la pile - seul BP, jamais modifie, sert de
+; parametre en lecture seule).
+print_dec_n:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+
+        mov     si, ax                   ; SI = valeur restante a afficher
+        mov     di, 1                    ; DI = diviseur courant = 10^(CL-1)
+        mov     ch, cl
+        dec     ch
+        jz      .have_divisor
+.pow10:
+        mov     ax, di
+        mov     bx, 10
+        mul     bx
+        mov     di, ax
+        dec     ch
+        jnz     .pow10
+.have_divisor:
+        mov     ch, cl                   ; CH = nombre de chiffres restant a afficher
+.digit_loop:
+        mov     ax, si
+        xor     dx, dx
+        mov     bx, di
+        div     bx                       ; AX = chiffre courant (quotient), DX = reste
+        mov     si, dx                   ; SI = reste - valeur pour le prochain chiffre
+        add     al, '0'
+        test    bp, 1
+        jz      .no_u
+        call    uart_tx_byte
+.no_u:
+        test    bp, 2
+        jz      .no_l
+        call    i2c_lcd_data
+.no_l:
+        mov     ax, di                   ; DI = DI/10 pour le prochain chiffre
+        xor     dx, dx
+        mov     bx, 10
+        div     bx
+        mov     di, ax
+        dec     ch
+        jnz     .digit_loop
+
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
 ; clock_show: affiche DX:AX (frequence en Hz) sous la forme "Current speed:
 ; N.NN MHz" sur l'UART, et "N.NN MHz" (sans le prefixe "Current speed: " -
 ; pas la place sur 20 colonnes) a la ligne 0 du LCD I2C (toujours la meme
@@ -3843,6 +3919,391 @@ cpu_test_show_result:
         call    bios_puts                 ; (cpu_test_show_progress, UART) avant le message
         mov     si, dm_e_tmo
         call    bios_puts
+        ret
+
+; --- constantes pour clock_datetime_action/information_action, plus bas ---
+BIOS_VERSION_MAJOR equ 1                ; version du BIOS/ROM affichee par
+BIOS_VERSION_MINOR equ 0                ; "4) Information" - correspond a
+                                         ; "Version 1.0" du splash (lcd_txt_splash_l2,
+                                         ; plus bas) - A MAINTENIR MANUELLEMENT en
+                                         ; phase avec lui si l'un des 2 change
+DISK_TOTAL_KB       equ 8192            ; capacite NOMINALE de la flash SPI du pont
+                                         ; (W25Q64, 8 Mo - arduino/8088_bridge_stm32/
+                                         ; README.md) - PAS interrogee dynamiquement
+                                         ; (aucune commande de protocole pour la
+                                         ; capacite TOTALE, seulement l'espace LIBRE -
+                                         ; fs_free, lib/bridge.asm) - a ajuster si la
+                                         ; puce flash change un jour
+
+; ============================================================
+; clock_datetime_action
+; Option "3) Heure et date" du sous-menu Configuration: regle la date et
+; l'heure de la RTC du pont (rtc_set, lib/bridge.asm) - saisie decimale
+; (ps2_read_dec_editable, lib/ps2.asm - PAS ps2_read_hex_editable: une
+; date/heure se saisit en decimal, pas en hexadecimal), format
+; jour-mois-annee (assorti a l'affichage de "4) Information", plus bas):
+; "Date: JJ-MM-AAAA" puis "Heure: HH:MM:SS". Envoyee TELLE QUELLE au pont,
+; qui valide lui-meme les bornes (applyTime(),
+; arduino/8088_bridge_stm32/src/main.cpp) et ignore silencieusement une
+; valeur hors bornes - pas de validation cote 8088 (coherent avec le
+; reste du projet: saisie simple, sans confirmation, comme Edit RAM).
+; rtc_set n'attend AUCUNE reponse du pont (fire-and-forget) - rien a
+; verifier apres l'envoi.
+; ============================================================
+clock_datetime_action:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    es
+
+        call    i2c_lcd_init
+
+        mov     si, txt_datetime_date_prefix    ; "Date: "
+        call    bios_puts
+        mov     si, txt_datetime_date_prefix
+        i2c_lcd_show LCD_LINE1
+
+        mov     cl, 2
+        mov     ah, (LCD_LINE1 & 07Fh) + 6      ; 6 = long. de "Date: "
+        call    ps2_read_dec_editable            ; BX = jour
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     di, BIOS_RTC_OFF + 3             ; jour (meme ordre que rtc_get/rtc_set:
+        mov     [es:di], bl                       ; annee(2)/mois/jour/h/min/s/cs)
+
+        mov     al, '-'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+
+        mov     cl, 2
+        mov     ah, (LCD_LINE1 & 07Fh) + 9       ; 9 = long. de "Date: JJ-"
+        call    ps2_read_dec_editable            ; BX = mois
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     di, BIOS_RTC_OFF + 2             ; mois
+        mov     [es:di], bl
+
+        mov     al, '-'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+
+        mov     cl, 4
+        mov     ah, (LCD_LINE1 & 07Fh) + 12      ; 12 = long. de "Date: JJ-MM-"
+        call    ps2_read_dec_editable            ; BX = annee complete (0-9999)
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     di, BIOS_RTC_OFF                 ; annee (mot, poids faible d'abord)
+        mov     [es:di], bx
+
+        mov     si, txt_crlf
+        call    bios_puts
+
+        mov     si, txt_datetime_time_prefix     ; "Heure: "/"Time: "
+        call    bios_puts
+        mov     si, txt_datetime_time_prefix
+        i2c_lcd_show LCD_LINE2
+
+        mov     cl, 2
+        mov     ah, (LCD_LINE2 & 07Fh) + 7       ; 7 = long. de "Heure: "
+        call    ps2_read_dec_editable            ; BX = heures
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     di, BIOS_RTC_OFF + 4              ; heures
+        mov     [es:di], bl
+
+        mov     al, ':'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+
+        mov     cl, 2
+        mov     ah, (LCD_LINE2 & 07Fh) + 10      ; 10 = long. de "Heure: HH:"
+        call    ps2_read_dec_editable            ; BX = minutes
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     di, BIOS_RTC_OFF + 5              ; minutes
+        mov     [es:di], bl
+
+        mov     al, ':'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+
+        mov     cl, 2
+        mov     ah, (LCD_LINE2 & 07Fh) + 13      ; 13 = long. de "Heure: HH:MM:"
+        call    ps2_read_dec_editable            ; BX = secondes
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     di, BIOS_RTC_OFF + 6              ; secondes
+        mov     [es:di], bl
+
+        mov     si, txt_crlf
+        call    bios_puts
+
+        ; --- envoie au pont: DS:SI = BIOS_RTC_OFF (7 premiers octets, meme
+        ; ordre que rtc_get - annee(2)/mois/jour/h/min/s), DS bascule
+        ; TEMPORAIREMENT sur VAR_SEG (rtc_set l'exige - voir son en-tete,
+        ; lib/bridge.asm) puis revient a CS aussitot apres (invariant du
+        ; reste du projet: DS = CS partout ailleurs - voir start:) ---
+        push    ds
+        mov     ax, VAR_SEG
+        mov     ds, ax
+        mov     si, BIOS_RTC_OFF
+        call    rtc_set
+        pop     ds
+
+        mov     si, txt_datetime_saved
+        call    bios_puts
+
+        pop     es
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; ============================================================
+; information_action
+; Option "4) Information" du sous-menu Configuration: ecran recapitulatif
+; - date/heure (RTC du pont, REDESSINEE des que la seconde change: la
+; SEULE partie "en direct" de cet ecran, demande explicite), version du
+; BIOS/ROM (BIOS_VERSION_MAJOR/MINOR ci-dessus), version du firmware du
+; pont (fs_version_cmd, lib/bridge.asm - commande 03h), taille de la RAM
+; (BIOS_MEM_KB, lib/bios.asm - meme valeur que INT 12h), espace utilise/
+; disponible sur la flash du pont (fs_free + DISK_TOTAL_KB ci-dessus), et
+; frequence d'horloge courante (CLOCK_FREQ_HZ_OFF, cache - PAS
+; d'aller-retour au pont, meme technique que clock_main_speed_print).
+; Ces 4 dernieres valeurs sont interrogees UNE SEULE FOIS a l'entree (pas
+; besoin de les rafraichir chaque seconde comme la date/heure, demande
+; explicite): en cas d'echec INDIVIDUEL (pont trop ancien qui ne connait
+; pas encore 03h, ou muet pour fs_version_cmd/fs_free), la valeur
+; concernee affiche "?" a la place plutot que d'abandonner tout l'ecran -
+; seule la date/heure exige imperativement un pont fonctionnel des
+; l'entree (echec => .tmo, meme convention que les autres actions de ce
+; sous-menu). Un echec PASSAGER de la RTC PENDANT la boucle (pont
+; temporairement muet) ne fait PAS non plus abandonner l'ecran (juste
+; cette mise a jour) - contrairement a cpu_test_show_progress: ici, ce
+; n'est qu'un affichage, pas une mesure a interrompre proprement.
+; Echap (verification non bloquante, meme technique que
+; cpu_speed_test_action/dump_memory_action) revient au sous-menu
+; Configuration, sans message particulier.
+; ============================================================
+information_action:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    es
+
+        mov     ax, VAR_SEG
+        mov     es, ax                    ; ES = VAR_SEG pour toute la duree de l'ecran
+
+        call    i2c_lcd_init
+        print   txt_info_head, UART
+
+        mov     di, BIOS_RTC_OFF
+        call    rtc_get
+        jc      .tmo
+        mov     dl, 0FFh                  ; force un 1er affichage immediat dans .loop
+                                           ; (une seconde reelle, 0-59, ne peut jamais
+                                           ; valoir FFh)
+
+        ; --- BIOS/STM (ligne 1) ---
+        print   lcd_txt_info_bios, UART             ; "BIOS:" (bug corrige avant tout test:
+        gotoxy  1, 0, LCDI2C                        ; oublie sur l'UART au 1er jet - voir
+        print   lcd_txt_info_bios, LCDI2C           ; Directives.md)
+        mov     bp, 3                               ; UART + LCD pour toute cette section
+        mov     ax, BIOS_VERSION_MAJOR
+        mov     cl, 1
+        call    print_dec_n
+        mov     al, '.'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     ax, BIOS_VERSION_MINOR
+        mov     cl, 1
+        call    print_dec_n
+        mov     al, ' '
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     si, txt_info_stm_prefix             ; "STM:"
+        call    bios_puts
+        mov     si, txt_info_stm_prefix
+        call    i2c_lcd_print
+
+        call    fs_version_cmd                      ; BH=majeure, BL=mineure, CF=1 si echec
+        jc      .stm_unknown
+        mov     al, bh
+        xor     ah, ah
+        mov     cl, 1
+        call    print_dec_n
+        mov     al, '.'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     al, bl
+        xor     ah, ah
+        mov     cl, 1
+        call    print_dec_n
+        jmp     .stm_done
+.stm_unknown:
+        mov     al, '?'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+.stm_done:
+        mov     si, txt_crlf
+        call    bios_puts
+
+        ; --- RAM/CPU (ligne 2) ---
+        print   lcd_txt_info_ram, UART              ; "RAM:"
+        gotoxy  2, 0, LCDI2C
+        print   lcd_txt_info_ram, LCDI2C
+        mov     bp, 3
+        mov     ax, BIOS_MEM_KB
+        mov     cl, 3
+        call    print_dec_n
+        mov     si, txt_info_kb                     ; "K "
+        call    bios_puts
+        mov     si, txt_info_kb
+        call    i2c_lcd_print
+        mov     si, txt_info_cpu_prefix              ; "CPU: "
+        call    bios_puts
+        mov     si, txt_info_cpu_prefix
+        call    i2c_lcd_print
+        mov     ax, [es:CLOCK_FREQ_HZ_OFF]
+        mov     dx, [es:CLOCK_FREQ_HZ_OFF+2]
+        call    clock_hz_to_wholefrac                ; DX:AX -> BL/BH
+        mov     bp, 3
+        call    clock_print_digits
+        mov     si, txt_clock_freq_suffix            ; " MHz" - UART SEULEMENT (pas la
+        mov     bp, 1                                 ; place sur le LCD - ligne deja pleine)
+        call    clock_print_str
+        mov     si, txt_crlf
+        mov     bp, 1
+        call    clock_print_str
+
+        ; --- Disque (ligne 3) ---
+        print   lcd_txt_info_disk, UART             ; "Disque:"/"Disk:" (bilingue)
+        gotoxy  3, 0, LCDI2C
+        print   lcd_txt_info_disk, LCDI2C
+        call    fs_free                              ; DX:AX = octets libres, CF=1 si echec
+        jc      .disk_unknown
+        mov     cx, 10                                ; DX:AX / 1024 = octets -> Ko (division
+.shr32:                                               ; par une puissance de 2 - decalage 32
+        shr     dx, 1                                 ; bits plutot qu'un DIV)
+        rcr     ax, 1
+        loop    .shr32
+        mov     bx, ax                                ; BX = disponible (Ko)
+        mov     ax, DISK_TOTAL_KB
+        sub     ax, bx                                ; AX = utilise (Ko)
+        mov     cl, 4
+        mov     bp, 3
+        call    print_dec_n
+        mov     al, '/'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     ax, bx                                ; AX = disponible (Ko)
+        mov     cl, 4
+        call    print_dec_n
+        mov     si, txt_info_kb2                      ; "KB"
+        call    bios_puts
+        mov     si, txt_info_kb2
+        call    i2c_lcd_print
+        jmp     .disk_done
+.disk_unknown:
+        mov     al, '?'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+.disk_done:
+        mov     si, txt_crlf
+        call    bios_puts
+        print   txt_info_return, UART                 ; "(Echap: retour au sous-menu Configuration)"
+
+        ; --- boucle: date/heure en direct (ligne 0), redessinee des que
+        ; la seconde change - voir l'en-tete ---
+.loop:
+        call    ps2_key_available
+        jc      .no_key
+        call    ps2_get_char
+        cmp     al, 27
+        je      .out
+.no_key:
+        mov     di, BIOS_RTC_OFF
+        call    rtc_get
+        jc      .loop                      ; pont temporairement muet: retente au
+                                             ; prochain tour (voir l'en-tete)
+        mov     al, [es:BIOS_RTC_OFF + 6]   ; secondes courantes
+        cmp     al, dl
+        je      .loop                       ; pas de changement depuis le dernier affichage
+        mov     dl, al                      ; memorise la nouvelle seconde affichee
+
+        i2c_lcd_goto_col LCD_LINE1, 0
+        mov     bp, 3
+        mov     al, [es:BIOS_RTC_OFF + 3]   ; jour
+        xor     ah, ah
+        mov     cl, 2
+        call    print_dec_n
+        mov     al, '-'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     al, [es:BIOS_RTC_OFF + 2]   ; mois
+        xor     ah, ah
+        mov     cl, 2
+        call    print_dec_n
+        mov     al, '-'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     ax, [es:BIOS_RTC_OFF]       ; annee (mot complet)
+        mov     cl, 4
+        call    print_dec_n
+        mov     al, ' '
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     al, [es:BIOS_RTC_OFF + 4]   ; heures
+        xor     ah, ah
+        mov     cl, 2
+        call    print_dec_n
+        mov     al, ':'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     al, [es:BIOS_RTC_OFF + 5]   ; minutes
+        xor     ah, ah
+        mov     cl, 2
+        call    print_dec_n
+        mov     al, ':'
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        mov     al, [es:BIOS_RTC_OFF + 6]   ; secondes
+        xor     ah, ah
+        mov     cl, 2
+        call    print_dec_n
+        mov     si, txt_crlf
+        mov     bp, 1                        ; CRLF: UART seulement (le LCD n'en a pas besoin)
+        call    clock_print_str
+
+        jmp     .loop
+.out:
+        pop     es
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+.tmo:
+        mov     si, dm_e_tmo
+        call    bios_puts
+        pop     es
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
         ret
 
 ; ============================================================
@@ -5068,6 +5529,8 @@ txt_menu_usb_rest:      db      '2) List files',13,10
 txt_menu_config:        db      27,'[36m','--- Configuration Submenu ---',27,'[0m',13,10
                         db      '1) Clock speed',13,10
                         db      '2) Test CPU speed',13,10
+                        db      '3) Set date and time',13,10
+                        db      '4) Information',13,10
                         db      '(Esc: back to main menu)',13,10,13,10,0
 
 txt_menu_clock_head:    db      27,'[36m','--- Clock speed ---',27,'[0m',13,10,0
@@ -5088,6 +5551,20 @@ txt_cpu_test_result_prefix: db    'The 8088 is running ', 0
 txt_cpu_test_faster:      db      '% faster than an 8088 at 4.77 MHz.',13,10,0
 txt_cpu_test_slower:      db      '% slower than an 8088 at 4.77 MHz.',13,10,0
 txt_cpu_test_estimated:   db      'Estimated speed: ', 0
+
+; ---- option "3) Set date and time" du sous-menu Configuration
+; ---- (clock_datetime_action, plus haut) ----
+txt_datetime_time_prefix: db      'Time: ', 0
+txt_datetime_saved:       db      'Date and time sent to the bridge.', 13, 10, 0
+
+; ---- option "4) Information" du sous-menu Configuration
+; ---- (information_action, plus haut) - PAS "lcd_text" (pas de padding a
+; ---- 20 caracteres): ces etiquettes sont TOUJOURS suivies d'autre chose
+; ---- sur la MEME ligne (chiffres...) - un padding deplacerait le curseur
+; ---- PHYSIQUE du LCD trop loin (meme piege que le "curseur TTY" du
+; ---- chantier precedent, voir Directives.md) ----
+lcd_txt_info_disk:        db      'Disk:', 0
+txt_info_return:          db      '(Esc: back to Configuration submenu)', 13, 10, 0
 
 usb_msg_activating:     db      13,10,'USB currently OFF - activating...',13,10,0
 usb_msg_deactivating:   db      13,10,'USB currently ON - deactivating...',13,10,0
@@ -5114,6 +5591,7 @@ txt_run_result_banner:  db      27,'[34m','=== Execution complete (1000:0000, RE
 
 ; ---- textes LCD (anglais, 20 caracteres - voir la remarque sur
 ; ---- "Elapsed:" en tete de bloc pour lcd_txt_cpu_test_elapsed) ----
+lcd_text lcd_txt_menu_config_l3, '3) Set date/time', 20
 lcd_text lcd_txt_menu_dump_l3, '3) CPU Registers', 20
 lcd_text lcd_txt_tb_l3, 'BYE or Ctrl-X: menu', 20
 lcd_text lcd_txt_bas_l1, 'BASIC (GW-type)', 20
@@ -5223,6 +5701,8 @@ txt_menu_usb_rest:      db      '2) List files',13,10
 txt_menu_config:        db      27,'[36m','--- Sous-menu Configuration ---',27,'[0m',13,10
                         db      '1) Clock speed',13,10
                         db      '2) Test CPU speed',13,10
+                        db      '3) Heure et date',13,10
+                        db      '4) Information',13,10
                         db      '(Echap: retour au menu principal)',13,10,13,10,0
 
 ; ---- option "1) Clock speed" du sous-menu Configuration (clock_speed_action
@@ -5252,6 +5732,17 @@ txt_cpu_test_result_prefix: db    'Le 8088 roule ', 0
 txt_cpu_test_faster:      db      '% plus vite qu', 27h, 'un 8088 a 4,77 MHz.',13,10,0
 txt_cpu_test_slower:      db      '% plus lent qu', 27h, 'un 8088 a 4,77 MHz.',13,10,0
 txt_cpu_test_estimated:   db      'Vitesse estimee: ', 0
+
+; ---- option "3) Heure et date" du sous-menu Configuration
+; ---- (clock_datetime_action, plus haut) ----
+txt_datetime_time_prefix: db      'Heure: ', 0
+txt_datetime_saved:       db      'Heure et date envoyees au pont.', 13, 10, 0
+
+; ---- option "4) Information" du sous-menu Configuration
+; ---- (information_action, plus haut) - PAS "lcd_text", voir la remarque
+; ---- equivalente dans la branche %ifdef LANG_EN ----
+lcd_txt_info_disk:        db      'Disque:', 0
+txt_info_return:          db      '(Echap: retour au sous-menu Configuration)', 13, 10, 0
 
 ; ---- option "1) USB ON/OFF" du sous-menu USB Disk (usb_toggle_action)
 ; ---- - bascule: le message "actuellement ..." part AVANT la
@@ -5286,6 +5777,7 @@ txt_run_help:            db     27,'[36m','Fleches G/D: colonne | Fleches H/B: l
 txt_run_result_banner:  db      27,'[34m','=== Execution terminee (1000:0000, RETF) - Registres ===',27,'[0m',13,10,0
 
 ; ---- textes LCD (francais, 20 caracteres) ----
+lcd_text lcd_txt_menu_config_l3, '3) Heure et date', 20
 lcd_text lcd_txt_menu_dump_l3, '3) Registres CPU', 20
 lcd_text lcd_txt_tb_l3, 'BYE ou Ctrl-X: menu', 20
 lcd_text lcd_txt_bas_l1, 'BASIC (type GW)', 20
@@ -5356,6 +5848,21 @@ usb_opt1_on:            db      '1) USB: ON', 0
 txt_clock_freq_prefix:  db      'Current speed: ', 0
 txt_clock_freq_suffix:  db      ' MHz', 0
 txt_cpu_test_seconds:     db      ' s', 0
+
+; ---- options "3) Heure et date"/"4) Information" du sous-menu
+; ---- Configuration (clock_datetime_action/information_action, plus
+; ---- haut) - PAS de padding "lcd_text" pour aucun de ces labels: tous
+; ---- sont suivis d'autre chose sur la MEME ligne (chiffres, un autre
+; ---- label...) - voir la remarque dans la branche %ifdef LANG_EN pour
+; ---- lcd_txt_info_disk ----
+txt_datetime_date_prefix: db      'Date: ', 0             ; identique FR/EN
+txt_info_head:            db      27,'[36m','--- Information ---',27,'[0m',13,10,0  ; identique FR/EN
+lcd_txt_info_bios:        db      'BIOS:', 0
+txt_info_stm_prefix:      db      'STM:', 0
+lcd_txt_info_ram:         db      'RAM:', 0
+txt_info_kb:              db      'K ', 0
+txt_info_cpu_prefix:      db      'CPU: ', 0
+txt_info_kb2:             db      'KB', 0
 
 lf_crlf:                db      13,10,0
 
@@ -5433,10 +5940,12 @@ lcd_text lcd_txt_menu_dump_l6, '6) Test RAM', 20
 lcd_text lcd_txt_menu_usb_l2, '2) List files', 20
 lcd_text lcd_txt_menu_usb_l3, '3) Boot disk image', 20
 
-; ---- sous-menu Configuration (voir .config_menu, start:) - 2 options,
-; ---- tiennent sur le LCD sans pagination ----
+; ---- sous-menu Configuration (voir .config_menu, start:) - 4 options,
+; ---- tiennent sur le LCD sans pagination (l3 - "3) Heure et date"/"3) Set
+; ---- date/time" - est bilingue, voir plus haut) ----
 lcd_text lcd_txt_menu_config_l1, '1) Clock speed', 20
 lcd_text lcd_txt_menu_config_l2, '2) Test CPU speed', 20
+lcd_text lcd_txt_menu_config_l4, '4) Information', 20
 
 ; ---- option "1) Clock speed" (voir clock_speed_action) - ligne 0 (index
 ; ---- 0, gotoxy) reste libre: clock_show y ecrit "N.NN MHz" (la frequence

@@ -536,6 +536,124 @@ ps2_read_hex_editable:
         jmp     .next_key
 
 ; ============================================================
+; ps2_read_dec_editable
+; Lit CL chiffres DECIMAUX (0-9 SEULEMENT - 'A'-'F' ignores, contrairement
+; a ps2_read_hex_editable) au clavier, avec echo sur l'UART ET le LCD I2C,
+; et retour arriere - MEME PRINCIPE que ps2_read_hex_editable ci-dessus,
+; mais l'accumulation se fait en base 10 (multiplication/division par 10)
+; au lieu d'un decalage de 4 bits (10 n'est pas une puissance de 2).
+; Utilisee pour la saisie de date/heure (clock_datetime_action,
+; solution-01.asm - "3) Heure et date" du sous-menu Configuration).
+;
+; IMPORTANT: contrairement a ps2_read_hex_editable, qui peut garder son
+; parametre de position LCD dans AH pendant toute la routine (ses seules
+; operations sont des decalages, qui ne touchent pas AH), CETTE routine
+; utilise MUL/DIV (AX/DX) pour l'arithmetique decimale - AH y est donc
+; ECRASE en cours de route. Le parametre est copie dans BH des l'entree.
+;
+; IMPORTANT (2e piege, trouve ET CORRIGE AVANT tout test materiel - voir
+; Directives.md): la constante "10" du MUL/DIV ne doit JAMAIS passer par
+; CX - contrairement a ps2_read_hex_editable, CH sert ICI de compteur
+; PERSISTANT (nombre total de chiffres a lire) tout au long de la
+; routine; un "mov cx,10" l'ecraserait (CH redevient 0) des le 1er
+; chiffre, bloquant silencieusement la saisie a 1 seul chiffre par champ
+; (bug reproduit puis corrige: "20" saisi ne donnait que "2"). DI sert de
+; registre scratch a la place (preserve via push/pop, comme SI - la
+; routine ne "detruit" donc PAS DI du point de vue de l'appelant, malgre
+; son usage interne).
+;
+; IMPORTANT (3e piege, trouve ET CORRIGE AVANT tout test materiel - voir
+; Directives.md): meme en evitant CX, MUL et DIV ECRASENT TOUJOURS DX (le
+; poids fort du produit/le reste de la division), QUELLE QUE SOIT
+; l'operande - DH sert ICI de compteur de chiffres SAISIS (contrairement
+; a ps2_read_hex_editable, dont les seules operations - SHL/OR - ne
+; touchent jamais DX): sans sauvegarde explicite autour du MUL (saisie)
+; et du DIV (retour arriere), DH redevient une valeur quelconque des le
+; 1er chiffre, avec le meme symptome que le piege precedent (mais reste
+; present meme apres avoir change CX pour DI - trouve en rejouant le
+; MEME banc d'essai apres cette 1re correction, toujours en echec).
+;
+; Entree: CL = nombre de chiffres a lire (1-4). AH = adresse DDRAM de
+;         depart du champ (0-127, sans le bit de commande).
+; Sortie: BX = valeur entree (0 a 10^CL-1, MSB en premier).
+; Detruit: AX, CX, DX (BX est la sortie). Jamais SI/DI/ES/BP.
+; ============================================================
+ps2_read_dec_editable:
+        push    si              ; SI = accumulateur interne (meme raison que
+                                 ; ps2_read_hex_editable: BH est ecrase par
+                                 ; ps2_get_char a chaque appel)
+        push    di              ; DI = scratch pour la constante 10 (CX est
+                                 ; deja pris - voir la remarque ci-dessus)
+        mov     bh, ah          ; BH = adresse DDRAM de depart (AH sera
+                                 ; detruit par MUL/DIV ci-dessous)
+        xor     si, si
+        mov     ch, cl          ; CH = nombre TOTAL de chiffres a lire (fixe)
+        xor     dh, dh          ; DH = nombre de chiffres saisis jusqu'ici
+.next_key:
+        call    ps2_get_char
+        cmp     al, 8           ; retour arriere ?
+        je      .backspace
+        cmp     al, '0'
+        jb      .next_key       ; touche non geree (Entree, Echap, 'A'-'F'...)
+        cmp     al, '9'
+        ja      .next_key       ; - ignoree, la lecture continue normalement
+        cmp     dh, ch
+        jae     .next_key       ; deja le nombre de chiffres voulu - ignore
+        push    ax              ; AL = caractere ASCII du chiffre - c'est
+        call    uart_tx_byte    ; DEJA le bon caractere a afficher (pas de
+        call    i2c_lcd_data    ; conversion nibble->ASCII, contrairement au
+        pop     ax              ; hexa): echo AVANT de le convertir en valeur
+        sub     al, '0'         ; AL = valeur du chiffre (0-9)
+        xor     ah, ah
+        push    ax              ; sauve la valeur (0-9) le temps du MUL
+        push    dx              ; MUL ecrase TOUJOURS DX (poids fort du produit,
+                                 ; quelle que soit l'operande) - DH (compteur de
+                                 ; chiffres) doit survivre
+        mov     ax, si
+        mov     di, 10
+        mul     di              ; DX:AX = SI*10 (SI reste petit - annee <= 9999,
+        mov     si, ax          ; largement dans les 16 bits utiles)
+        pop     dx              ; restaure DH (compteur)
+        pop     ax
+        add     si, ax          ; SI = SI*10 + valeur du chiffre
+        inc     dh
+        cmp     dh, ch
+        jb      .next_key
+        mov     bx, si          ; BX = valeur finale (sortie documentee)
+        pop     di              ; restaure le DI de l'appelant
+        pop     si              ; restaure le SI de l'appelant
+        ret
+.backspace:
+        cmp     dh, 0
+        je      .next_key       ; rien a effacer - ignore
+        dec     dh
+        push    dx              ; DIV ecrase TOUJOURS DX (reste de la division) -
+                                 ; DH (compteur, deja decremente) doit survivre
+        mov     ax, si          ; efface le dernier chiffre de la valeur
+        xor     dx, dx          ; accumulee (division par 10, reste ignore)
+        mov     di, 10
+        div     di
+        mov     si, ax
+        pop     dx              ; restaure DH (compteur)
+        mov     al, 8           ; efface visuellement sur l'UART (backspace,
+        call    uart_tx_byte    ; espace, backspace)
+        mov     al, ' '
+        call    uart_tx_byte
+        mov     al, 8
+        call    uart_tx_byte
+        mov     al, bh          ; --- efface visuellement sur le LCD (BH, PAS
+        add     al, dh          ; AH - voir la remarque en tete de routine):
+        or      al, 80h         ; repositionne sur la case effacee, ecrit un
+        call    i2c_lcd_command ; espace, repositionne de nouveau (le prochain
+        mov     al, ' '         ; chiffre tape doit ecraser cette meme case,
+        call    i2c_lcd_data    ; pas la suivante) ---
+        mov     al, bh
+        add     al, dh
+        or      al, 80h
+        call    i2c_lcd_command
+        jmp     .next_key
+
+; ============================================================
 ; ps2_edit_byte_value
 ; Compose une nouvelle valeur d'octet (0-2 chiffres hexa) au clavier,
 ; avec echo UART+LCD et retour arriere (meme mecanique que

@@ -21,8 +21,10 @@
 //     recu; PC1 = 1: REPONSE a une commande), l'octet sur le bus, et on pulse
 //     STB#; INTR du 8255 (sur IR1 du 8259) interrompt le 8088.
 // canal 3 = COMMANDES pour le pont (voir Solution-01/lib/bridge.asm):
-//     00h PING (reponse B1h, 1, capacites)   01h LIRE l'heure (reponse: 8 octets)
+//     00h PING (reponse B1h, 3, capacites)   01h LIRE l'heure (reponse: 8 octets)
 //     02h + 7 octets REGLER l'heure (annee 2 octets, mois, jour, h, min, s).
+//     03h VERSION du firmware (PAS le "3" de PING ci-dessus, qui est le numero
+//     de VERSION DU PROTOCOLE - sans rapport) -> 2 octets (majeure, mineure).
 //     Necessite TAG1 (PB5) relie a PC1 du 8255 (tire a 0 par 10 kohm).
 //     10h-19h = DISQUE: fichiers FAT (racine, noms 8.3) sur la flash SPI (W25Q64, 8 Mo) de la carte
 //     (PA4 = CS, SPI1 PA5/PA6/PA7): statut, formater, ouvrir, lire, ecrire, fermer,
@@ -98,6 +100,13 @@
 #define USB_CAPS 0x17
 #endif
 #define CMD_TIMEOUT_MS 100UL // commande a arguments incomplete: abandonnee apres ce delai
+// Version du FIRMWARE du pont (PAS le numero de version du protocole - "3" -
+// deja renvoye par PING, sans rapport) - interrogee par le 8088 (commande 03h,
+// "4) Information" du sous-menu Configuration, Solution-01/solution-01.asm) et
+// affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
+// changements notables a ce fichier.
+#define FW_VERSION_MAJOR 1
+#define FW_VERSION_MINOR 0
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -693,6 +702,7 @@ static void cmdByte(uint8_t v) {
   if (op == 0x00) { replyByte(0xB1); replyByte(3); replyByte(USB_CAPS); }        // PING: v3, RTC + disque + secteurs
   else if (op == 0x01) replyTime();
   else if (op == 0x02) applyTime(cmdBuf + 1);
+  else if (op == 0x03) { replyByte(FW_VERSION_MAJOR); replyByte(FW_VERSION_MINOR); }  // version du firmware
   else if (op == 0x25 || op == 0x26) usbExec(op);
   else if (usbActive && op >= 0x10 && op <= 0x2B) diskBusy(op);
   else if (op >= 0x10 && op <= 0x19) fsExec(cmdBuf);

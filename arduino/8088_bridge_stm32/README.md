@@ -100,6 +100,7 @@ plus récent que celui de PlatformIO). Le 8088 la lit et la règle par des
 | `00h` | PING : réponse `B1h`, version `3`, capacités `17h` (bit 0 RTC, bit 1 disque, bit 2 secteurs, bit 4 image de disquette ; `1Fh` avec le lecteur USB, bit 3) |
 | `01h` | LIRE : 8 octets = année (bas, haut), mois, jour, heures, minutes, secondes, centièmes |
 | `02h` + 7 octets | RÉGLER : année (2 octets, 2000-2099), mois, jour, heures, minutes, secondes ; valeurs invalides ignorées |
+| `03h` | VERSION du firmware du pont (`FW_VERSION_MAJOR`/`FW_VERSION_MINOR`, **pas** le `3` de PING ci-dessus, qui est la version du *protocole* — sans rapport) → 2 octets (majeure, mineure) |
 
 - **Câblage supplémentaire** : `PB5` (`TAG1`) → `PC1` du 8255 (broche 15 du 8255A), avec
   10 kΩ vers la masse sur `PC1`. Le 8088 ne lit `PC1` que **pendant une commande**

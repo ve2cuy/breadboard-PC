@@ -12,6 +12,9 @@
 ;   01h                     LIRE l'heure   -> 8 octets: annee (bas, haut), mois,
 ;                                             jour, heures, minutes, secondes, centiemes
 ;   02h + 7 octets          REGLER l'heure: annee (2), mois, jour, h, min, s (pas de reponse)
+;   03h                     VERSION du firmware du pont (PAS "version (3)" de PING
+;                           ci-dessus, qui est la version du PROTOCOLE - sans rapport)
+;                           -> 2 octets: majeure, mineure
 ;   Disque (fichiers a la racine, noms 8.3; un seul fichier ouvert a la fois; OPEN
 ;   ferme le fichier precedent):
 ;   10h                     STATUT         -> octet d'etat (FSE_*)
@@ -67,6 +70,7 @@
 BR_CMD_PING     equ     00h
 BR_CMD_GET_TIME equ     01h
 BR_CMD_SET_TIME equ     02h
+BR_CMD_GET_VERSION equ  03h
 FS_STATUS       equ     10h
 FS_FORMAT       equ     11h
 FS_OPEN         equ     12h
@@ -242,6 +246,33 @@ rtc_set:
         pop     si
         pop     cx
         pop     ax
+        ret
+
+; fs_version_cmd: interroge la version du FIRMWARE du pont (commande 03h -
+; PAS le numero de version du PROTOCOLE, "3", deja renvoye par PING - sans
+; rapport) -> BH = majeure, BL = mineure. CF = 1 si le pont ne repond pas
+; (pont trop ancien qui ne connait pas encore cette commande, ou muet).
+fs_version_cmd:
+        call    bridge_rx_flush
+        mov     al, 1
+        call    bridge_expect
+        mov     al, BR_CMD_GET_VERSION
+        call    bridge_tx
+        call    bridge_rx_get
+        jc      .fail
+        mov     bh, al                  ; BH = majeure
+        call    bridge_rx_get
+        jc      .fail
+        mov     bl, al                  ; BL = mineure
+        clc
+        jmp     .out
+.fail:
+        stc
+.out:
+        pushf
+        xor     al, al
+        call    bridge_expect
+        popf
         ret
 
 ; ------------------------------------------------------------

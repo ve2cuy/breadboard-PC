@@ -1129,6 +1129,8 @@ principal (voir plus bas).
 ```
 1) Clock speed
 2) Test CPU speed
+3) Heure et date
+4) Information
 ```
 
 `1) Clock speed` affiche la **fréquence courante** de l'horloge du 8088 —
@@ -1220,6 +1222,39 @@ La **fréquence courante** est aussi affichée à droite de la première ligne d
 **menu principal** (`1) Basic          4,77 MHz`), lue depuis un cache côté
 8088 (pas d'aller-retour au pont à chaque redessin du menu principal) — mis
 à jour à chaque visite du sous-menu `Clock speed`.
+
+`3) Heure et date` règle la date/l'heure de la RTC du pont (`rtc_set`), en
+deux invites chaînées — `Date: JJ-MM-AAAA` puis `Heure: HH:MM:SS` — saisies
+au **clavier en décimal** (et non en hexadécimal, contrairement à `Edit
+RAM`/`Dump memory` : une nouvelle routine dédiée, `ps2_read_dec_editable`,
+lib/ps2.asm). Envoyée telle quelle au pont, qui valide lui-même les bornes
+(`applyTime()`, côté STM32) et ignore silencieusement une valeur hors
+bornes — pas de confirmation ni de validation côté 8088, comme le reste du
+moniteur.
+
+`4) Information` affiche un écran récapitulatif :
+
+```
+--- Information ---
+20-09-2026 14:35:07
+BIOS:1.0 STM:1.0
+RAM:126K CPU:  4.77 MHz
+Disque:23/8192KB
+(Echap: retour au sous-menu Configuration)
+```
+
+Seule la ligne date/heure est **rafraîchie en direct** (dès que la seconde
+change, en interrogeant la RTC du pont en boucle) ; les 4 autres valeurs
+(version du BIOS/ROM, version du firmware du pont, taille de la RAM, espace
+utilisé/disponible sur la flash, fréquence d'horloge) sont interrogées une
+seule fois à l'entrée. La version du **firmware du pont** utilise une
+**nouvelle commande de protocole** (`03h`, voir
+`arduino/8088_bridge_stm32/README.md`) — un pont pas encore reflashé avec
+cette version répond `?` à sa place plutôt que de faire échouer tout
+l'écran (seule la date/heure initiale exige un pont fonctionnel). L'espace
+disque **utilisé** est calculé par soustraction (`8192 Ko - espace libre` —
+capacité *nominale* de la puce flash W25Q64, 8 Mo ; aucune commande de
+protocole ne rapporte la capacité totale).
 
 **Dump memory** (option 1 du menu Memory functions) : demande une adresse de
 **départ** puis une adresse de **fin**, chacune saisie au format
