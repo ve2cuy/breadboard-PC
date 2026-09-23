@@ -30,7 +30,9 @@ BIOS_MEM_KB     equ     126             ; RAM annoncee: 0000:0000-1000:F7FF (126
 BIOS_HIDE_HD    equ     0                       ; 1 = INT 13h refuse tout disque DL >= 80h (le DOS ne voit pas la flash comme disque dur C:; diagnostic)
 %endif
 %ifndef BIOS_TRACE
-BIOS_TRACE      equ     0                       ; 1 = trace de chaque INT 13h / 1Ah sur l'UART (diagnostic; voir `make trace`)
+BIOS_TRACE      equ     0                       ; 1 (`make trace`): trace ACTIVE des le demarrage + carte memoire (bios_memmap)
+                                                ; au 5e INT 1Ah AH=00. La trace elle-meme est TOUJOURS dans la ROM: Ctrl-]
+                                                ; (UART) ou Ctrl-Echap (PS/2) la bascule (BIOS_TRC_ON, lib/isr.asm)
 %endif
 BIOS_SHOW_PATCH equ     1               ; 1 = '+' sur l'UART a chaque instruction OUT neutralisee (diagnostic)
 BIOS_SHOW_RETRY equ     1               ; 1 = '!' sur l'UART a chaque lecture de secteur refaite (somme de controle fausse)
@@ -88,12 +90,10 @@ FR_ALH          equ     15              ; AH dans le cadre
 ; a renvoyer ont ete ecrits dans le cadre. Restaure le cadre et la pile du programme, IRET.
 ; ------------------------------------------------------------
 bios_return:
-%if BIOS_TRACE
-        cmp     byte [BIOS_TRC], 0
-        je      .nt
+        cmp     byte [BIOS_TRC], 0      ; appel trace par bios_trace_in (meme si la trace a ete coupee depuis:
+        je      .nt                     ; la ligne commencee est terminee)
         call    bios_trace_out
 .nt:
-%endif
         cli
         mov     es, [BIOS_SS_OFF]
         mov     bx, [BIOS_SP_OFF]
@@ -115,7 +115,6 @@ bios_return:
         pop     ds
         iret
 
-%if BIOS_TRACE
 ; bios_trace_in: AL = numero de l'INT; ecrit "<nn AX BX CX DX ES" (cadre BIOS: BP). bios_trace_out: "-AX CX DX CF" (+ pour
 ; INT 1Ah les 8 octets recus du pont). Preservent tous les registres. Servent a comparer les appels vus par le
 ; materiel et par le banc d'essai. (SS = VAR_SEG dans le BIOS: les variables s'adressent par SS:, DS reste libre.)
@@ -158,6 +157,7 @@ bios_trace_in:
         pop     bx
         pop     ax
         pop     ds
+%if BIOS_TRACE
         cmp     byte [ss:BIOS_TRC], 1Ah         ; 5e appel INT 1Ah AH=00 avec BX=0306 CX=0006 DX=0000: la lecture de l'heure
         jne     .nomm                           ; qui suit "Current date is" (memes 4 appels avant, sur le banc et le materiel)
         cmp     word [bp + FR_AX], 0
@@ -173,8 +173,10 @@ bios_trace_in:
         jne     .nomm
         call    bios_memmap
 .nomm:
+%endif
         ret
 
+%if BIOS_TRACE
 ; bios_memmap: carte de la RAM (128 Ko): une ligne "Mbbbb: s s s ..." par 16 blocs de 256 octets; s = somme de controle du bloc
 ; (SOMME = rol(SOMME,1) xor mot, sur les 128 mots). A comparer avec le banc d'essai au meme point du programme.
 bios_memmap:
@@ -235,6 +237,7 @@ bios_memmap:
         pop     bx
         pop     ax
         ret
+%endif
 
 bios_trace_out:
         push    ds
@@ -283,7 +286,40 @@ bios_trace_out:
         pop     ax
         pop     ds
         ret
-%endif
+
+; bios_dot: un '.' sur l'UART par lecture INT 13h pendant l'amorcage (BIOS_DOTS, pose par int19h_handler,
+; retire au premier affichage du DOS: bios_dots_end). Pas de point si la trace est active (ses lignes
+; montrent deja la progression). DS = VAR_SEG. Preserve tout.
+bios_dot:
+        cmp     byte [BIOS_DOTS], 0
+        je      .r
+        cmp     byte [BIOS_TRC_ON], 0
+        jne     .r
+        push    ax
+        mov     al, '.'
+        call    uart_tx_byte
+        pop     ax
+.r:
+        ret
+
+; bios_dots_end: fin des points de progression (premier INT 10h du DOS, ou echec de l'amorcage): passe
+; a la ligne si des points etaient affiches. Independante de DS. Preserve tout.
+bios_dots_end:
+        push    ds
+        push    ax
+        mov     ax, VAR_SEG
+        mov     ds, ax
+        cmp     byte [BIOS_DOTS], 0
+        je      .r
+        mov     byte [BIOS_DOTS], 0
+        mov     al, 13
+        call    uart_tx_byte
+        mov     al, 10
+        call    uart_tx_byte
+.r:
+        pop     ax
+        pop     ds
+        ret
 
 ; bios_flags_cf: CF -> BIOS_RETF_OFF bit 0 (les MOV ne modifient pas les indicateurs)
 bios_ret_cf:
@@ -362,10 +398,11 @@ BIOSM_BADSIZE   equ     0EFh
 int13h_handler:
         BIOS_ENTER
         BIOS_FRAME
-%if BIOS_TRACE
+        cmp     byte [BIOS_TRC_ON], 0   ; trace basculee par Ctrl-] / Ctrl-Echap (lib/isr.asm)
+        je      .trc_skip
         mov     al, 13h
         call    bios_trace_in
-%endif
+.trc_skip:
 %if BIOS_HIDE_HD
         cmp     byte [bp + FR_DX], 80h  ; DL >= 80h: pas de disque dur pour le DOS (AH=01: fonction invalide)
         jb      .hd_ok
@@ -550,6 +587,7 @@ int13h_handler:
 
 ; --- AH=02h/03h/04h: lecture / ecriture / verification CHS ---
 .chs_read:
+        call    bios_dot                ; progression de l'amorcage (BIOS_DOTS)
         xor     bx, bx
         jmp     .chs_rw
 .chs_write:
@@ -596,6 +634,7 @@ int13h_handler:
         jmp     bios_return
 
 .ext_read:
+        call    bios_dot
         xor     bx, bx
         jmp     .ext_rw
 .ext_write:
@@ -1042,10 +1081,11 @@ bios_chs_lba:
 int1ah_handler:
         BIOS_ENTER
         BIOS_FRAME
-%if BIOS_TRACE
+        cmp     byte [BIOS_TRC_ON], 0
+        je      .trc_skip
         mov     al, 1Ah
         call    bios_trace_in
-%endif
+.trc_skip:
         mov     ah, [bp + FR_ALH]
         cmp     ah, 00h
         je      .ticks
@@ -1466,6 +1506,7 @@ int19h_handler:
         jne     .floppy
         mov     si, bios_msg_boot
         call    bios_puts
+        mov     byte [BIOS_DOTS], 1     ; un '.' par lecture INT 13h jusqu'au premier affichage du DOS
         ; --- secteur 0 -> 0000:7C00 ---
         xor     ax, ax
         mov     es, ax
@@ -1535,6 +1576,7 @@ int19h_handler:
         ; disquettes DOS 1.x-2.x n'en portent pas toujours) ---
         mov     si, bios_msg_bootA
         call    bios_puts
+        mov     byte [BIOS_DOTS], 1
         xor     ax, ax
         mov     es, ax
         mov     di, 7C00h
@@ -1559,6 +1601,7 @@ int19h_handler:
 .tmo:
         mov     si, bios_msg_tmo
 .fail:
+        call    bios_dots_end           ; (points deja affiches: nouvelle ligne pour le message)
         call    bios_puts
         mov     byte [BIOS_RETF_OFF], 1
         jmp     bios_return
@@ -1801,6 +1844,7 @@ dm_e_mount:     db      13, 10, 'Impossible de monter l', 27h, 'image.', 13, 10,
 ; Fonction inconnue: ignoree.
 ; ------------------------------------------------------------
 bios_int10_std:
+        call    bios_dots_end           ; premier affichage du DOS: fin des points de l'amorcage
         cmp     ah, 0Eh
         je      .tty
         cmp     ah, 0Fh
@@ -2001,6 +2045,11 @@ bios_init:
         push    bx
         push    di
         push    es
+%if BIOS_TRACE
+        mov     ax, VAR_SEG             ; `make trace`: trace active des le demarrage (sinon: Ctrl-] / Ctrl-Echap)
+        mov     es, ax
+        mov     byte [es:BIOS_TRC_ON], 1
+%endif
         xor     ax, ax
         mov     es, ax
         ; vecteurs (offset puis segment = CS de la ROM)

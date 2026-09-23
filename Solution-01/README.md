@@ -1027,6 +1027,16 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
   disquette A: et amorcée. Depuis le BASIC : `BOOT "PCDOS2_1.IMG"`.
   Les écritures du DOS vont dans le fichier image. **PC-DOS 2.1** s'amorce (validé sur le matériel), affiche le bandeau
   et `A>` et exécute `VER`, `DIR`.
+- **Progression de l'amorçage** : après « Amorce: image disquette (A:)... », un **`.`** s'affiche sur l'UART à chaque
+  lecture `INT 13h` (`BIOS_DOTS`, `lib/bios.asm`), jusqu'au premier affichage du DOS (premier `INT 10h`, qui passe à la
+  ligne) ou jusqu'à un message d'échec. Pas de points pendant que la trace (ci-dessous) est active.
+- **Trace du BIOS sans changer de ROM** : **Ctrl-]** (octet `1Dh`) depuis le terminal, ou **Ctrl-Échap** au clavier PS/2,
+  active/arrête à tout moment (menu, BASIC, DOS) la trace de chaque `INT 13h`/`1Ah` sur l'UART :
+  `<nn AX BX CX DX ES` à l'entrée, `-AX CX DX CF>` au retour (+ les 8 octets de la RTC pour `INT 1Ah`). Une ligne
+  sans `-... >` final = le 8088 s'est arrêté pendant cet appel. L'ISR reconnaît la touche (`TRACE_KEY`/`ps2_hotkey`,
+  `lib/isr.asm`) et ne la transmet pas au programme ; annonce « [Trace BIOS ACTIVE ...] » / « [Trace BIOS ARRETEE] ».
+  Arrêtée au démarrage (RAM effacée, y compris après Ctrl-\). `make trace` produit `solution-01-trace.bin` : trace active
+  dès le démarrage, plus la carte mémoire de diagnostic (`bios_memmap`).
 - **Date et heure du DOS** : PC-DOS 2.x n'a pas d'horloge et propose `1-01-1980` (`Enter new date:` puis `Enter new time:`) ;
   ça se tape au clavier, comme sur un vrai PC. `INT 1Ah AH=00h` signale le passage de minuit (`AL = 1`) pour que le DOS
   incrémente la date. La RTC se règle au BASIC (`DATE$="m-d-y"`, `TIME$=...`), utile pour recaler l'heure affichée par

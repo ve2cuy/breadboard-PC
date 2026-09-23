@@ -226,6 +226,14 @@ BRIDGE_RX_TAIL_OFF  equ 0FC53h  ; (octet)
 BRIDGE_RX_BUF_OFF   equ 0FC70h  ; (64 octets: 0FC70h-0FCAFh)
 BRIDGE_EXPECT_OFF   equ 0FC64h  ; (octet) 1 = une reponse est attendue (mis par rtc_get)
 
+; --- trace du BIOS et points de progression de l'amorcage (lib/bios.asm, lib/isr.asm) ---
+BIOS_TRC_ON         equ 0FC54h  ; (octet) 1 = chaque INT 13h/1Ah est trace sur l'UART; bascule par Ctrl-]
+                                ; (UART) ou Ctrl-Echap (clavier PS/2) - trace_toggle, lib/isr.asm
+BIOS_DOTS           equ 0FC55h  ; (octet) 1 = un '.' par lecture INT 13h (de "Amorce: ..." jusqu'au
+                                ; premier affichage du DOS par INT 10h)
+PS2_HOTKEY_OFF      equ 0FC56h  ; (octet) ps2_hotkey: bit 0 = prefixe F0h (relachement) recu,
+                                ; bit 1 = Ctrl enfonce
+
 ; --- frequence COURANTE de l'horloge du 8088, mise en cache cote 8088 (Hz) -
 ; --- evite un aller-retour au pont (fs_clock_cmd, lib/bridge.asm) a chaque
 ; --- redessin du menu principal: clock_show (solution-01.asm) la met a jour
