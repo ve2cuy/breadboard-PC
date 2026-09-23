@@ -31,7 +31,7 @@ BIOS_HIDE_HD    equ     0                       ; 1 = INT 13h refuse tout disque
 %endif
 %ifndef BIOS_TRACE
 BIOS_TRACE      equ     0                       ; 1 (`make trace`): trace ACTIVE des le demarrage + carte memoire (bios_memmap)
-                                                ; au 5e INT 1Ah AH=00. La trace elle-meme est TOUJOURS dans la ROM: Ctrl-]
+                                                ; au 5e INT 1Ah AH=00. La trace elle-meme est TOUJOURS dans la ROM: Ctrl-T
                                                 ; (UART) ou Ctrl-Echap (PS/2) la bascule (BIOS_TRC_ON, lib/isr.asm)
 %endif
 BIOS_SHOW_PATCH equ     1               ; 1 = '+' sur l'UART a chaque instruction OUT neutralisee (diagnostic)
@@ -398,7 +398,7 @@ BIOSM_BADSIZE   equ     0EFh
 int13h_handler:
         BIOS_ENTER
         BIOS_FRAME
-        cmp     byte [BIOS_TRC_ON], 0   ; trace basculee par Ctrl-] / Ctrl-Echap (lib/isr.asm)
+        cmp     byte [BIOS_TRC_ON], 0   ; trace basculee par Ctrl-T / Ctrl-Echap (lib/isr.asm)
         je      .trc_skip
         mov     al, 13h
         call    bios_trace_in
@@ -2046,7 +2046,7 @@ bios_init:
         push    di
         push    es
 %if BIOS_TRACE
-        mov     ax, VAR_SEG             ; `make trace`: trace active des le demarrage (sinon: Ctrl-] / Ctrl-Echap)
+        mov     ax, VAR_SEG             ; `make trace`: trace active des le demarrage (sinon: Ctrl-T / Ctrl-Echap)
         mov     es, ax
         mov     byte [es:BIOS_TRC_ON], 1
 %endif

@@ -227,7 +227,7 @@ BRIDGE_RX_BUF_OFF   equ 0FC70h  ; (64 octets: 0FC70h-0FCAFh)
 BRIDGE_EXPECT_OFF   equ 0FC64h  ; (octet) 1 = une reponse est attendue (mis par rtc_get)
 
 ; --- trace du BIOS et points de progression de l'amorcage (lib/bios.asm, lib/isr.asm) ---
-BIOS_TRC_ON         equ 0FC54h  ; (octet) 1 = chaque INT 13h/1Ah est trace sur l'UART; bascule par Ctrl-]
+BIOS_TRC_ON         equ 0FC54h  ; (octet) 1 = chaque INT 13h/1Ah est trace sur l'UART; bascule par Ctrl-T
                                 ; (UART) ou Ctrl-Echap (clavier PS/2) - trace_toggle, lib/isr.asm
 BIOS_DOTS           equ 0FC55h  ; (octet) 1 = un '.' par lecture INT 13h (de "Amorce: ..." jusqu'au
                                 ; premier affichage du DOS par INT 10h)

@@ -1030,7 +1030,7 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
 - **Progression de l'amorçage** : après « Amorce: image disquette (A:)... », un **`.`** s'affiche sur l'UART à chaque
   lecture `INT 13h` (`BIOS_DOTS`, `lib/bios.asm`), jusqu'au premier affichage du DOS (premier `INT 10h`, qui passe à la
   ligne) ou jusqu'à un message d'échec. Pas de points pendant que la trace (ci-dessous) est active.
-- **Trace du BIOS sans changer de ROM** : **Ctrl-]** (octet `1Dh`) depuis le terminal, ou **Ctrl-Échap** au clavier PS/2,
+- **Trace du BIOS sans changer de ROM** : **Ctrl-T** (octet `14h`) depuis le terminal, ou **Ctrl-Échap** au clavier PS/2,
   active/arrête à tout moment (menu, BASIC, DOS) la trace de chaque `INT 13h`/`1Ah` sur l'UART :
   `<nn AX BX CX DX ES` à l'entrée, `-AX CX DX CF>` au retour (+ les 8 octets de la RTC pour `INT 1Ah`). Une ligne
   sans `-... >` final = le 8088 s'est arrêté pendant cet appel. L'ISR reconnaît la touche (`TRACE_KEY`/`ps2_hotkey`,
