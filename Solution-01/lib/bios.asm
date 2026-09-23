@@ -1083,6 +1083,8 @@ int1ah_handler:
         BIOS_FRAME
         cmp     byte [BIOS_TRC_ON], 0
         je      .trc_skip
+        cmp     byte [bp + FR_ALH], 00h ; AH=00h (lire les ticks) PAS trace: DOS 3.30 l'appelle en boucle
+        je      .trc_skip               ; (~ toutes les 0,6 s) a l'invite - la trace deborderait sans rien dire
         mov     al, 1Ah
         call    bios_trace_in
 .trc_skip:
