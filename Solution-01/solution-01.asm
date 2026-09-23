@@ -3928,8 +3928,8 @@ cpu_test_show_result:
 
 ; --- constantes pour clock_datetime_action/information_action, plus bas ---
 BIOS_VERSION_MAJOR equ 1                ; version du BIOS/ROM affichee par
-BIOS_VERSION_MINOR equ 0                ; "4) Information" - correspond a
-                                         ; "Version 1.0" du splash (lcd_txt_splash_l2,
+BIOS_VERSION_MINOR equ 2                ; "4) Information" - correspond a
+                                         ; "Version 1.2" du splash (lcd_txt_splash_l2,
                                          ; plus bas) - A MAINTENIR MANUELLEMENT en
                                          ; phase avec lui si l'un des 2 change
 DISK_TOTAL_KB       equ 8192            ; capacite NOMINALE de la flash SPI du pont
@@ -5964,7 +5964,7 @@ txt_dump_seg_off_sep:   db      ':0x', 0
 
 ; ---- ecran de demarrage (3 secondes, une seule fois - voir start:) ----
 lcd_text lcd_txt_splash_l1, 'Breadboard 8088', 20
-lcd_text lcd_txt_splash_l2, 'Version 1.0', 20
+lcd_text lcd_txt_splash_l2, 'Version 1.2', 20
 lcd_txt_splash_l3:      times   20 db '-'       ; remplissage '-' (pas ' ') - hors macro
                         db      0
 lcd_text lcd_txt_splash_l4, '(c) VE2CUY 2026', 20
