@@ -1054,17 +1054,17 @@ void loop() {
 #endif
   dbgFlush();
 
-  // Reset du 8088 demande (Ctrl-Alt-Suppr, Ctrl-\). Si le 8088 ne lit plus rien (IBF = 1 depuis STUCK_MS:
-  // fige), le terminal n'est plus lu plus bas - on y cherche Ctrl-\ ici (les autres octets sont perdus:
-  // le 8088 ne les aurait jamais lus).
+  // Reset du 8088 demande (Ctrl-Alt-Suppr, Ctrl-\). Si le 8088 ne lit plus rien, le terminal n'est plus
+  // lu plus bas - on y cherche Ctrl-\ ici (les autres octets sont perdus: le 8088 ne les aurait jamais lus).
+  // "Fige" = IBF = 1 (dernier octet envoye non lu) ET plus rien envoye depuis STUCK_MS. Premiere version
+  // (1.2 initiale): IBF = 1 observe a CHAQUE debut de boucle pendant STUCK_MS - FAUX pendant un collage:
+  // un tour de boucle (echo vers l'USB et le LCD I2C) peut durer plus que GAP_US, l'octet suivant partait
+  // alors en fin de tour et le debut du tour suivant revoyait IBF = 1 - le 8088 semblait fige et le reste
+  // du collage etait jete ("60 PI = 3.14159265" -> "60").
 #if USE_IBF
-  { static uint32_t ibfSince = 0;
-    if ((GPIOA->IDR >> IBF_BIT) & 1) { if (ibfSince == 0) ibfSince = millis() | 1; }
-    else ibfSince = 0;
-    if (ibfSince != 0 && (uint32_t)(millis() - ibfSince) > STUCK_MS) {
-      while (UsbSerial.available() > 0)
-        if ((uint8_t)UsbSerial.read() == RESET_UART_KEY) { resetRequest = true; break; }
-    }
+  if (((GPIOA->IDR >> IBF_BIT) & 1) && (uint32_t)(micros() - lastTx) > STUCK_MS * 1000UL) {
+    while (UsbSerial.available() > 0)
+      if ((uint8_t)UsbSerial.read() == RESET_UART_KEY) { resetRequest = true; break; }
   }
 #endif
   if (resetRequest) reset8088Pulse();
