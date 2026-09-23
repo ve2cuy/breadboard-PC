@@ -106,7 +106,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 0
+#define FW_VERSION_MINOR 1
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -493,10 +493,17 @@ static void fsExec(const uint8_t *c) {
       File32 f;
       while (f.openNext(&dirRoot, O_RDONLY)) {
         if (f.isDir() || f.isHidden()) { f.close(); continue; }
-        char name[16];
-        f.getName(name, sizeof name);
+        // Nom LONG s'il tient en 8.3 (12 caracteres: "hello.asm" garde sa casse), sinon le nom
+        // COURT (ex. "pcdos2_1_bug.img" -> "PCDOS2~1.IMG", que le 8088 peut ouvrir tel quel).
+        // Avant: getName() dans un tampon de 16 octets ECHOUAIT pour un nom long de 16+
+        // caracteres -> longueur 0 = "plus d'entree" pour le 8088: la liste s'arretait LA et
+        // tous les fichiers suivants disparaissaient (FILES, List files, Boot disk image).
+        char name[64];
+        size_t n = f.getName(name, sizeof name);
+        if (n == 0 || n > 12) n = f.getSFN(name, 13);
         uint32_t sz = f.fileSize();
         f.close();
+        if (n == 0 || n > 12) continue;    // aucun nom utilisable: entree sautee, pas fin de liste
         uint8_t len = (uint8_t)strlen(name);
         replyByte(len);
         for (uint8_t i = 0; i < len; i++) replyByte((uint8_t)name[i]);
