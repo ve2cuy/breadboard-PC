@@ -150,7 +150,7 @@ PlatformIO : `Adafruit SPIFlash` et `SdFat - Adafruit Fork`.
 | `29h`, LBA (4 octets) | LIRE le secteur LBA de l'image dans le tampon du pont → état (puis `22h`) |
 | `2Ah`, LBA (4 octets) | ÉCRIRE le tampon (déposé par `23h`) dans le secteur LBA de l'image → état |
 | `2Bh` | SOMME de contrôle : somme (16 bits) des 512 octets du tampon → 2 octets (poids faible d'abord). Le 8088 la demande après chaque secteur lu (`21h`/`29h`), la compare à celle des octets reçus et relit le secteur (3 essais) si elles diffèrent |
-| `2Ch`, action | HORLOGE du 8088 : `0` lire (ne rien changer), `1` +0,1 MHz, `2` -0,1 MHz, `3` +1 MHz, `4` -1 MHz (bornes 1-10 MHz), `5` → 4,77 MHz (défaut), `6` → 8 MHz (même numérotation que les options du sous-menu Clock speed, `Solution-01/solution-01.asm`) → 4 octets (fréquence résultante en Hz, poids faible d'abord) |
+| `2Ch`, action | HORLOGE du 8088 : `0` lire (ne rien changer), `1` +0,1 MHz, `2` -0,1 MHz, `3` +1 MHz, `4` -1 MHz (bornes 1-10 MHz), `5` → 4,77 MHz (défaut), `6` → 8 MHz (même numérotation que les options du sous-menu Clock speed, `Solution-01/solution-01.asm`) → 4 octets (fréquence **réellement générée** en Hz, poids faible d'abord — lue dans les registres ARR/PSC du minuteur après coup, **pas** la fréquence demandée : un écart de plusieurs % a été mesuré à l'oscilloscope loin de 4,77 MHz, l'arrondi entier du prescaler/de l'ARR devenant significatif à ces fréquences) |
 | `25h` | USB ON : le PC prend le disque (lecteur de masse) → état ; état 9 = pile USB sans lecteur de masse |
 | `26h` | USB OFF : le pont reprend le disque (remonte le volume) → état |
 

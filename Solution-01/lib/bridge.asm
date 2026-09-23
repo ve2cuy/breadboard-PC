@@ -531,8 +531,12 @@ fs_cmd4:
 ; fs_clock_cmd: DL = code d'action pour l'horloge du 8088 (0 lire, 1 +0,1 MHz,
 ; 2 -0,1 MHz, 3 +1 MHz, 4 -1 MHz, 5 -> 4,77 MHz, 6 -> 8 MHz - meme numerotation que
 ; les options du sous-menu Clock speed, solution-01.asm) -> DX:AX = frequence
-; resultante en Hz (poids faible d'abord, meme convention que fs_cmd4 ci-dessus -
-; mais avec un octet d'ARGUMENT en plus, donc pas une simple variante de fs_cmd4).
+; REELLEMENT GENEREE en Hz (poids faible d'abord, meme convention que fs_cmd4
+; ci-dessus - mais avec un octet d'ARGUMENT en plus, donc pas une simple variante
+; de fs_cmd4) - PAS la frequence demandee: le pont lit la valeur reelle dans les
+; registres de son minuteur (voir arduino/8088_bridge_stm32/src/main.cpp,
+; actualClockHz) - un ecart de plusieurs % a ete mesure a l'oscilloscope loin de
+; 4,77 MHz (arrondi du prescaler/de l'ARR, plus significatif a ces frequences).
 ; CF = 1: delai (pont sans cette commande, ou muet).
 fs_clock_cmd:
         push    cx

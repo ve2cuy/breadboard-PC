@@ -292,8 +292,14 @@ static void applyTime(const uint8_t *a) {  // annee (2 octets), mois, jour, h, m
 // 1 MHz), bornee a [1, 10] MHz, 4,77 MHz par defaut au demarrage de ce pont (vitesse
 // du PC IBM d'origine). Commande 2Ch (1 octet d'argument, le CODE D'ACTION, numerote
 // comme les options du sous-menu Clock speed - voir Solution-01/solution-01.asm) ->
-// reponse 4 octets = la frequence resultante en Hz (poids faible d'abord, meme
-// convention que fs_free/fs_dir_next - voir Solution-01/lib/bridge.asm):
+// reponse 4 octets = la frequence REELLEMENT GENEREE en Hz (poids faible d'abord,
+// meme convention que fs_free/fs_dir_next - voir Solution-01/lib/bridge.asm) -
+// PAS la frequence demandee (voir actualClockHz ci-dessous, et Directives.md: rapporte
+// sur le materiel reel, mesure a l'oscilloscope - un ecart pouvant depasser 4% a ete
+// observe entre la frequence demandee et la frequence reellement generee, l'arrondi
+// du prescaler/de l'ARR du minuteur devenant significatif loin de 4,77 MHz - PLUS le
+// double arrondi entier de HardwareTimer::setOverflow(), voir
+// framework-arduinoststm32/.../HardwareTimer.cpp):
 //   0 = ne rien changer (sert de LIRE), 1 = +0,1 MHz, 2 = -0,1 MHz, 3 = +1 MHz,
 //   4 = -1 MHz, 5 = aller a 4,77 MHz, 6 = aller a 8 MHz.
 // ============================================================================
@@ -303,10 +309,21 @@ static void applyTime(const uint8_t *a) {  // annee (2 octets), mois, jour, h, m
 #define CLOCK_STEP_SMALL  100000UL                 // 0,1 MHz
 #define CLOCK_STEP_BIG   1000000UL                 // 1 MHz
 static HardwareTimer clockTimer(TIM2);
-static uint32_t clockHz = CLOCK_DEFAULT_HZ;
+static uint32_t clockHz = CLOCK_DEFAULT_HZ;        // frequence DEMANDEE (ce que le 8088 a
+                                                    // demande pour la derniere fois)
+static uint32_t actualClockHz = CLOCK_DEFAULT_HZ;  // frequence REELLEMENT generee, lue
+                                                    // dans les registres ARR/PSC du minuteur
+                                                    // APRES setPWM() (getOverflow(HERTZ_FORMAT)
+                                                    // relit LL_TIM_GetAutoReload/GetPrescaler -
+                                                    // les MEMES valeurs que setOverflow() vient
+                                                    // d'ecrire, donc reflete fidelement ce que
+                                                    // le materiel produit vraiment) - c'est
+                                                    // CETTE valeur qui est renvoyee au 8088,
+                                                    // PAS clockHz
 
 static void clockApply() {                         // (re)configure le PWM sur la frequence courante
   clockTimer.setPWM(4, PIN_CLK8088, clockHz, 33);
+  actualClockHz = clockTimer.getOverflow(HERTZ_FORMAT);
 }
 
 // clockSetup: PREMIERE chose faite dans setup() - demarre l'horloge du 8088 a 4,77 MHz
@@ -334,8 +351,10 @@ static void clockExec(uint8_t action) {
     default: break;                                   // 0 (ou inconnu) = lire seulement
   }
   if (action >= 1 && action <= 6) clockApply();
-  replyByte((uint8_t)clockHz); replyByte((uint8_t)(clockHz >> 8));
-  replyByte((uint8_t)(clockHz >> 16)); replyByte((uint8_t)(clockHz >> 24));
+  // actualClockHz (REELLEMENT genere), PAS clockHz (seulement DEMANDE) - voir la
+  // remarque en tete de section
+  replyByte((uint8_t)actualClockHz); replyByte((uint8_t)(actualClockHz >> 8));
+  replyByte((uint8_t)(actualClockHz >> 16)); replyByte((uint8_t)(actualClockHz >> 24));
 }
 
 // ============================================================================
