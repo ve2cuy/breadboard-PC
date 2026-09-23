@@ -38,7 +38,7 @@ BAS_SRC     = lib/basic.asm lib/basic_tokens.inc lib/basic_float.asm lib/basic_f
 # du fichier de sortie. Un dossier local du projet n'a pas ce probleme.
 CHECK_DIR   = build/check
 
-.PHONY: all rom rom-fr rom-en rom-pause lib check clean check-modules test map trace trace-nohd
+.PHONY: all rom rom-fr rom-en rom-pause lib check clean check-modules test test-rom test-rom-complet map trace trace-nohd
 
 # --- Cible par defaut: la ROM complete + les modules individuels ---
 all: rom lib
@@ -146,6 +146,15 @@ map:
 
 # --- Bancs d'essai sous emulateur (Unicorn - pip install unicorn numpy): Tiny BASIC,
 # --- bibliotheque flottante et BASIC (assez long: ~2 minutes) ---
+# --- scenarios de bout en bout avec IRQ1 ASYNCHRONES (tests/rom_sim.py): DOS 2.1/3.30 reels, trace,
+# --- scrutation du pont (~ 2 min); test-rom-complet ajoute la ROM COMPLETE: menu, Ctrl-\, reamorcage
+# --- de DOS, collage au BASIC (plusieurs minutes de plus). Hors de "test" (trop longs). ---
+test-rom:
+	python3 tests/rom_test.py
+
+test-rom-complet:
+	python3 tests/rom_test.py --complet
+
 test:
 	python3 tests/tb_test.py
 	python3 tests/fl_test.py

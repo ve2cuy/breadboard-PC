@@ -1,0 +1,13 @@
+# Exemple de scenario pour tests/rom_sim.py (ROM complete):
+#   python tests/rom_sim.py --image ../PC-DOS/pcdos2_1.img tests/scenario_dos21.txt
+# Une paire par ligne: "texte attendu sur l'UART => touches a taper" (\r = Entree, \x1c = Ctrl-\, \x14 = Ctrl-T).
+# Le texte attendu est cherche APRES le point atteint par la ligne precedente.
+4) Configuration => 3
+Boot disk image => 3
+): => 1
+Enter new date: => \r
+Enter new time: => \r
+A> => ver\r
+A> => \x14dir\r
+A> => \x14
+ARRETEE =>

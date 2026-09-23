@@ -311,7 +311,10 @@ i86/                            (racine du dépôt Git)
         │   ├── fl_test.asm/.py Bibliothèque flottante (comparée à numpy.float32)
         │   ├── basic_test.asm  BASIC : harnais assemblé avec lib/basic.asm
         │   ├── basic_harness.py  émulateur, E/S UART simulées, garde d'écritures
-        │   └── basic_test.py   scénarios du BASIC (make test)
+        │   ├── basic_test.py   scénarios du BASIC (make test)
+        │   ├── rom_sim.py      ROM complète / BIOS avec IRQ1 asynchrones (8255, 8259, ISR)
+        │   ├── rom_test.py     scénarios DOS, trace, Ctrl-\, collage (make test-rom)
+        │   └── scenario_dos21.txt  exemple de scénario pour rom_sim.py en ligne de commande
         ├── check_rom.py        Validation structurelle du .bin assemblé
         ├── .gitignore          Ignore build/ (fichiers jetables de check-modules)
         ├── include/
@@ -1629,10 +1632,24 @@ make lib      # modules individuels (lib/bin/lcd.bin, lib/bin/uart.bin, lib/util
 make check    # assemble la ROM puis valide sa structure (check_rom.py)
 make check-modules  # verifie que chaque module s'assemble seul, sans erreur
 make test     # bancs d'essai sous emulateur (Unicorn): Tiny BASIC, bibliotheque flottante, BASIC (~2 min)
+make test-rom # scenarios avec IRQ1 asynchrones: DOS 2.1/3.30 reels, trace, scrutation du pont (~2 min)
+make test-rom-complet  # + la ROM COMPLETE: menu, Ctrl-\ puis reamorcage de DOS, collage au BASIC (plus long)
 make clean    # supprime tous les .bin generes
 ```
 
 Détails complets de chaque cible : voir [Makefile.md](Makefile.md).
+
+**Simulateur de la ROM complète** (`tests/rom_sim.py`) : exécute sous Unicorn la ROM que l'on grave (ou le
+BIOS seul), en faisant passer chaque octet du pont et chaque frappe par le **vrai chemin matériel** — 8255
+(IBF, étiquettes PC0/PC1), 8259 (masque d'IR1, EOI) puis l'ISR — contrairement aux autres bancs, qui déposent
+les octets directement dans les tampons. Le pont STM32 est simulé (`BridgeModel`). On le pilote par un
+**scénario** : « texte attendu sur l'UART ⇒ touches à taper ». Exemple :
+
+```
+python tests/rom_sim.py --image ../PC-DOS/pcdos2_1.img tests/scenario_dos21.txt
+```
+
+Il ne reproduit que la logique : ni le timing ni l'électrique réels (un gel matériel n'y apparaît pas).
 
 ### Bilinguisme (FR/EN)
 
