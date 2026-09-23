@@ -38,7 +38,7 @@ BAS_SRC     = lib/basic.asm lib/basic_tokens.inc lib/basic_float.asm lib/basic_f
 # du fichier de sortie. Un dossier local du projet n'a pas ce probleme.
 CHECK_DIR   = build/check
 
-.PHONY: all rom rom-fr rom-en lib check clean check-modules test map trace trace-nohd
+.PHONY: all rom rom-fr rom-en rom-pause lib check clean check-modules test map trace trace-nohd
 
 # --- Cible par defaut: la ROM complete + les modules individuels ---
 all: rom lib
@@ -71,6 +71,12 @@ rom-en: $(BAS_SRC) solution-01.asm lib/bios.asm
 	$(NASM) $(NASMFLAGS) -dLANG_EN=1 -w-error=label-redef-late solution-01.asm -o solution-01-en.bin
 	cp solution-01-en.bin "$(dir $(ROM_OUT))solution-01-en.bin"
 	@echo "ROM (anglais): solution-01-en.bin, copiee vers $(dir $(ROM_OUT))"
+
+# --- ROM d'ESSAI: pause (~5 ms) apres chaque ecriture de secteur (BRIDGE_WRITE_PAUSE, lib/bridge.asm) ---
+rom-pause: $(BAS_SRC) solution-01.asm lib/bios.asm
+	$(NASM) $(NASMFLAGS) -dBRIDGE_WRITE_PAUSE=1400 solution-01.asm -o solution-01-pause.bin
+	cp solution-01-pause.bin "$(dir $(ROM_OUT))solution-01-pause.bin"
+	@echo "ROM d'essai (pause apres ecriture): solution-01-pause.bin, copiee vers $(dir $(ROM_OUT))"
 
 # --- ROM de diagnostic: chaque INT 13h / 1Ah est tracee sur l'UART (<nn AX BX CX DX ES -AH CF>); copiee en solution-01-trace.bin ---
 trace: $(BAS_SRC) solution-01.asm lib/bios.asm

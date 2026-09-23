@@ -111,6 +111,10 @@ FS_MODE_READ    equ     0
 FS_MODE_WRITE   equ     1
 FS_MODE_APPEND  equ     2
 
+%ifndef BRIDGE_WRITE_PAUSE
+%define BRIDGE_WRITE_PAUSE 0            ; ESSAI (`make rom-pause`): tours de LOOP (~17 cycles) a la fin de chaque
+%endif                                  ; ecriture de secteur (fs_blk_write), apres la reponse du pont - 1400 ~ 5 ms a
+                                        ; 4,77 MHz. 0 = aucune pause (ROM officielle, code identique)
 BR_TIMEOUT      equ     8400h           ; tours de scrutation par unite de delai (~ 0,5 s a 4,77 MHz; etait
                                         ; 0C000h avant la scrutation du 8255 dans bridge_rx_get_t: tour ~ 45 % plus long)
 FS_WAIT         equ     6               ; delai des commandes disque (unites, ~ 2,8 s)
@@ -761,6 +765,17 @@ fs_blk_write:
         add     sp, 2
         stc
 .out:
+%if BRIDGE_WRITE_PAUSE
+        ; ESSAI: repit apres une ecriture sur la flash du pont (le 8088 figeait/redemarrait juste APRES une
+        ; ecriture reussie, au debut de la suivante - trace DOS 2.1: FAT n°1 ecrite, gel en ecrivant la n°2)
+        pushf
+        push    cx
+        mov     cx, BRIDGE_WRITE_PAUSE
+.pause:
+        loop    .pause
+        pop     cx
+        popf
+%endif
         pop     dx
         pop     cx
         pop     bx
