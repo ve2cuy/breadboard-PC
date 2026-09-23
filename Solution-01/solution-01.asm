@@ -3934,6 +3934,28 @@ DISK_TOTAL_KB       equ 8192            ; capacite NOMINALE de la flash SPI du p
                                          ; capacite TOTALE, seulement l'espace LIBRE -
                                          ; fs_free, lib/bridge.asm) - a ajuster si la
                                          ; puce flash change un jour
+INFO_RTC_THROTTLE   equ 3000            ; information_action, .loop plus bas: nombre de
+                                         ; passes "verifie juste une touche" entre deux
+                                         ; rtc_get - PAS interroge le pont a chaque tour
+                                         ; (bug materiel reel signale par l'utilisateur
+                                         ; dans Manifest.md: Echap ignore sur cet ecran,
+                                         ; heure LCD figee sauf a la frappe d'une touche).
+                                         ; Cause: BRIDGE_EXPECT_OFF (lib/isr.asm) reste a
+                                         ; 1 pendant tout l'aller-retour rtc_get (~10 ms,
+                                         ; deja documente comme un risque pour une touche
+                                         ; tapee PENDANT ce court intervalle - README.md,
+                                         ; PC1); une boucle qui rappelle rtc_get EN
+                                         ; CONTINU (sans repit) maintient ce drapeau actif
+                                         ; une fraction du temps proche de 100%, au lieu
+                                         ; d'un cas rare - d'ou Echap presque toujours
+                                         ; avale. Valeur choisie prudemment (large marge
+                                         ; de securite meme a 1 MHz, la borne basse du
+                                         ; sous-menu Clock speed) pour laisser de longs
+                                         ; intervalles surs entre deux commandes, tout en
+                                         ; restant bien sous 1 seconde - donc toujours
+                                         ; "rafraichie a toutes les secondes" (demande
+                                         ; d'origine). A AJUSTER si le materiel reel montre
+                                         ; que ce n'est pas encore suffisant (ou trop lent).
 
 ; ============================================================
 ; clock_datetime_action
@@ -4090,6 +4112,30 @@ clock_datetime_action:
 ; Echap (verification non bloquante, meme technique que
 ; cpu_speed_test_action/dump_memory_action) revient au sous-menu
 ; Configuration, sans message particulier.
+;
+; BUGS SIGNALES SUR LE MATERIEL REEL (Manifest.md, ajoutes par l'utilisateur
+; directement dans le fichier) ET CORRIGES ICI:
+; 1) Echap ignore sur cet ecran. Cause: BRIDGE_EXPECT_OFF (mis a 1 par
+;    rtc_get pendant tout l'aller-retour au pont, ~10 ms - deja documente
+;    comme un risque pour une touche tapee PENDANT ce court intervalle,
+;    voir README.md/PC1) restait a 1 une fraction du temps proche de 100%,
+;    puisque la .loop d'origine rappelait rtc_get EN CONTINU, sans le
+;    moindre repit entre deux commandes - transformant un risque rare en
+;    quasi-certitude. Corrige par INFO_RTC_THROTTLE (ci-dessus): le pont
+;    n'est plus interroge qu'une fois toutes les INFO_RTC_THROTTLE passes
+;    de la boucle (le clavier, lui, est verifie a CHAQUE passe).
+; 2) Heure du LCD figee, actualisee seulement a la frappe d'une touche.
+;    Meme cause probable: la boucle non throttlee inondait le pont/UART de
+;    commandes GET_TIME en rafale (aucun repit reel entre deux, alors que
+;    le lien materiel physique EXIGE un delai - README.md), ce qui pouvait
+;    desynchroniser/faire echouer la plupart des reponses (traitees comme
+;    "muet", CF=1, .rearm plus bas) - une frappe de touche, en intercalant
+;    un peu de temps de traitement, laissait par hasard une commande
+;    aboutir. Le meme throttle regle aussi ce symptome.
+; 3) L'heure UART defilait (nouvelle ligne a chaque seconde) plutot que de
+;    se redessiner EN PLACE. Corrige: un CR (13, PAS CRLF) repositionne le
+;    curseur en debut de la MEME ligne juste avant de reecrire l'heure
+;    (symetrique du i2c_lcd_goto_col qui fait deja ce travail pour le LCD).
 ; ============================================================
 information_action:
         push    ax
@@ -4223,7 +4269,18 @@ information_action:
         print   txt_info_return, UART                 ; "(Echap: retour au sous-menu Configuration)"
 
         ; --- boucle: date/heure en direct (ligne 0), redessinee des que
-        ; la seconde change - voir l'en-tete ---
+        ; la seconde change - voir l'en-tete. Le pont n'est interroge
+        ; qu'une fois toutes les INFO_RTC_THROTTLE passes (voir plus haut,
+        ; bug Echap/LCD fige signale sur le materiel reel, Manifest.md).
+        ; SI = compteur de passes avant le prochain rtc_get, initialise
+        ; ICI (PAS plus haut: tout l'affichage statique BIOS/RAM/Disque
+        ; au-dessus ecrase SI a chaque "mov si, <chaine>" - bug trouve par
+        ; le test Unicorn AVANT tout essai materiel: la 1re mise a jour ne
+        ; s'affichait jamais, SI valant l'adresse de txt_info_return au
+        ; lieu de 0 en entrant dans .loop) - 0 => interroge tout de suite
+        ; (1er tour). Libre pour cet usage: ps2_key_available/ps2_get_char
+        ; preservent SI, et rtc_get ne le touche pas (voir bridge.asm) ---
+        xor     si, si
 .loop:
         call    ps2_key_available
         jc      .no_key
@@ -4231,15 +4288,23 @@ information_action:
         cmp     al, 27
         je      .out
 .no_key:
+        or      si, si
+        jz      .poll                       ; compteur epuise: interroge le pont ce tour-ci
+        dec     si                          ; sinon: juste le clavier, pas de rtc_get
+        jmp     .loop                       ; (garde BRIDGE_EXPECT_OFF a 0 le plus possible)
+.poll:
         mov     di, BIOS_RTC_OFF
         call    rtc_get
-        jc      .loop                      ; pont temporairement muet: retente au
-                                             ; prochain tour (voir l'en-tete)
+        jc      .rearm                      ; pont temporairement muet: retente bientot
+                                             ; quand meme (voir l'en-tete)
         mov     al, [es:BIOS_RTC_OFF + 6]   ; secondes courantes
         cmp     al, dl
-        je      .loop                       ; pas de changement depuis le dernier affichage
+        je      .rearm                      ; pas de changement depuis le dernier affichage
         mov     dl, al                      ; memorise la nouvelle seconde affichee
 
+        mov     al, 13                      ; CR (PAS CRLF): redessine LA MEME ligne UART
+        call    uart_tx_byte                ; au lieu d'en faire defiler une nouvelle a
+                                             ; chaque seconde (bug signale, Manifest.md)
         i2c_lcd_goto_col LCD_LINE1, 0
         mov     bp, 3
         mov     al, [es:BIOS_RTC_OFF + 3]   ; jour
@@ -4280,12 +4345,14 @@ information_action:
         xor     ah, ah
         mov     cl, 2
         call    print_dec_n
-        mov     si, txt_crlf
-        mov     bp, 1                        ; CRLF: UART seulement (le LCD n'en a pas besoin)
-        call    clock_print_str
-
+.rearm:
+        mov     si, INFO_RTC_THROTTLE
         jmp     .loop
 .out:
+        mov     al, 13                      ; laisse le curseur UART sur une ligne propre
+        call    uart_tx_byte                ; (la derniere heure affichee reste lisible,
+        mov     si, txt_crlf                ; pas de CR/LF partiel au milieu de la ligne)
+        call    bios_puts
         pop     es
         pop     di
         pop     si

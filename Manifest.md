@@ -20,7 +20,8 @@ NOTE: le texte en () sont des directives pour Claude.
 
 ---
 
-À corriger ultérieurement
+
+1 - 
 
 1) Clock speed
 --> Current speed:  7.07 MHz
@@ -35,3 +36,27 @@ Le 8088 roule 54% plus vite qu'un 8088 a 4,77 MHz.
 Vitesse estimee:  7.37 MHz
 
 Mesuré à l'osciloscope, 7.3-4 mhz
+
+--------------------------------------------------------------
+
+2 - UART Repositionner le curseur sur la ligne de l'heure
+
+1)
+22-09-2026 20:03:18
+22-09-2026 20:03:19
+22-09-2026 20:03:20
+22-09-2026 20:03:21
+22-09-2026 20:03:22
+22-09-2026 20:03:23
+22-09-2026 20:03:24
+...
+
+La touche ESC ne fonctionne pas ici
+
+
+2) LCD - Actualiser l'heure à chaque seconde.
+
+Présentement, l'heure LCD est actualisé seulement à la saisie d'une touche clavier.
+
+--------------------------------------------------------------
+
