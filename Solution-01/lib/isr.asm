@@ -42,6 +42,20 @@ irq1_arduino_handler:
         in      al, PORTC               ; mot d'etat + etiquette (PC0/PC1)
         test    al, PC_IBF
         jz      .fin                    ; rien a lire: interruption parasite
+        call    irq1_dispatch
+.fin:
+        mov     al, 20h                 ; OCW2: EOI non specifique
+        out     PIC_CMD, al
+
+        pop     ds
+        pop     ax
+        iret
+
+; irq1_dispatch: lit l'octet du Port A et le range selon son etiquette. Entree: AL = mot
+; d'etat du Port C (IBF = 1), DS = VAR_SEG. Detruit AL seulement. Appelee par l'ISR ci-dessus
+; ET par la scrutation de bridge_rx_get_t (lib/bridge.asm) quand IR1 est masquee pendant une
+; commande au pont - meme classement dans les deux cas.
+irq1_dispatch:
         test    al, PC_TAG_REPLY
         jz      .notreply
         cmp     byte [BRIDGE_EXPECT_OFF], 0     ; PC1 = 1 ne compte que pendant une commande
@@ -51,27 +65,18 @@ irq1_arduino_handler:
         test    al, PC_TAG_UART
         jnz     .uart
         in      al, PORTA               ; scan code clavier brut
-        call    ps2_rx_push
-        jmp     .fin
+        jmp     ps2_rx_push
 .uart:
         in      al, PORTA               ; octet recu par l'UART materiel
         cmp     al, WARM_RESET_KEY
         je      .warm
-        call    uart_rx_push
-        jmp     .fin
+        jmp     uart_rx_push
 .warm:
         mov     al, 20h                 ; EOI (start: reinitialise de toute facon le 8259)
         out     PIC_CMD, al
         jmp     0C000h:0000h            ; le meme saut que le vecteur de reset (FFFF0h)
 .reply:
         in      al, PORTA               ; reponse du pont (horloge RTC, disque...)
-        call    bridge_rx_push
-.fin:
-        mov     al, 20h                 ; OCW2: EOI non specifique
-        out     PIC_CMD, al
-
-        pop     ds
-        pop     ax
-        iret
+        jmp     bridge_rx_push
 
 %endif ; ISR_ASM

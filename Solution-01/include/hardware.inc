@@ -98,6 +98,12 @@ ARD_ABSENT    equ     2             ; delai depasse: on n'attend plus (voir
 ; 8255 (voir Directives.md pour la discussion du decodage).
 PIC_CMD     EQU    00100000B   ;8259 - registre de commande (ICW1/OCW2/OCW3)
 PIC_DATA    EQU    00100001B   ;8259 - registre de donnees (ICW2/ICW4/OCW1=IMR)
+; Masques IMR (OCW1) ecrits tels quels (jamais relus: IN 21h n'a pas ete valide sur le montage).
+; PIC_IMR_BRIDGE: IR1 masquee PENDANT une commande au pont (bridge_expect, lib/bridge.asm): les
+; reponses (et les frappes qui arrivent entre-temps) sont alors lues par SCRUTATION du 8255
+; (bridge_rx_get_t), sans aucun cycle INTA - un secteur = ~530 octets = ~530 IRQ1 autrement.
+PIC_IMR_NORMAL  equ     11111100b       ; IR0 (bouton) et IR1 (8255) demasquees
+PIC_IMR_BRIDGE  equ     11111110b       ; IR0 seule: IR1 masquee (commande au pont en cours)
 
 ; --- copie fantome du port A + compteurs de progression du test RAM
 ; --- + etat de l'editeur RAM + tampon d'edition (edit_ram_action,

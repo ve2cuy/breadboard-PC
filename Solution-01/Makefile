@@ -121,7 +121,7 @@ check-modules: | $(CHECK_DIR)
 	$(NASM) $(NASMFLAGS) lib/ps2.asm     -o $(CHECK_DIR)/_check_ps2.bin
 	$(NASM) $(NASMFLAGS) lib/tiny_basic.asm -o $(CHECK_DIR)/_check_tiny_basic.bin
 	$(NASM) $(NASMFLAGS) lib/basic.asm   -o $(CHECK_DIR)/_check_basic.bin
-	$(NASM) $(NASMFLAGS) lib/bridge.asm  -o $(CHECK_DIR)/_check_bridge.bin
+	$(NASM) $(NASMFLAGS) -dBRIDGE_NO_ISR lib/bridge.asm  -o $(CHECK_DIR)/_check_bridge.bin   # seul: sans lib/isr.asm (irq1_dispatch)
 	@echo "Tous les modules s'assemblent individuellement - OK"
 
 $(CHECK_DIR):

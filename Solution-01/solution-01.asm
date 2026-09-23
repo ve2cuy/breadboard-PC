@@ -150,7 +150,12 @@ start:
         mov     ss, ax          ; SS = 1000h -> pile en fin de RAM (128K)
         mov     sp, 0000h       ; SP = 0000h -> sommet de la pile, remis a zero
                                  ; a CHAQUE cycle
-        sti
+                                 ; PAS de STI ici: les interruptions restent coupees
+                                 ; jusqu'au STI qui suit init_8259 (plus bas). Apres un
+                                 ; redemarrage a chaud (Ctrl-\, lib/isr.asm) le 8259 est
+                                 ; encore programme, IR1 demasquee: une frappe pendant
+                                 ; l'effacement de la RAM ci-dessous (qui met l'IVT a 0)
+                                 ; ferait sauter le 8088 en 0000:0000.
 
         ; --- Efface TOUTE la RAM (128K: segments 0000h et 1000h) a 0,
         ; AVANT quoi que ce soit d'autre - elimine le "garbage"
@@ -5078,7 +5083,7 @@ ICW1_EDGE_SINGLE_ICW4  equ     00010011b       ; D4=1(ICW1) LTIM=0(front)
                                                  ; IC4=1(ICW4 suit)
 ICW2_VECTOR_BASE       equ     08h             ; IR0-IR7 -> INT 08h-0Fh
 ICW4_8086_MANUAL_EOI   equ     00000001b       ; uPM=1(8086/8088), AEOI=0(manuel)
-PIC_MASK_TEST          equ     11111100b       ; OCW1 (IMR): demasque IR0/IR1
+PIC_MASK_TEST          equ     PIC_IMR_NORMAL  ; OCW1 (IMR): demasque IR0/IR1 (include/hardware.inc)
 
 init_8259:
         push    ax

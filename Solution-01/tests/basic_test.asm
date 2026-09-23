@@ -78,6 +78,7 @@ uart_rx_byte:
 
 ; les VRAIES routines du pont (arduino_send, rtc_*, fs_*): le 8255 et le pont sont
 ; emules par tests/basic_harness.py (BridgeModel)
+%define BRIDGE_NO_ISR                   ; pas de lib/isr.asm ici: pas de scrutation du 8255
 %include "lib/bridge.asm"
 
 %include "lib/basic.asm"

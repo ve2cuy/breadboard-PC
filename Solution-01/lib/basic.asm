@@ -49,6 +49,10 @@
 %include "include/hardware.inc"
 %ifndef BASIC_TEST                      ; le banc d'essai (tests/) fournit uart_tx_byte,
 %include "lib/uart.asm"                 ; uart_rx_available et uart_rx_byte
+%ifndef ISR_ASM
+%define BRIDGE_NO_ISR                   ; module autonome (make lib/check-modules): sans lib/isr.asm,
+%endif                                  ; bridge_rx_get_t ne scrute pas le 8255 (sans effet dans la ROM:
+                                        ; bridge.asm y est deja inclus, avec l'ISR)
 %include "lib/bridge.asm"               ; rtc_get / rtc_set (horloge du pont); le banc d'essai
                                         ; les remplace par des simulacres
 %endif

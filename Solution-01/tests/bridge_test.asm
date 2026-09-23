@@ -33,4 +33,5 @@ start:
         out     0FFh, al
         hlt
 
+%define BRIDGE_NO_ISR                   ; pas de lib/isr.asm ici: pas de scrutation du 8255
 %include "lib/bridge.asm"

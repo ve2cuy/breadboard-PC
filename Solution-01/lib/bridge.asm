@@ -111,7 +111,8 @@ FS_MODE_READ    equ     0
 FS_MODE_WRITE   equ     1
 FS_MODE_APPEND  equ     2
 
-BR_TIMEOUT      equ     0C000h          ; tours de scrutation par unite de delai
+BR_TIMEOUT      equ     8400h           ; tours de scrutation par unite de delai (~ 0,5 s a 4,77 MHz; etait
+                                        ; 0C000h avant la scrutation du 8255 dans bridge_rx_get_t: tour ~ 45 % plus long)
 FS_WAIT         equ     6               ; delai des commandes disque (unites, ~ 2,8 s)
 FS_WAIT_FMT     equ     80              ; delai du formatage (~ 37 s)
 
@@ -140,12 +141,17 @@ bridge_rx_flush:
         ret
 
 ; bridge_rx_get_t: attend un octet de reponse -> AL, pendant au plus DX unites de delai.
-; CF = 1 si delai depasse. Preserve BX, CX, DX, BP.
+; CF = 1 si delai depasse. Preserve BX, CX, DX, BP. Pendant une commande (BRIDGE_EXPECT_OFF
+; != 0, IR1 masquee par bridge_expect), lit elle-meme le 8255 par scrutation (irq1_dispatch).
+; BRIDGE_NO_ISR defini (module BASIC autonome, bancs d'essai sans lib/isr.asm): pas de scrutation.
 bridge_rx_get_t:
         push    bx
         push    cx
         push    dx
         push    bp
+        mov     bp, BRIDGE_EXPECT_OFF
+        mov     bh, [bp]                ; BH != 0: commande en cours, IR1 masquee (bridge_expect) -
+                                        ; c'est a nous de lire le 8255 (aucune ISR ne le fera)
 .outer:
         mov     cx, BR_TIMEOUT
 .w:
@@ -154,11 +160,28 @@ bridge_rx_get_t:
         mov     bp, BRIDGE_RX_TAIL_OFF
         cmp     al, [bp]
         jne     .got
+%ifndef BRIDGE_NO_ISR
+        or      bh, bh
+        jz      .next
+        in      al, PORTC               ; SCRUTATION: un octet du pont (ou une frappe) attend-il?
+        test    al, PC_IBF
+        jnz     .poll
+.next:
+%endif
         loop    .w
         dec     dx
         jnz     .outer
         stc
         jmp     .out
+%ifndef BRIDGE_NO_ISR
+.poll:
+        push    ds
+        push    ss
+        pop     ds                      ; DS = VAR_SEG (= SS ici: [bp] ci-dessus l'exige deja)
+        call    irq1_dispatch           ; meme classement que l'ISR (lib/isr.asm): reponse -> tampon
+        pop     ds                      ; du pont, frappe -> tampon clavier/UART, Ctrl-\ -> menu
+        jmp     .w                      ; (CX intact: le tour reprend)
+%endif
 .got:
         mov     bl, al                  ; BL = tete
         xor     bh, bh
@@ -194,12 +217,29 @@ bridge_tx:
         ret
 
 ; bridge_expect: BRIDGE_EXPECT_OFF <- AL (1 = reponse attendue, 0 = non). Preserve tout.
-; L'ISR ne classe un octet comme reponse (PC1 = 1) que pendant cet intervalle.
+; Un octet n'est classe comme reponse (PC1 = 1) que pendant cet intervalle.
+; PENDANT une commande (AL = 1), IR1 est MASQUEE au 8259 et bridge_rx_get_t lit le 8255 par
+; scrutation: une lecture de secteur fait ~530 octets de reponse, soit autant d'IRQ1 et de
+; cycles INTA - c'est PENDANT ces rafales que le 8088 se figeait sur le materiel (traces
+; BIOS_TRACE: gel au milieu d'un INT 13h de lecture, horloge et pont vivants, Ctrl-\ sans
+; effet, RESET du 8088 seul suffisant). Hors commande (AL = 0), IR1 est demasquee: un octet
+; arrive pendant le masque (IBF = 1, front deja memorise par le 8259) est alors servi par l'ISR.
 bridge_expect:
         push    bp
         mov     bp, BRIDGE_EXPECT_OFF
         mov     [bp], al
         pop     bp
+        push    ax
+        pushf
+        cli
+        or      al, al
+        mov     al, PIC_IMR_NORMAL
+        jz      .imr
+        mov     al, PIC_IMR_BRIDGE
+.imr:
+        out     PIC_DATA, al
+        popf
+        pop     ax
         ret
 
 ; rtc_get: lit l'heure dans les 8 octets a ES:DI (annee lo, annee hi, mois, jour,
