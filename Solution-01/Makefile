@@ -64,23 +64,25 @@ $(ROM_BIN): solution-01.asm include/hardware.inc include/delay.inc include/lcd_m
 # --- lent a converger; "rom"/"rom-fr" n'en ont jamais eu besoin.
 rom-fr: $(BAS_SRC) solution-01.asm lib/bios.asm
 	$(NASM) $(NASMFLAGS) solution-01.asm -o solution-01-fr.bin
-	@echo "ROM (francais): solution-01-fr.bin"
+	cp solution-01-fr.bin "$(dir $(ROM_OUT))solution-01-fr.bin"
+	@echo "ROM (francais): solution-01-fr.bin, copiee vers $(dir $(ROM_OUT))"
 
 rom-en: $(BAS_SRC) solution-01.asm lib/bios.asm
 	$(NASM) $(NASMFLAGS) -dLANG_EN=1 -w-error=label-redef-late solution-01.asm -o solution-01-en.bin
-	@echo "ROM (anglais): solution-01-en.bin"
+	cp solution-01-en.bin "$(dir $(ROM_OUT))solution-01-en.bin"
+	@echo "ROM (anglais): solution-01-en.bin, copiee vers $(dir $(ROM_OUT))"
 
-# --- ROM de diagnostic: chaque INT 13h / 1Ah est tracee sur l'UART (<nn AX BX CX DX ES -AH CF>); copiee en rom_trace.bin ---
+# --- ROM de diagnostic: chaque INT 13h / 1Ah est tracee sur l'UART (<nn AX BX CX DX ES -AH CF>); copiee en solution-01-trace.bin ---
 trace: $(BAS_SRC) solution-01.asm lib/bios.asm
 	$(NASM) $(NASMFLAGS) -dBIOS_TRACE=1 solution-01.asm -o solution-01-trace.bin
-	cp solution-01-trace.bin "$(dir $(ROM_OUT))rom_trace.bin"
-	@echo "ROM de trace copiee vers $(dir $(ROM_OUT))rom_trace.bin"
+	cp solution-01-trace.bin "$(dir $(ROM_OUT))solution-01-trace.bin"
+	@echo "ROM de trace copiee vers $(dir $(ROM_OUT))solution-01-trace.bin"
 
-# --- idem + INT 13h refuse les disques DL >= 80h (le DOS ne voit pas la flash comme disque dur): rom_trace_nohd.bin ---
+# --- idem + INT 13h refuse les disques DL >= 80h (le DOS ne voit pas la flash comme disque dur): solution-01-trace-nohd.bin ---
 trace-nohd: $(BAS_SRC) solution-01.asm lib/bios.asm
 	$(NASM) $(NASMFLAGS) -dBIOS_TRACE=1 -dBIOS_HIDE_HD=1 solution-01.asm -o solution-01-trace-nohd.bin
-	cp solution-01-trace-nohd.bin "$(dir $(ROM_OUT))rom_trace_nohd.bin"
-	@echo "ROM trace sans disque dur copiee vers $(dir $(ROM_OUT))rom_trace_nohd.bin"
+	cp solution-01-trace-nohd.bin "$(dir $(ROM_OUT))solution-01-trace-nohd.bin"
+	@echo "ROM trace sans disque dur copiee vers $(dir $(ROM_OUT))solution-01-trace-nohd.bin"
 
 # --- Modules individuels (LCD, UART, delay_ms, LCD I2C, PS/2) ---
 lib: $(LCD_BIN) $(UART_BIN) $(UTILS_BIN) $(LCD_I2C_BIN) $(PS2_BIN) $(TB_BIN) $(BAS_BIN)
