@@ -42,7 +42,10 @@
 //   R4 de projets/Clock-8088/; PA3 servait a TAG2/PC2, jamais cablee sur ce montage - libre)
 //   PA1 <- CLK PS/2   PA2 <- DATA PS/2   PB10 = SCL, PB3 = SDA (LCD I2C2)
 //   PA11/PA12 = USB, PA13/PA14 = SWD, PC13 = LED, PA4-PA7 = flash SPI (reservees),
-//   PB2 = BOOT1 (ne rien y brancher), PA0 = bouton K1 de la carte
+//   PB2 -> RESET du 8088 (broche 21, actif HAUT; 10 kohm vers la masse sur le montage, bouton vers +5 V):
+//   poussee HAUT pour un reset (demarrage du pont, Ctrl-Alt-Suppr au PS/2, Ctrl-\ au terminal), sinon
+//   ENTREE (ne gene pas le bouton, jamais forcee BAS). PB2 = BOOT1: au repos la ligne est BASSE (10 kohm),
+//   le mode DFU (BOOT0 = 1, BOOT1 = 0) reste donc utilisable.   PA0 = bouton K1 de la carte
 // Selon la fiche technique du STM32F411 (DS10314 Rev 8, tableau 8), TOUTES ces
 // broches sont tolerantes 5 V (FT) SAUF PA0 et PB5 (TC, 3,3 V): PB5 n'est donc
 // utilisee qu'en SORTIE (TAG1). Ne jamais y relier une sortie 5 V.
@@ -106,7 +109,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 1
+#define FW_VERSION_MINOR 2
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -840,6 +843,8 @@ static volatile uint32_t ps2Act  = 0;   // dernier front CLK, valide ou non (sil
 static inline bool ps2ClkHigh()  { return (GPIOA->IDR >> PS2_CLK_BIT) & 1; }
 static inline bool ps2DataHigh() { return (GPIOA->IDR >> PS2_DATA_BIT) & 1; }
 
+static void kbdTrack(uint8_t sc);          // Ctrl-Alt-Suppr (voir RESET du 8088, plus bas)
+
 static void ps2Isr() {
   uint32_t now = micros();
   ps2Act = now;
@@ -875,6 +880,7 @@ static void ps2Isr() {
       uint8_t nh = (uint8_t)((ps2Head + 1) & 31);
       if (nh != ps2Tail) { ps2Buf[ps2Head] = ps2Shift; ps2Head = nh; dbg(ps2Shift); }
       else dbg(0x400);
+      kbdTrack(ps2Shift);                  // Ctrl-Alt-Suppr -> reset du 8088 (meme s'il est fige)
     } else if (!ps2ParOk) dbg(0x100 | ps2Shift);
     else dbg(0x200 | ps2Shift);
     ps2Bit = 0;
@@ -894,6 +900,61 @@ static bool ps2Pop(uint8_t &v) {
   v = ps2Buf[ps2Tail];
   ps2Tail = (uint8_t)((ps2Tail + 1) & 31);
   return true;
+}
+
+// ============================================================================
+// RESET materiel du 8088 (PB2 -> broche 21, RESET actif HAUT)
+// Le montage tire RESET a la masse (10 kohm) et son bouton le porte a +5 V: PB2 (tolerante 5 V) n'est
+// donc JAMAIS forcee BAS - soit sortie HAUTE (reset en cours), soit ENTREE sans pull (le bouton marche).
+// Demandes: demarrage du pont (setup: le 8088 reste en reset, horloge deja en marche, jusqu'a ce que le
+// pont soit pret), Ctrl-Alt-Suppr au clavier PS/2 (kbdTrack, dans ps2Isr: detecte meme si le 8088 est
+// fige et ne lit plus rien), Ctrl-\ au terminal (1Ch: n'est plus transmis au 8088 - son ISR faisait un
+// redemarrage LOGICIEL, sans effet quand le 8088 est fige).
+// ============================================================================
+#define RESET8088_BIT      2               // GPIOB
+#define RESET8088_PULSE_MS 10UL            // >> 4 cycles d'horloge exiges par le 8088
+#define RESET_UART_KEY     0x1C            // Ctrl-\ (terminal)
+#define STUCK_MS           500UL           // IBF = 1 depuis ce delai: le 8088 ne lit plus (fige)
+static volatile bool resetRequest = false;
+
+static void reset8088Hold() {              // sortie HAUTE (ODR avant MODER: aucune impulsion basse)
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  GPIOB->BSRR = (1UL << RESET8088_BIT);
+  GPIOB->OTYPER &= ~(1UL << RESET8088_BIT);
+  GPIOB->PUPDR &= ~(3UL << (RESET8088_BIT * 2));
+  GPIOB->MODER = (GPIOB->MODER & ~(3UL << (RESET8088_BIT * 2))) | (1UL << (RESET8088_BIT * 2));
+}
+static void reset8088Release() {           // entree sans pull: les 10 kohm ramenent RESET a 0
+  GPIOB->MODER &= ~(3UL << (RESET8088_BIT * 2));
+}
+
+// Clavier PS/2 (jeu 2): Ctrl (14h, E0 14h) + Alt (11h, E0 11h) enfonces + Suppr (71h, E0 71h) -> reset.
+// Appelee par ps2Isr pour CHAQUE octet recu (rapide, aucun delai).
+static volatile uint8_t kbdMods = 0;       // bit 0: F0 recu, bit 1: E0 recu, bit 2: Ctrl, bit 3: Alt
+static void kbdTrack(uint8_t sc) {
+  if (sc == 0xF0) { kbdMods |= 1; return; }
+  if (sc == 0xE0) { kbdMods |= 2; return; }
+  bool brk = kbdMods & 1;
+  kbdMods &= (uint8_t)~3;
+  uint8_t bit = (sc == 0x14) ? 4 : (sc == 0x11) ? 8 : 0;
+  if (bit) { if (brk) kbdMods &= (uint8_t)~bit; else kbdMods |= bit; return; }
+  if (!brk && sc == 0x71 && (kbdMods & 12) == 12) resetRequest = true;
+}
+
+// Impulsion de reset: l'ancienne session est oubliee (octets en attente dans les deux sens, commande
+// partielle), puis RESET est relache - le 8088 repart au vecteur de reset (menu, RAM effacee).
+static void reset8088Pulse() {
+  reset8088Hold();
+  noInterrupts();
+  ps2Head = ps2Tail = 0;
+  interrupts();
+  qHead = qTail = 0;
+  rqHead = rqTail = 0;
+  cmdLen = 0;
+  uartHoldUntil = 0;
+  delay(RESET8088_PULSE_MS);
+  reset8088Release();
+  resetRequest = false;
 }
 
 // ============================================================================
@@ -926,8 +987,9 @@ static void initPins() {
 
 // ============================================================================
 void setup() {
-  clockSetup();                            // EN PREMIER: le 8088 a besoin d'une horloge des la mise
-                                            // sous tension - avant tout ce qui suit (SPI/USB/RTC, lent)
+  reset8088Hold();                         // le 8088 reste en RESET jusqu'a ce que le pont soit pret (fin de setup)
+  clockSetup();                            // TOUT DE SUITE: le 8088 a besoin d'une horloge (aussi pendant son
+                                            // reset) - avant tout ce qui suit (SPI/USB/RTC, lent)
 #ifdef USE_TINYUSB
   fsMount();                               // la flash d'abord: le lecteur de masse en a besoin
   // Ce coeur n'appelle pas TinyUSB_Device_Init(): sans begin(0) le port USB ne demarre jamais
@@ -971,6 +1033,9 @@ void setup() {
   pinMode(PIN_PS2_CLK, INPUT_PULLUP);      // + pull-ups externes 4,7-10 kohm vers +5 V conseilles
   pinMode(PIN_PS2_DATA, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(PIN_PS2_CLK), ps2Isr, FALLING);
+
+  delay(RESET8088_PULSE_MS);               // pont pret: le 8088 demarre (horloge stable depuis clockSetup)
+  reset8088Release();
 }
 
 // Vrai si le 8088 peut recevoir un octet du pont
@@ -988,6 +1053,21 @@ void loop() {
   yield();                                 // tud_task(): traite les evenements USB (CDC, lecteur de masse)
 #endif
   dbgFlush();
+
+  // Reset du 8088 demande (Ctrl-Alt-Suppr, Ctrl-\). Si le 8088 ne lit plus rien (IBF = 1 depuis STUCK_MS:
+  // fige), le terminal n'est plus lu plus bas - on y cherche Ctrl-\ ici (les autres octets sont perdus:
+  // le 8088 ne les aurait jamais lus).
+#if USE_IBF
+  { static uint32_t ibfSince = 0;
+    if ((GPIOA->IDR >> IBF_BIT) & 1) { if (ibfSince == 0) ibfSince = millis() | 1; }
+    else ibfSince = 0;
+    if (ibfSince != 0 && (uint32_t)(millis() - ibfSince) > STUCK_MS) {
+      while (UsbSerial.available() > 0)
+        if ((uint8_t)UsbSerial.read() == RESET_UART_KEY) { resetRequest = true; break; }
+    }
+  }
+#endif
+  if (resetRequest) reset8088Pulse();
 
 #if HEARTBEAT
   { static uint32_t t = 0;
@@ -1069,9 +1149,13 @@ void loop() {
     } else if (UsbSerial.available() > 0 && ps2Quiet(BUS_QUIET_US) &&
                (int32_t)(millis() - uartHoldUntil) >= 0) {
       uint8_t c = (uint8_t)UsbSerial.read();
-      sendTo8088(1, c);
-      markSent();
-      if (c == 13) uartHoldUntil = millis() + LINE_DELAY_MS;   // le 8088 traite la ligne
+      if (c == RESET_UART_KEY) {
+        resetRequest = true;               // Ctrl-\: reset MATERIEL au prochain tour (non transmis)
+      } else {
+        sendTo8088(1, c);
+        markSent();
+        if (c == 13) uartHoldUntil = millis() + LINE_DELAY_MS;   // le 8088 traite la ligne
+      }
     }
   }
 }

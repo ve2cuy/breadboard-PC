@@ -1043,7 +1043,13 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
   incrémente la date. La RTC se règle au BASIC (`DATE$="m-d-y"`, `TIME$=...`), utile pour recaler l'heure affichée par
   `INT 1Ah AH=02h`/`03h`. Une injection automatique de la date/heure à ces invites a été essayée puis retirée : elle
   cassait avec certains DOS (chaîne acceptée à un moment où le curseur ne l'attendait pas).
-- **Quitter le DOS / revenir au menu sans reset** : envoyer **Ctrl-\** (octet `1Ch`) depuis le terminal. L'ISR de l'IRQ1 le reconnaît (`WARM_RESET_KEY`, `lib/isr.asm`), envoie l'EOI et **saute au vecteur de reset de la ROM** (`0C000h:0000h`) : redémarrage complet (RAM effacée, 8255 et 8259 réinitialisés), menu principal. Ça marche quoi que fasse le 8088 (menu, BASIC, DOS, programme bloqué), tant que l'IRQ1 n'est pas masquée. L'octet n'est pas transmis au programme (Ctrl-\ n'est pas utilisé par le DOS ni le BASIC). L'image reste montée du côté du pont mais le menu la remonte. Le message d'amorçage le rappelle.
+- **Reset matériel du 8088 par le pont** (firmware du pont 1.2, `PB2` → broche `RESET` 21 — voir
+  `arduino/8088_bridge_stm32/README.md`) : **Ctrl-Alt-Suppr** au clavier PS/2 ou **`Ctrl-\`** au terminal. Le pont
+  intercepte la touche et pulse lui-même le `RESET` : ça marche **même quand le 8088 est figé** (interruptions
+  masquées, arrêt), contrairement au redémarrage logiciel décrit ci-dessous. Au démarrage du pont, le 8088 reste en
+  reset jusqu'à ce que le pont soit prêt. Avec un pont plus ancien (ou `PB2` non câblée), Ctrl-\ reste le
+  redémarrage logiciel ci-dessous.
+- **Quitter le DOS / revenir au menu sans reset** : envoyer **`Ctrl-\`** (octet `1Ch`) depuis le terminal. L'ISR de l'IRQ1 le reconnaît (`WARM_RESET_KEY`, `lib/isr.asm`), envoie l'EOI et **saute au vecteur de reset de la ROM** (`0C000h:0000h`) : redémarrage complet (RAM effacée, 8255 et 8259 réinitialisés), menu principal. Ça marche quoi que fasse le 8088 (menu, BASIC, DOS, programme bloqué), tant que l'IRQ1 n'est pas masquée. L'octet n'est pas transmis au programme (Ctrl-\ n'est pas utilisé par le DOS ni le BASIC). L'image reste montée du côté du pont mais le menu la remonte. Le message d'amorçage le rappelle.
 - **Vitesse** : un secteur passe par 16 blocs de 32 octets. Le pont envoie les **réponses** (blocs de secteurs, lecture
   de l'image) dès que IBF (PC5 → PA15) indique que le 8088 a lu l'octet précédent (`REPLY_GAP_US` = 20 µs, au lieu de
   l'espace de 1 ms gardé pour le clavier et l'UART) : le débit est celui de l'interruption du 8088 (~ 150-300 µs par

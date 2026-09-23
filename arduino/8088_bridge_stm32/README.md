@@ -23,6 +23,7 @@ Portage de `../ve2cuy_bridge/ve2cuy_bridge.ino` (Arduino UNO) sur une
 | `IBF` (facultatif) | **PA15** | `PC5` | voir `USE_IBF` ; non câblé = « libre » (pull-down interne) |
 | `TAG1` (**réponses**) | **PB5** | `PC1` (broche 15 du 8255A) | **sortie seulement** (PB5 n'est pas tolérante 5 V). **À câbler** pour l'horloge RTC, avec une **résistance de 10 kΩ vers la masse** sur `PC1` : `1` = l'octet envoyé est une réponse à une commande |
 | **Horloge du 8088** | **PA3** | broche `CLK` (19) du 8088 | **PWM matériel** (`TIM2` canal 4), duty cycle fixe 1/3, 1-10 MHz (défaut 4,77 MHz) — remplace le fil depuis l'Arduino UNO R4 de `projets/Clock-8088/`. `PA3` servait à `TAG2`/`PC2` (jamais câblée) : **si votre montage câble `TAG2`, cette broche est prise et ne convient plus** |
+| **RESET du 8088** | **PB2** | broche `RESET` (21) du 8088 | actif **haut** ; le montage le tire à la masse (**10 kΩ**) et son bouton le porte à +5 V. Le pont met `PB2` en **sortie haute** pendant un reset — à son propre démarrage (le 8088 reste en reset, horloge en marche, jusqu'à ce que le pont soit prêt), sur **Ctrl-Alt-Suppr** au clavier PS/2 et sur **`Ctrl-\`** au terminal — puis la remet en **entrée** (le bouton reste utilisable). Jamais forcée basse. Niveau haut 3,3 V : suffisant pour le 8088 (VIH ≈ 2 V) ; à vérifier si la même ligne attaque de la logique 74HC |
 | PS/2 `CLK` | **PA1** | connecteur clavier | interruption EXTI1 ; pull-up 4,7-10 kΩ vers +5 V conseillé |
 | PS/2 `DATA` | **PA2** | connecteur clavier | idem |
 | LCD I2C `SCL` / `SDA` | **PB10 / PB3** | module PCF8574 | I2C2 (AF4 / AF9) ; pull-ups 5 V du module ; adresse `0x27` (`LCD_ADDR`) |
@@ -31,9 +32,9 @@ Portage de `../ve2cuy_bridge/ve2cuy_bridge.ino` (Arduino UNO) sur une
 
 Broches **à ne pas utiliser** : `PA11`/`PA12` (USB), `PA13`/`PA14` (SWD), `PC13`
 (LED, clignote à 1 Hz = le pont tourne), `PC14`/`PC15` (quartz RTC), `PA4`-`PA7`
-(flash SPI de la carte, si soudée), `PB2` (**BOOT1** : ne rien y brancher, son
-niveau au reset décide du mode de démarrage), `PA0` (bouton K1). Aucune broche
-libre ne reste sur le brochage utile (21 signaux, dont les 2 facultatifs).
+(flash SPI de la carte, si soudée), `PA0` (bouton K1). `PB2` (**BOOT1**) sert au
+RESET du 8088 : voir le point 4 ci-dessous. Aucune broche libre ne reste sur le
+brochage utile (22 signaux, dont les 2 facultatifs).
 
 **Quartet haut inversé (constaté sur le montage)** : avec les broches ci-dessus, le
 terminal recevait `0x20` (espace) en `0x40` (`@`) et `p` (`0x70`) en `0xE0` : les
@@ -57,9 +58,12 @@ est recâblé dans l'ordre (`D0`…`D7` ↔ `PA0`…`PA7`).
 3. **Pull-ups 10 kΩ vers +5 V** sur `ACK#` et `STB#` (recommandés ; le pull-up
    interne à 3,3 V sert de secours). Ils gardent ces lignes hautes pendant un
    reset ou une reprogrammation du STM32.
-4. **`PB2` (BOOT1)** : ne pas l'utiliser. Si un signal du 8255 (par exemple
-   `OBF#`, haut au repos) y était relié, le mode DFU (`BOOT0` + `NRST`) démarrerait
-   en SRAM au lieu du chargeur système.
+4. **`PB2` (BOOT1)** : son niveau au reset du STM32 décide du mode de démarrage
+   quand `BOOT0` = 1. Il ne doit donc recevoir qu'un signal **bas au repos** : c'est
+   le cas de `RESET` du 8088 (10 kΩ vers la masse), et le mode DFU (`BOOT0` + `NRST`)
+   reste utilisable. N'y reliez **jamais** un signal haut au repos (par exemple
+   `OBF#`) : le DFU démarrerait en SRAM au lieu du chargeur système. N'appuyez pas
+   sur le bouton RESET du 8088 pendant l'entrée en DFU.
 5. **Alimentation** : soit l'USB-C seul, soit le +5 V du montage sur la broche
    `5V` — **jamais les deux** sans diode d'isolement. Masse commune obligatoire.
 6. `PB3`/`PB4`/`PA15` sont des broches JTAG au reset : le croquis les
