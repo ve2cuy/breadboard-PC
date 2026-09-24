@@ -7,7 +7,9 @@ deux interpréteurs BASIC et **amorce PC-DOS 2.1 et MS-DOS 3.30** depuis des ima
 Projet d'Alain Boudreault (VE2CUY), 2026.
 
 <p align="center">
-  <img src="medias/captures/menu.svg" alt="Menu principal de la ROM sur le terminal" width="680">
+  <img src="medias/breadboard-pc.jpg" alt="Le montage sur plaquette d'essai, avec le LCD qui affiche l'écran Information" width="560"><br>
+  <em>Le montage : le pont Black Pill STM32F411 (en haut, au centre), le 8088, le 8255, le 8259, la ROM et
+  la RAM. Le LCD affiche l'écran « Information » (date et heure, versions, RAM, disque, vitesse).</em>
 </p>
 
 ## En bref
@@ -85,6 +87,10 @@ Le 8088 dialogue avec le pont par un protocole de commandes sur un canal dédié
 
 Au démarrage, la ROM affiche un menu sur le terminal et sur le LCD. On le pilote indifféremment au
 clavier PS/2 ou au terminal ; **Échap** revient au menu principal.
+
+<p align="center">
+  <img src="medias/captures/menu.svg" alt="Menu principal de la ROM sur le terminal" width="680">
+</p>
 
 | Menu | Options |
 |---|---|
