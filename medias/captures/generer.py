@@ -2,7 +2,8 @@
 """Captures du terminal pour README_fr.md: la ROM reelle (Solution-01/solution-01.asm) executee par le
 simulateur tests/rom_sim.py, sa sortie UART rendue par un petit emulateur ANSI puis ecrite en SVG.
 
-Usage (depuis la racine du depot):  python medias/captures/generer.py [menu basic dos21 dos33]
+Usage (depuis la racine du depot):  python medias/captures/generer.py [--en] [menu basic dos21 dos33]
+  --en: ROM anglaise (LANG_EN), fichiers <nom>_en.svg (README_en.md)
 Prerequis: ceux de tests/rom_sim.py (unicorn, nasm); images PC-DOS dans PC-DOS/.
 """
 import os, re, sys
@@ -12,6 +13,18 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 DEPOT = os.path.dirname(os.path.dirname(ICI))
 sys.path.insert(0, os.path.join(DEPOT, 'Solution-01', 'tests'))
 import rom_sim as S
+import subprocess
+
+EN = '--en' in sys.argv
+ROM = None                                            # None = ROM francaise assemblee par rom_sim
+if EN:
+    ROM = os.path.join(DEPOT, 'Solution-01', 'build', 'rom_sim_en.bin')
+    subprocess.run(['nasm', '-f', 'bin', '-dLANG_EN=1', '-w-error=label-redef-late', 'solution-01.asm',
+                    '-o', ROM], cwd=os.path.join(DEPOT, 'Solution-01'), check=True)
+
+
+def run(script, **kw):
+    return S.run_rom(script, rom=ROM, **kw)
 
 COLS = 80
 PALETTE = {30: '#4d4d4d', 31: '#f0605a', 32: '#5fd35f', 33: '#e6c84f', 34: '#6aa7ff', 35: '#d17fe0',
@@ -73,7 +86,7 @@ def terminal(data):
 
 def svg(lignes, titre, chemin, depuis=None, hauteur_max=36):
     if depuis:                                        # commence a la derniere ligne contenant `depuis`
-        idx = [n for n, l in enumerate(lignes) if depuis in ''.join(ch for ch, _ in l)]
+        idx = [n for n, l in enumerate(lignes) if any(d in ''.join(ch for ch, _ in l) for d in depuis)]
         lignes = lignes[idx[-1]:] if idx else lignes
     lignes = lignes[-hauteur_max:]
     cw, lh, px, top = 8.4, 18, 16, 44
@@ -117,25 +130,28 @@ PROG = [b'10 PRINT "Carres et racines"', b'20 FOR I=1 TO 5', b'30 PRINT I, I*I, 
         b'50 PRINT "PI ="; 4*ATN(1); "  Date: "; DATE$']
 
 CAPTURES = {
-    'menu': ('Menu principal', None, lambda: S.run_rom([(S.MENU, b'')], tail_blocks=100_000)),
-    'basic': ('BASIC', 'BASIC Version', lambda: S.run_rom(
+    'menu': (('Menu principal', 'Main menu'), None, lambda: run([(S.MENU, b'')], tail_blocks=100_000)),
+    'basic': ('BASIC', ('BASIC Version',), lambda: run(
         [(S.MENU, b'1'), (b'2) BASIC', b'2'), (b'Ok', b'\r'.join(PROG) + b'\rRUN\r'), (b'Date:', b''),
          (b'Ok', b'PRINT FRE(0)\r'), (b'Ok', b'')], tail_blocks=100_000)),
-    'dos21': ('PC-DOS 2.1', 'Amorce', lambda: S.run_rom(
+    'dos21': ('PC-DOS 2.1', ('Amorce:', 'Boot:'), lambda: run(
         boot('PCDOS2_1.IMG') + [(b'Enter new date: ', b'\r'), (b'Enter new time: ', b'\r'),
                                 (b'A>', b'ver\r'), (b'A>', b'dir /w\r'), (b'A>', b'')],
         bridge=S.H.BridgeModel(files={'PCDOS2_1.IMG': image('pcdos2_1.img')}), tail_blocks=200_000)),
-    'dos33': ('MS-DOS 3.30', 'Amorce', lambda: S.run_rom(
+    'dos33': ('MS-DOS 3.30', ('Amorce:', 'Boot:'), lambda: run(
         boot('DOS33.IMG') + [(b'(mm-dd-yy): ', b'09-24-2026\r'), (b'time: ', b'\r'),
                              (b'A>', b'ver\r'), (b'A>', b'dir /w\r'), (b'A>', b'')],
         bridge=S.H.BridgeModel(files={'DOS33.IMG': image('Dos33-d1.IMG')}), tail_blocks=200_000)),
 }
 
 if __name__ == '__main__':
-    for nom in sys.argv[1:] or list(CAPTURES):
+    for nom in [a for a in sys.argv[1:] if a != '--en'] or list(CAPTURES):
         titre, depuis, lancer = CAPTURES[nom]
         st = lancer()
         if not st['done'] or st['err']:
             print('ECHEC', nom, st['err'], st['out'][-300:])
             continue
-        svg(terminal(st['out']), 'Terminal du pont (port série USB) — ' + titre, os.path.join(ICI, nom + '.svg'), depuis)
+        entete = 'Bridge terminal (USB serial port) — ' if EN else 'Terminal du pont (port série USB) — '
+        if isinstance(titre, tuple):                  # (francais, anglais)
+            titre = titre[1] if EN else titre[0]
+        svg(terminal(st['out']), entete + titre, os.path.join(ICI, nom + ('_en' if EN else '') + '.svg'), depuis)

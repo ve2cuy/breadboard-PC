@@ -5,7 +5,7 @@ autour d'un **Intel 8088**. Sa ROM, dont le code source est **entièrement écri
 démarre sur un menu interactif, exécute deux interpréteurs BASIC et **amorce PC-DOS 2.1 et MS-DOS 3.30**
 depuis des images de disquette.
 
-Projet d'Alain Boudreault (VE2CUY), 2026.
+Projet d'Alain Boudreault (VE2CUY), 2026. *[English version](README_en.md)*
 
 <p align="center">
   <img src="medias/breadboard-pc.jpg" alt="Le montage sur plaquette d'essai, avec le LCD qui affiche l'écran Information" width="560"><br>

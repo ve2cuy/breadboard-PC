@@ -514,3 +514,4 @@ Suite à discussion avec Claude Code (session du 14 septembre 2026), voici les t
 * Sur demande: medias/breadboard-pc.png (HEIC) supprime - remplace par medias/breadboard-pc.jpg; tous les commits pousses sur origin/master.
 * Nouveau dossier code-examples/ ajoute au depot: hello.asm (programme .COM MASM pour DOS, affichage par INT 10h AH=0Eh) et sin.bas (courbe de SIN en ASCII, chronometree par TIMER, puis dessin d'un requin - miroir horizontal fait sur demande: le requin pointe vers la droite).
 * README_fr.md: precise que le code source de la ROM est entierement ecrit en assembleur 8086 (NASM), BASIC compris.
+* README_en.md: version anglaise de README_fr.md (liens croises entre les deux). Captures anglaises medias/captures/{menu,basic,dos21,dos33}_en.svg produites par la ROM anglaise (LANG_EN): nouvelle option --en de medias/captures/generer.py (titres de fenetre bilingues).
