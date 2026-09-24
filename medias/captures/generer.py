@@ -3,7 +3,7 @@
 simulateur tests/rom_sim.py, sa sortie UART rendue par un petit emulateur ANSI puis ecrite en SVG.
 
 Usage (depuis la racine du depot):  python medias/captures/generer.py [--en] [menu basic dos21 dos33]
-  --en: ROM anglaise (LANG_EN), fichiers <nom>_en.svg (README_en.md)
+  --en: ROM anglaise (LANG_EN), fichiers <nom>_en.svg (README.md, version anglaise)
 Prerequis: ceux de tests/rom_sim.py (unicorn, nasm); images PC-DOS dans PC-DOS/.
 """
 import os, re, sys
