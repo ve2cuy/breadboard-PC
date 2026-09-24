@@ -305,53 +305,60 @@ octet reçu, un affichage peut attendre `OBF#` ~1 ms) ; et tout `cli` doit
 ## Structure du dossier
 
 ```
-i86/                            (racine du dépôt Git)
-├── medias/                     Datasheets (8259A, ATmega328P) et schémas
-└── breadboard/
-    ├── arduino/
-    │   ├── 8088_bridge_stm32/  Firmware du pont : WeAct Black Pill V3.1 (STM32F411), PlatformIO
-    │   ├── ve2cuy_bridge/      Ancien pont Arduino UNO (historique, remplacé par le précédent)
-    │   └── irq_test/           Ancien test de branchement IR1/IR4 (obsolète)
-    └── Solution-01/
-        ├── solution-01.asm     Flux principal (start, menus, éditeur RAM,
-        │                        registres, IVT, gestionnaires INT/IRQ) +
-        │                        tous les textes/données
-        ├── Directives.md       Cahier des charges et journal du projet
-        ├── Makefile            Automatise l'assemblage (voir Makefile.md)
-        ├── Makefile.md         Explication détaillée du Makefile
-        ├── tests/              Bancs d'essai sous émulateur (Unicorn)
-        │   ├── tb_test.asm     Tiny BASIC : harnais assemblé avec lib/tiny_basic.asm
-        │   ├── tb_test.py      (sorties BASIC, retour au menu, écritures)
-        │   ├── fl_test.asm/.py Bibliothèque flottante (comparée à numpy.float32)
-        │   ├── basic_test.asm  BASIC : harnais assemblé avec lib/basic.asm
-        │   ├── basic_harness.py  émulateur, E/S UART simulées, garde d'écritures
-        │   ├── basic_test.py   scénarios du BASIC (make test)
-        │   ├── rom_sim.py      ROM complète / BIOS avec IRQ1 asynchrones (8255, 8259, ISR)
-        │   ├── rom_test.py     scénarios DOS, trace, Ctrl-\, collage (make test-rom)
-        │   └── scenario_dos21.txt  exemple de scénario pour rom_sim.py en ligne de commande
-        ├── check_rom.py        Validation structurelle du .bin assemblé
-        ├── .gitignore          Ignore build/ (fichiers jetables de check-modules)
-        ├── include/
-        │   ├── hardware.inc    Constantes matérielles (8255 mode 2, 8259,
-        │   │                   adresses RAM des variables partagées)
-        │   ├── delay.inc       Macro `delay_ms` (voir lib/utils.asm)
-        │   └── lcd_macros.inc  Macros `lcd_goto`/`lcd_show`/`i2c_lcd_goto`/
-        │                       `i2c_lcd_show` + `gotoxy`/`print` (INT 10h -
-        │                       voir plus bas)
-        └── lib/
-            ├── common.asm      `arduino_send` (8088 → pont, contrôle de
-            │                   flux OBF#), `porta_write` (historique, LCD
-            │                   parallèle) + hex_table
-            ├── lcd.asm         Pilote du LCD parallèle (historique, inutilisé)
-            ├── uart.asm        UART via le pont (TX, RX, décimal, ANSI)
-            ├── utils.asm       delay_ms_proc (routine derrière la macro)
-            ├── lcd_i2c.asm     LCD I2C via le pont (commande/donnée HD44780)
-            ├── ps2.asm         Clavier PS/2 + terminal UART : ps2_get_char
-            ├── tiny_basic.asm  Interpréteur Tiny BASIC (sous-menu Basic, option 1)
-            ├── basic.asm       BASIC « GW-BASIC-like » (sous-menu Basic, option 2) : cœur, tokeniseur ;
-            │   basic_tokens.inc, basic_float.asm, basic_fmath.asm, basic_eval.asm,
-            │   basic_str.asm, basic_stmt.asm, basic_func.asm, basic_data.asm
-            └── bin/            (généré) lcd.bin, uart.bin, lcd_i2c.bin, ps2.bin
+breadboard-PC/                  (racine du dépôt Git)
+├── README.md                   Page d'accueil du dépôt (anglais)
+├── README_fr.md                Page d'accueil en français (même contenu que README.md)
+├── medias/                     Datasheets, schémas, photo du montage
+│   └── captures/               Captures du terminal des pages d'accueil (SVG) et
+│                                generer.py, qui les produit avec rom_sim.py
+├── code-examples/              Exemples : hello.asm (programme DOS, INT 10h),
+│                                sin.bas (courbe de SIN en ASCII, BASIC)
+├── kicad/                      Schémas KiCad du montage
+├── PC-DOS/                     Images de disquette de test (PC-DOS 2.1, MS-DOS 3.30)
+├── arduino/
+│   ├── 8088_bridge_stm32/  Firmware du pont : WeAct Black Pill V3.1 (STM32F411), PlatformIO
+│   ├── ve2cuy_bridge/      Ancien pont Arduino UNO (historique, remplacé par le précédent)
+│   └── irq_test/           Ancien test de branchement IR1/IR4 (obsolète)
+└── Solution-01/
+    ├── solution-01.asm     Flux principal (start, menus, éditeur RAM,
+    │                        registres, IVT, gestionnaires INT/IRQ) +
+    │                        tous les textes/données
+    ├── Directives.md       Cahier des charges et journal du projet
+    ├── Makefile            Automatise l'assemblage (voir Makefile.md)
+    ├── Makefile.md         Explication détaillée du Makefile
+    ├── tests/              Bancs d'essai sous émulateur (Unicorn)
+    │   ├── tb_test.asm     Tiny BASIC : harnais assemblé avec lib/tiny_basic.asm
+    │   ├── tb_test.py      (sorties BASIC, retour au menu, écritures)
+    │   ├── fl_test.asm/.py Bibliothèque flottante (comparée à numpy.float32)
+    │   ├── basic_test.asm  BASIC : harnais assemblé avec lib/basic.asm
+    │   ├── basic_harness.py  émulateur, E/S UART simulées, garde d'écritures
+    │   ├── basic_test.py   scénarios du BASIC (make test)
+    │   ├── rom_sim.py      ROM complète / BIOS avec IRQ1 asynchrones (8255, 8259, ISR)
+    │   ├── rom_test.py     scénarios DOS, trace, Ctrl-\, clavier PS/2, collage (make test-rom)
+    │   └── scenario_dos21.txt  exemple de scénario pour rom_sim.py en ligne de commande
+    ├── check_rom.py        Validation structurelle du .bin assemblé
+    ├── .gitignore          Ignore build/ (fichiers jetables de check-modules)
+    ├── include/
+    │   ├── hardware.inc    Constantes matérielles (8255 mode 2, 8259,
+    │   │                   adresses RAM des variables partagées)
+    │   ├── delay.inc       Macro `delay_ms` (voir lib/utils.asm)
+    │   └── lcd_macros.inc  Macros `lcd_goto`/`lcd_show`/`i2c_lcd_goto`/
+    │                       `i2c_lcd_show` + `gotoxy`/`print` (INT 10h -
+    │                       voir plus bas)
+    └── lib/
+        ├── common.asm      `arduino_send` (8088 → pont, contrôle de
+        │                   flux OBF#), `porta_write` (historique, LCD
+        │                   parallèle) + hex_table
+        ├── lcd.asm         Pilote du LCD parallèle (historique, inutilisé)
+        ├── uart.asm        UART via le pont (TX, RX, décimal, ANSI)
+        ├── utils.asm       delay_ms_proc (routine derrière la macro)
+        ├── lcd_i2c.asm     LCD I2C via le pont (commande/donnée HD44780)
+        ├── ps2.asm         Clavier PS/2 + terminal UART : ps2_get_char, ps2_poll_char
+        ├── tiny_basic.asm  Interpréteur Tiny BASIC (sous-menu Basic, option 1)
+        ├── basic.asm       BASIC « GW-BASIC-like » (sous-menu Basic, option 2) : cœur, tokeniseur ;
+        │   basic_tokens.inc, basic_float.asm, basic_fmath.asm, basic_eval.asm,
+        │   basic_str.asm, basic_stmt.asm, basic_func.asm, basic_data.asm
+        └── bin/            (généré) lcd.bin, uart.bin, lcd_i2c.bin, ps2.bin
 ```
 
 Fichiers générés par `make` (non versionnés, voir `.gitignore`) :
@@ -508,8 +515,9 @@ Règles de traduction du terminal (mêmes résultats que la touche PS/2
 | `ps2_rx_push` | Appelée par `irq1_arduino_handler` : enfile un scan code (`BH` mis à 0 : `BX` sert d'index) |
 | `ps2_read_byte` | **Bloque** jusqu'à un scan code dans le tampon PS/2. Sortie : `AL` = octet, `CF` = 0 |
 | `ps2_rx_available` | `CF`=0 si un scan code attend (PS/2 seulement), non bloquante |
-| `ps2_key_available` | `CF`=0 si une touche attend, **PS/2 ou terminal UART**, non bloquante (Échap pendant un dump, `INT 16h`) |
-| `ps2_get_char` | **Bloque** jusqu'à l'appui d'une touche reconnue, PS/2 **ou** UART. Sortie : `AL` = caractère ASCII ou `PS2_KEY_UP`/`DOWN`/`LEFT`/`RIGHT` ; `BH` = scan code brut (0 pour l'UART) |
+| `ps2_key_available` | `CF`=0 si un octet attend, **PS/2 ou terminal UART**, non bloquante. ⚠️ Ne pas la faire suivre de `ps2_get_char` pour guetter une touche : un simple **relâchement** (`F0 xx`) la rend vraie et `ps2_get_char` attendrait alors une vraie touche — utiliser `ps2_poll_char` |
+| `ps2_poll_char` | Version **non bloquante** de `ps2_get_char` (mêmes sorties) : `CF`=0 et `AL`/`BH` si une touche **reconnue** attend ; `CF`=1 sinon, après avoir consommé relâchements et touches ignorées. Sert aux vérifications d'Échap pendant un traitement (dump, test de vitesse, écran Information) |
+| `ps2_get_char` | **Bloque** jusqu'à l'appui d'une touche reconnue, PS/2 **ou** UART (boucle sur `ps2_poll_char`). Sortie : `AL` = caractère ASCII ou `PS2_KEY_UP`/`DOWN`/`LEFT`/`RIGHT` ; `BH` = scan code brut (0 pour l'UART) |
 | `uart_get_key` / `uart_wait_byte` | Traduction d'un octet du terminal (liste blanche = valeurs de `ps2_keymap`) et attente d'un octet avec délai |
 | `ps2_scancode_to_char` / `ps2_keymap` | Scan code Set 2 **normal** → ASCII (chiffres, `A-F`, `Q`, `R`, Entrée, Retour arrière, Échap) via une table `(scan code, caractère)` |
 | `ps2_extended_to_char` / `ps2_ext_keymap` | Scan code **étendu** (préfixe `0xE0`, flèches) → `PS2_KEY_*` |
@@ -1337,8 +1345,12 @@ derniers octets physiques de la ROM : vecteur de reset + signature).
 
 La touche **Échap** (clavier PS/2 ou terminal) interrompt un dump en cours
 et retourne immédiatement au menu Memory functions. Vérifiée de façon
-**non bloquante** avant chaque ligne (`ps2_key_available` : un octet est
-déjà dans un tampon circulaire rempli par l'interruption `IR1`).
+**non bloquante** avant chaque ligne (`ps2_poll_char` : lit une touche reconnue
+si elle attend dans un tampon circulaire rempli par l'interruption `IR1`, sans
+jamais attendre — les relâchements de touches sont consommés au passage).
+Même technique pour le test de vitesse du CPU et l'écran Information
+(sous-menu Configuration) : avant, le relâchement de la touche qui lançait
+l'action bloquait ces écrans jusqu'à une nouvelle frappe au clavier PS/2.
 
 **Edit RAM** (option 2 du sous-menu Memory functions — seul point d'accès
 depuis la refonte du menu principal, qui n'offre plus cette option
@@ -1657,7 +1669,12 @@ Détails complets de chaque cible : voir [Makefile.md](Makefile.md).
 BIOS seul), en faisant passer chaque octet du pont et chaque frappe par le **vrai chemin matériel** — 8255
 (IBF, étiquettes PC0/PC1), 8259 (masque d'IR1, EOI) puis l'ISR — contrairement aux autres bancs, qui déposent
 les octets directement dans les tampons. Le pont STM32 est simulé (`BridgeModel`). On le pilote par un
-**scénario** : « texte attendu sur l'UART ⇒ touches à taper ». Exemple :
+**scénario** : « texte attendu sur l'UART ⇒ touches à taper ». Les touches sont des octets du terminal
+(`b'2'`) ou des frappes au **clavier PS/2** : `ps2(scan codes)` envoie l'appui **et** le relâchement
+(`F0 xx`), comme le vrai clavier — c'est ce qui a permis de reproduire le blocage du test de vitesse.
+`make test-rom` vérifie ainsi, au clavier PS/2, que le test de vitesse se termine seul et que l'écran
+Information se rafraîchit sans frappe. Le simulateur sert aussi à produire les captures des pages
+d'accueil (`../medias/captures/generer.py`, `--en` pour la ROM anglaise). Exemple :
 
 ```
 python tests/rom_sim.py --image ../PC-DOS/pcdos2_1.img tests/scenario_dos21.txt
