@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="704" height="438" viewBox="0 0 704 438">
+<rect width="100%" height="100%" rx="8" fill="#1e1e1e"/>
+<rect width="100%" height="28" rx="8" fill="#323232"/><rect y="20" width="100%" height="8" fill="#323232"/>
+<circle cx="18" cy="14" r="5" fill="#ff5f57"/><circle cx="36" cy="14" r="5" fill="#febc2e"/><circle cx="54" cy="14" r="5" fill="#28c840"/>
+<text x="352" y="18" fill="#bbbbbb" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle">Terminal du pont (port série USB) — BASIC</text>
+<g font-family="Cascadia Mono, Consolas, DejaVu Sans Mono, Menlo, monospace" font-size="14" xml:space="preserve">
+<text x="16.0" y="44" fill="#d8d8d8">VE2CUY 86 BASIC Version 1.0 (inspired by GW-BASIC)</text>
+<text x="16.0" y="62" fill="#d8d8d8">HELP: help, Ctrl-C: Break, Ctrl-X: menu, USB ON/OFF</text>
+<text x="16.0" y="80" fill="#d8d8d8">Edit last command: UP arrow</text>
+<text x="16.0" y="98" fill="#d8d8d8">Ok</text>
+<text x="16.0" y="116" fill="#d8d8d8">10 PRINT "Carres et racines"</text>
+<text x="16.0" y="134" fill="#d8d8d8">20 FOR I=1 TO 5</text>
+<text x="16.0" y="152" fill="#d8d8d8">30 PRINT I, I*I, SQR(I)</text>
+<text x="16.0" y="170" fill="#d8d8d8">40 NEXT</text>
+<text x="16.0" y="188" fill="#d8d8d8">50 PRINT "PI ="; 4*ATN(1); "  Date: "; DATE$</text>
+<text x="16.0" y="206" fill="#d8d8d8">RUN</text>
+<text x="16.0" y="224" fill="#d8d8d8">Carres et racines</text>
+<text x="16.0" y="242" fill="#d8d8d8"> 1             1             1 </text>
+<text x="16.0" y="260" fill="#d8d8d8"> 2             4             1.414214 </text>
+<text x="16.0" y="278" fill="#d8d8d8"> 3             9             1.732051 </text>
+<text x="16.0" y="296" fill="#d8d8d8"> 4             16            2 </text>
+<text x="16.0" y="314" fill="#d8d8d8"> 5             25            2.236068 </text>
+<text x="16.0" y="332" fill="#d8d8d8">PI = 3.141593   Date: 09-20-2026</text>
+<text x="16.0" y="350" fill="#d8d8d8">Ok</text>
+<text x="16.0" y="368" fill="#d8d8d8">PRINT FRE(0)</text>
+<text x="16.0" y="386" fill="#d8d8d8"> 54136 </text>
+<text x="16.0" y="404" fill="#d8d8d8">Ok</text>
+</g></svg>
