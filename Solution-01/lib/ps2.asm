@@ -262,13 +262,38 @@ ps2_extended_to_char:
 ; ============================================================
 ps2_get_char:
 .loop:
+        call    ps2_poll_char
+        jc      .loop                   ; rien de reconnu pour l'instant: attend
+        ret
+
+; ============================================================
+; ps2_poll_char
+; Version NON BLOQUANTE de ps2_get_char (memes sorties, memes registres
+; detruits): CF=0 et AL/BH comme ps2_get_char si une touche RECONNUE
+; attend; CF=1 si les tampons ne contiennent rien d'autre que des
+; relachements (F0 xx, E0 F0 xx) ou des touches ignorees - ces octets
+; sont CONSOMMES, puis la fonction rend la main au lieu d'attendre.
+; A utiliser pour toute verification "Echap pendant un traitement"
+; (dump, test de vitesse, ecran Information). L'ancienne technique
+; "ps2_key_available puis ps2_get_char" y BLOQUAIT: le relachement de
+; la touche qui venait de lancer l'action (F0 1E pour '2') rend
+; ps2_key_available vrai, et ps2_get_char, apres l'avoir avale,
+; attendait une VRAIE touche - chaque frappe ne faisait avancer le
+; traitement que d'un pas (voir Directives.md).
+; Seule attente possible: le 2e octet d'une sequence PS/2 deja
+; commencee (E0/F0 recu) - le pont l'envoie aussitot a la suite.
+; ============================================================
+ps2_poll_char:
+.loop:
         call    ps2_rx_available        ; clavier PS/2 d'abord...
         jnc     .from_ps2
         call    uart_rx_available       ; ...sinon le terminal UART (voir uart_get_key)
-        jc      .loop                   ; rien nulle part: attend
+        jc      .none                   ; rien nulle part: CF=1
         call    uart_get_key
-        jc      .loop                   ; octet ignore (non reconnu): reboucle
-        xor     bh, bh                  ; pas de scan code brut pour une touche UART
+        jc      .loop                   ; octet ignore (non reconnu): suivant, s'il y en a
+        xor     bh, bh                  ; pas de scan code brut pour une touche UART (CF=0)
+        ret
+.none:
         ret
 .from_ps2:
         call    ps2_read_byte
@@ -280,7 +305,7 @@ ps2_get_char:
         mov     bh, al          ; BH = scan code brut (survit a l'appel
                                  ; suivant, qui preserve BX)
         call    ps2_scancode_to_char
-        jc      .loop           ; touche non geree - ignore, reboucle
+        jc      .loop           ; touche non geree - ignore, suivante
         ret                     ; AL = caractere reconnu, BH = scan code brut
 .got_e0:
         ; --- touche etendue: le prochain octet est soit F0 (relachement
@@ -291,7 +316,7 @@ ps2_get_char:
         je      .got_e0_f0
         mov     bh, al          ; BH = scan code brut (etendu)
         call    ps2_extended_to_char
-        jc      .loop           ; touche etendue non geree - ignore, reboucle
+        jc      .loop           ; touche etendue non geree - ignore, suivante
         ret                     ; AL = PS2_KEY_UP/DOWN/LEFT/RIGHT, BH = scan code brut
 .got_e0_f0:
         call    ps2_read_byte   ; consomme le scan code du relachement etendu

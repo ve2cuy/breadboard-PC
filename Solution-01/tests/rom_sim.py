@@ -16,7 +16,8 @@ Deux usages:
 
 Un SCENARIO est une liste de paires (texte attendu sur l'UART, touches a taper): les touches sont tapees
 une a une (espacees de `gap` blocs d'instructions) des que le texte attendu est apparu APRES le point
-atteint par la paire precedente - comme un utilisateur devant son terminal.
+atteint par la paire precedente - comme un utilisateur devant son terminal. Touches au terminal UART:
+des octets (b'2'); au clavier PS/2: ps2(scan codes) - appui ET relachement (F0 xx), comme le vrai clavier.
 
 Limites: la logique seulement (aucun timing ni electrique reels); le LCD est ignore; IN sur les ports
 non emules = 0.
@@ -37,10 +38,16 @@ sys.path.insert(0, os.path.join(ROOT, 'tests'))
 import basic_harness as H          # BridgeModel (le pont)
 
 ROM = 0xC0000
-PC_IBF, PC_TAG_UART, PC_TAG_REPLY = 0x20, 0x01, 0x02
+PC_IBF, PC_TAG_PS2, PC_TAG_UART, PC_TAG_REPLY = 0x20, 0x00, 0x01, 0x02
 PORTA, PORTB, PORTC, PIO, PIC_CMD, PIC_DATA = 0x80, 0x81, 0x82, 0x83, 0x20, 0x21
 CHAN_UART, CHAN_CMD = 0, 3
 MENU = b'4) Configuration'         # derniere ligne du menu principal (FR et EN)
+
+
+def ps2(*codes):
+    """frappes au clavier PS/2 (Set 2): appui + relachement de chaque scan code, a mettre dans un scenario
+    (p. ex. (MENU, ps2(0x25)) = touche '4'). Le pont livre chaque octet etiquete PC0=PC1=0."""
+    return [(PC_TAG_PS2, b) for c in codes for b in (c, 0xF0, c)]
 
 
 def build(src, out, defines=()):
@@ -140,7 +147,8 @@ class Machine:
                 st['nextkey'] = st['blocks'] + 20 * self.gap
                 st['new'] = True                                       # la paire suivante est peut-etre deja la
         if st['keys'] and not st['q'] and st['blocks'] >= st['nextkey']:
-            st['q'].append((PC_TAG_UART, st['keys'].pop(0)))           # une frappe au terminal
+            k = st['keys'].pop(0)                                      # une frappe au terminal, ou
+            st['q'].append(k if isinstance(k, tuple) else (PC_TAG_UART, k))   # (PC_TAG_PS2, scan code)
             st['nextkey'] = st['blocks'] + self.gap
         if st['q'] and not (st['portc'] & PC_IBF):                    # le pont depose l'octet suivant
             tag, b = st['q'].pop(0)

@@ -72,6 +72,28 @@ if os.path.exists(os.path.join(DOS, 'pcdos2_1.img')):
     check('Trace: lignes INT 13h completes pendant DIR, aucune ligne INT 1Ah AH=00h',
           len(re.findall(r'<13 [0-9A-F ]+-[0-9A-F ]+ [01]>', trc)) >= 3 and '<1A 00' not in trc, trc[-300:])
 
+# --- Clavier PS/2: un relachement (F0 xx) ne doit pas bloquer une verification d'Echap ---
+# (Configuration -> '2' Test CPU speed et '4' Information: le relachement de la touche qui lance
+# l'action faisait attendre une vraie touche a chaque checkpoint / rafraichissement - voir ps2_poll_char)
+class TickingBridge(S.H.BridgeModel):
+    """pont dont l'horloge avance d'une seconde a chaque lecture (GET_TIME)"""
+    def _exec(self, c):
+        r = super()._exec(c)
+        if c[0] == 0x01:
+            self.clock[6] = (self.clock[6] + 1) % 60
+        return r
+
+st = S.run_rom([(S.MENU, S.ps2(0x25)), (b'2) ', S.ps2(0x1E)), (b'Vitesse estimee: ', b'')],
+               count=400_000_000, tail_blocks=200_000)
+out = st['out'].decode('latin-1')
+check('PS/2: Test CPU speed avance seul (30 points) et se termine sans aucune frappe',
+      st['done'] and '.' * 30 in out, out[-300:])
+st = S.run_rom([(S.MENU, S.ps2(0x25)), (b'2) ', S.ps2(0x25)), (b'12:34:59', S.ps2(0x76)), (b'2) ', b'')],
+               bridge=TickingBridge(), count=400_000_000, tail_blocks=200_000)
+out = st['out'].decode('latin-1')
+check('PS/2: Information rafraichit l heure sans frappe (56 -> 59), puis Echap revient au sous-menu',
+      st['done'] and out.count('Sous-menu Configuration') == 2, out[-300:])
+
 # --- ROM COMPLETE (option --complet: plusieurs minutes) ---
 if '--complet' in sys.argv:
     if os.path.exists(os.path.join(DOS, 'pcdos2_1.img')):

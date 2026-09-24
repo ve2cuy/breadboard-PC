@@ -937,18 +937,15 @@ dump_memory_action:
                                                   ; pour "Ligne: NNN" sur le LCD)
 .line_loop:
         ; --- interruption au clavier (Echap): verification NON
-        ; BLOQUANTE avant chaque ligne via ps2_rx_available (lib/ps2.asm)
-        ; - remplace l'ancien "IN AL,PORTB / TEST AL,PS2_CLOCK" (Port B
-        ; n'est plus le clavier direct depuis la version Arduino: le
-        ; tampon PS2_RX_BUF_OFF, rempli par IRQ1, dit directement si un
-        ; scan code attend, sans avoir a sonder une ligne CLOCK qui
-        ; n'existe plus cote 8088). Si un scan code attend, ps2_get_char
-        ; le lit (bloquant, mais un octet deja recu est immediat). ---
-        call    ps2_key_available                ; clavier PS/2 OU terminal UART
-        jc      .no_key                         ; rien a lire
-        push    bx                              ; ps2_get_char detruit BX (numero de
-        call    ps2_get_char                    ; ligne courant, doit survivre) - voir
-        pop     bx                              ; son en-tete
+        ; BLOQUANTE avant chaque ligne via ps2_poll_char (lib/ps2.asm):
+        ; lit une touche reconnue si elle attend, consomme les
+        ; relachements/touches ignorees SANS attendre (l'ancien
+        ; "ps2_key_available puis ps2_get_char" bloquait sur un simple
+        ; relachement - voir ps2_poll_char). ---
+        push    bx                              ; ps2_poll_char detruit BX (numero de
+        call    ps2_poll_char                   ; ligne courant, doit survivre) - clavier
+        pop     bx                              ; PS/2 OU terminal UART, jamais bloquant
+        jc      .no_key                         ; rien de reconnu (POP ne touche pas CF)
         cmp     al, 27                          ; Echap ?
         je      .interrupted
 .no_key:
@@ -3567,7 +3564,7 @@ clock_main_speed_print:
 ; "checkpoint" (CPU_TEST_CHECKPOINTS au total, environ 1 par seconde si
 ; la calibration est bonne) - permet de constater que le test avance.
 ; Echap (verification NON BLOQUANTE a chaque checkpoint via
-; ps2_key_available, meme technique que dump_memory_action) interrompt
+; ps2_poll_char, meme technique que dump_memory_action) interrompt
 ; le test et retourne immediatement au sous-menu Configuration.
 ; A la fin (cpu_test_show_result): affiche le temps ecoule, le
 ; pourcentage par rapport a une execution a 4,77 MHz (ex: "20% plus
@@ -3656,9 +3653,8 @@ cpu_speed_test_action:
         ; --- 1 checkpoint termine: verifie Echap (non bloquant, meme
         ; technique que dump_memory_action - voir son en-tete) et
         ; redessine la progression ---
-        call    ps2_key_available
-        jc      .no_key                  ; rien a lire
-        call    ps2_get_char
+        call    ps2_poll_char            ; jamais bloquant (un relachement seul, p. ex.
+        jc      .no_key                  ; celui de '2', ne doit PAS attendre une touche)
         cmp     al, 27
         je      .aborted
 .no_key:
@@ -4283,13 +4279,12 @@ information_action:
         ; le test Unicorn AVANT tout essai materiel: la 1re mise a jour ne
         ; s'affichait jamais, SI valant l'adresse de txt_info_return au
         ; lieu de 0 en entrant dans .loop) - 0 => interroge tout de suite
-        ; (1er tour). Libre pour cet usage: ps2_key_available/ps2_get_char
+        ; (1er tour). Libre pour cet usage: ps2_poll_char
         ; preservent SI, et rtc_get ne le touche pas (voir bridge.asm) ---
         xor     si, si
 .loop:
-        call    ps2_key_available
+        call    ps2_poll_char               ; jamais bloquant (voir lib/ps2.asm)
         jc      .no_key
-        call    ps2_get_char
         cmp     al, 27
         je      .out
 .no_key:
