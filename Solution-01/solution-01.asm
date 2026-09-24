@@ -76,12 +76,12 @@ SECONDE         equ     1000            ; 1 seconde = 1000 ms
 
 ; ------------------------------------------------------------
 ; TEST_PS2 (decommenter la ligne %define ci-dessous pour activer):
-; diagnostic du clavier PS/2 decode par l'Arduino (voir lib/ps2.asm,
-; PS2_RX_BUF_OFF/irq1_arduino_handler - depuis la version Arduino, le
+; diagnostic du clavier PS/2 decode par le pont (voir lib/ps2.asm,
+; PS2_RX_BUF_OFF/irq1_arduino_handler - depuis la version a pont, le
 ; 8088 ne decode plus le protocole CLOCK/DATA lui-meme) - REMPLACE le
 ; menu interactif par une boucle infinie qui affiche sur l'UART le
 ; scan code BRUT (Set 2, sans traduction) de chaque octet recu. Utile
-; pour verifier la chaine Arduino->IRQ1->tampon independamment de la
+; pour verifier la chaine pont->IRQ1->tampon independamment de la
 ; couche de traduction clavier->ASCII (ps2_get_char) utilisee par le
 ; menu. Desactive par defaut (le menu, qui utilise deja le clavier via
 ; ps2_get_char, est le comportement normal - voir Directives.md).
@@ -196,7 +196,7 @@ start:
 
         call    init_8255       ; UNE SEULE FOIS (voir la note en en-tete) -
                                  ; Port A en MODE 2 (bus bidirectionnel avec
-                                 ; l'Arduino), Port B en sortie, INTE2 actif -
+                                 ; le pont), Port B en sortie, INTE2 actif -
                                  ; voir MASQUE_PIO (hardware.inc). AUCUNE copie
                                  ; fantome a initialiser: le segment VAR_SEG
                                  ; vient d'etre efface au complet (ARD_TX_STATE_OFF
@@ -213,7 +213,7 @@ start:
         call    init_8259               ; programme le 8259 (ICW/OCW) et
                                          ; installe irq0_test_handler sur IR0
                                          ; - voir plus bas. N'active PAS IF.
-        in      al, PORTA               ; vide un octet de l'Arduino arrive AVANT
+        in      al, PORTA               ; vide un octet du pont arrive AVANT
                                          ; que le 8259 soit pret: INTR reste a 1
                                          ; tant que le Port A n'est pas lu, et
                                          ; le 8259 est declenche par FRONT - sans
@@ -230,7 +230,7 @@ start:
         ; l'UART le scan code (Set 2, brut) de chaque octet recu du
         ; TAMPON PS2_RX_BUF_OFF (rempli par irq1_arduino_handler - voir
         ; lib/ps2.asm/ps2_read_byte), donc de bout en bout via
-        ; l'Arduino/IRQ1 depuis la version Arduino (plus un polling
+        ; le pont/IRQ1 depuis la version a pont (plus un polling
         ; direct du Port B, retire - voir Directives.md). REMPLACE le
         ; reste du POST - voir la note pres de %define TEST_PS2 en
         ; haut du fichier. Ne retourne JAMAIS. ---
@@ -4980,12 +4980,12 @@ init_8255:
         ;*********************
         ; INIT LA 8255 NO. 1 *
         ;*********************
-        ; Port A = MODE 2 (bus bidirectionnel avec l'Arduino, poignee de main
+        ; Port A = MODE 2 (bus bidirectionnel avec le pont, poignee de main
         ; sur PC3-PC7), Port B = SORTIE (canal), PC0-PC2 = ENTREES (etiquette
         ; de l'octet recu) - voir MASQUE_PIO, hardware.inc. Le mot de mode
         ; remet a 0 tous les verrous ET les indicateurs (dont INTE1/INTE2).
         ; PAS d'ecriture sur le Port A ici (un "OUT PORTA" en mode 2 place un
-        ; octet dans le tampon de sortie: OBF# passerait a 0 et l'Arduino
+        ; octet dans le tampon de sortie: OBF# passerait a 0 et le pont
         ; lirait un octet parasite) - et rien a ecrire sur le Port C.
         MOV    AL,MASQUE_PIO
         OUT    PIO,AL         ; CMD LA 8255
@@ -4994,7 +4994,7 @@ init_8255:
         MOV    AL,PIO_INTE1_RESET
         OUT    PIO,AL         ; INTE1 = 0 (pas d'interruption a l'emission)
         MOV    AL,PIO_INTE2_SET
-        OUT    PIO,AL         ; INTE2 = 1 (INTR sur octet recu de l'Arduino)
+        OUT    PIO,AL         ; INTE2 = 1 (INTR sur octet recu du pont)
 
 	ret
 ; ***************************************
@@ -5059,8 +5059,8 @@ setup_bios_interrupts:
 ;     final sont fournis automatiquement par le 8259 selon la ligne
 ;     IRQ qui a interrompu, PAS calcules ici).
 ;
-; IR0 (bouton-poussoir de test) et IR1 (INTR du 8255 = octet recu de
-; l'Arduino, clavier OU UART - voir irq1_arduino_handler) sont
+; IR0 (bouton-poussoir de test) et IR1 (INTR du 8255 = octet recu du
+; pont, clavier OU UART - voir irq1_arduino_handler) sont
 ; DEMASQUEES (OCW1) - IR2 a IR7 restent masquees: non cablees,
 ; potentiellement flottantes et donc bruyantes si demasquees
 ; prematurement (IR4 n'est plus cablee depuis le passage au mode 2 du
@@ -5220,9 +5220,9 @@ bios_cursor_ddram:
 ; ============================================================
 int10h_handler:
         sti                     ; L'instruction INT a mis IF a 0. Chaque octet envoye
-                                 ; a l'Arduino (arduino_send) peut attendre OBF#
+                                 ; au pont (arduino_send) peut attendre OBF#
                                  ; ~1 ms; le 8255 ne retient qu'UN octet clavier et
-                                 ; l'Arduino en envoie un toutes les 500 us - avec
+                                 ; le pont en envoie un toutes les 500 us - avec
                                  ; IF=0, un octet (typiquement le 0F0h d'un relachement
                                  ; de touche) serait ecrase avant que irq1_arduino_handler
                                  ; ne le lise, ce qui fait avaler/dupliquer la touche
@@ -5560,7 +5560,7 @@ txt_ivt_banniere:       db      27,'[36m',"=== Interrupt Vector Table (IVT, INT 
 txt_ivt_10h:            db      27,'[32m',"int10h_handler -> Display handling (LCD I2C/UART)",27,'[0m',0
 txt_ivt_16h:            db      27,'[32m','int16h_handler -> Keyboard read (non-blocking)',27,'[0m',0
 txt_ivt_irq0:           db      27,'[32m','irq0_test_handler -> IRQ0 test (pushbutton, 8259)',27,'[0m',0
-txt_ivt_irq1:           db      27,'[32m','irq1_arduino_handler -> Keyboard/UART received (Arduino, 8255 mode 2, IR1)',27,'[0m',0
+txt_ivt_irq1:           db      27,'[32m','irq1_arduino_handler -> Keyboard/UART received (STM32 bridge, 8255 mode 2, IR1)',27,'[0m',0
 txt_ivt_not_impl:       db      'int_not_implemented -> Not implemented',0
 txt_ivt_bios:           db      27,'[32m','handler installed (BIOS / DOS)',27,'[0m',0
 
@@ -5715,7 +5715,7 @@ txt_ivt_banniere:       db      27,'[36m',"=== Table des vecteurs d'interruption
 txt_ivt_10h:            db      27,'[32m',"int10h_handler -> Gestion de l'affichage (LCD I2C/UART)",27,'[0m',0
 txt_ivt_16h:            db      27,'[32m','int16h_handler -> Lecture clavier (non bloquante)',27,'[0m',0
 txt_ivt_irq0:           db      27,'[32m','irq0_test_handler -> Test IRQ0 (bouton-poussoir, 8259)',27,'[0m',0
-txt_ivt_irq1:           db      27,'[32m','irq1_arduino_handler -> Clavier/UART recus (Arduino, 8255 mode 2, IR1)',27,'[0m',0
+txt_ivt_irq1:           db      27,'[32m','irq1_arduino_handler -> Clavier/UART recus (pont STM32, 8255 mode 2, IR1)',27,'[0m',0
 txt_ivt_not_impl:       db      'int_not_implemented -> Non implementee',0
 txt_ivt_bios:           db      27,'[32m','gestionnaire installe (BIOS / DOS)',27,'[0m',0
 

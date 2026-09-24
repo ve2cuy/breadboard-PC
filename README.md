@@ -10,18 +10,25 @@ Alain Boudreault (VE2CUY). Au démarrage, la carte :
    tension — voir [Menu interactif](#menu-interactif) ci-dessous pour
    la structure complète.
 
-**Architecture « Arduino »** : le 8088 ne pilote plus aucun périphérique
-en bit-bang. Un **Arduino UNO** décode le clavier PS/2, possède l'UART
-matériel (vers le PC, par l'USB) et le bus I2C du LCD ; le 8088 ne lui
+**Architecture « pont »** : le 8088 ne pilote plus aucun périphérique
+en bit-bang. Une plaquette **WeAct Black Pill V3.1 (STM32F411)** — le
+**pont** — décode le clavier PS/2, présente au PC un port série par son
+USB natif et possède le bus I2C du LCD, la RTC, le disque (flash SPI de
+8 Mo), l'horloge et le RESET du 8088 ; le 8088 ne lui
 parle que par **un 8255 en mode 2** (un seul bus de 8 bits
 bidirectionnel avec poignée de main matérielle) et reçoit ses octets par
 une **interruption matérielle** du 8259 — voir
-[Pont Arduino](#pont-arduino-8255-en-mode-2). Le croquis de l'Arduino est
-dans `../arduino/ve2cuy_bridge/` (dépôt Git, à côté de `Solution-01/`).
+[Pont STM32](#pont-stm32-8255-en-mode-2). Le firmware du pont est le
+projet PlatformIO `arduino/8088_bridge_stm32/` (dépôt Git, à côté de
+`Solution-01/`). À l'origine, le pont était un **Arduino UNO**
+(`arduino/ve2cuy_bridge/`, conservé pour l'historique ; même protocole
+côté 8088, mais sans RTC, disque, horloge ni RESET) — d'où le nom du
+dossier `arduino/` et de quelques identifiants du firmware (`arduino_send`,
+`irq1_arduino_handler`, `ARD_*`).
 
 ⚠️ Le pilote du LCD **parallèle** (`lib/lcd.asm`) reste dans le dépôt
 (historique) mais plus aucun code du firmware ne l'appelle : il écrirait
-sur le Port A, qui est maintenant le bus du pont Arduino.
+sur le Port A, qui est maintenant le bus du pont.
 
 Contrairement aux versions précédentes, il n'y a plus de « power-on
 self-test » (POST) qui s'enchaîne automatiquement — chaque test (RAM,
@@ -40,36 +47,42 @@ splash.
 - Un **8259A** (contrôleur d'interruptions) : ports `20h`/`21h` (comme le
   PC/XT), `CS#` décodé par une porte NAND sur `IO`, `A6` et `/A7`. `IR0` =
   bouton-poussoir de test, `IR1` = `INTR` du 8255 (octet reçu de
-  l'Arduino). Détails : [Interruptions matérielles](#interruptions-matérielles-8259)
+  pont). Détails : [Interruptions matérielles](#interruptions-matérielles-8259)
 - Un **8255** (PIO, ports `80h-83h`) en **mode 2** — voir
-  [Pont Arduino](#pont-arduino-8255-en-mode-2)
-- Un **Arduino UNO** (`arduino:avr:uno`) qui porte les périphériques :
-  - clavier PS/2 (`CLK`/`DATA` sur l'Arduino, **pas** sur le 8255) ;
-  - UART vers le PC = le port série USB de l'UNO (**57600 8N1** par
-    défaut, réglable, voir `UART_BAUD` dans le croquis) ;
+  [Pont STM32](#pont-stm32-8255-en-mode-2)
+- Une plaquette **WeAct Black Pill V3.1** (STM32F411CEU6, 100 MHz, USB
+  natif) — le **pont** — qui porte les périphériques :
+  - clavier PS/2 (`CLK`/`DATA` sur le pont, **pas** sur le 8255) ;
+  - terminal du PC = port série **USB** natif de la plaquette (débit sans
+    objet ; ouvrir le port ne réinitialise pas la carte) ;
   - LCD I2C HD44780 4×20 (expandeur PCF8574, adresse `0x27`, ou `0x3F`
-    pour un PCF8574A) sur `A4`/`A5`.
-- **Câblage Arduino ↔ 8255/8259** (18 broches, aucun circuit intégré
-  supplémentaire) :
+    pour un PCF8574A) sur `PB10`/`PB3` (I2C2) ;
+  - RTC (quartz LSE de la carte), disque (flash SPI W25Q64 de 8 Mo,
+    FAT16), horloge du 8088 (PWM, 1-10 MHz) et RESET du 8088.
+- **Câblage pont ↔ 8255/8088** (détails, niveaux 3,3 V / 5 V et
+  vérifications : `arduino/8088_bridge_stm32/README.md`) :
 
-| Arduino | Signal | Côté 8088 |
+| Black Pill | Signal | Côté 8088 |
 |---|---|---|
-| `D10` `D11` `D12` `D13` | bus de données | `PA0` `PA1` `PA2` `PA3` |
-| `A3` `A2` `A1` `A0` | bus de données | `PA4` `PA5` `PA6` `PA7` (ordre selon le câblage réel du montage — voir `BUS[]` dans le croquis) |
-| `D4` | `ACK#` (sortie Arduino) | `PC6` |
-| `D5` | `STB#` (sortie Arduino) | `PC4` |
-| `D6` | `OBF#` (entrée Arduino) | `PC7` |
-| `D7` | étiquette de l'octet envoyé au 8088 | `PC0` (entrée du 8255) |
-| `D8` `D9` | canal de l'octet reçu du 8088 | `PB0` `PB1` |
-| `D2` `D3` | `CLK` / `DATA` du clavier PS/2 | — |
-| `A4` `A5` | `SDA` / `SCL` du LCD I2C | — |
+| `PB12` `PB13` `PB14` `PB15` | bus de données | `PA0` `PA1` `PA2` `PA3` |
+| `PB6` `PB7` `PB8` `PB9` | bus de données | `PA4` `PA5` `PA6` `PA7` (quartet haut inversé sur le montage, corrigé en logiciel : `BUS_HIGH_NIBBLE_REVERSED`) |
+| `PB0` | `ACK#` (sortie drain ouvert du pont) | `PC6` |
+| `PB1` | `STB#` (sortie drain ouvert du pont) | `PC4` |
+| `PA8` | `OBF#` (entrée du pont) | `PC7` |
+| `PA15` | `IBF` (entrée du pont, facultative : `USE_IBF`) | `PC5` |
+| `PB4` | étiquette `TAG` de l'octet envoyé au 8088 | `PC0` (entrée du 8255) |
+| `PB5` | étiquette `TAG1` (réponse à une commande) | `PC1` (10 kΩ vers la masse) |
+| `PA9` `PA10` | canal de l'octet reçu du 8088 | `PB0` `PB1` |
+| `PA3` | horloge (PWM `TIM2` canal 4) | `CLK` (broche 19) du 8088 |
+| `PB2` | RESET (actif haut ; entrée au repos) | `RESET` (broche 21) du 8088 |
+| `PA1` `PA2` | `CLK` / `DATA` du clavier PS/2 | — |
+| `PB3` `PB10` | `SDA` / `SCL` du LCD I2C | — |
 | — | `INTR` du 8255 | `PC3` → `IR1` du 8259 |
 
-  `D0`/`D1` sont réservées à l'USB. Résistances de tirage conseillées :
-  10 kΩ vers +5 V sur `STB#`/`ACK#` (flottantes pendant le démarrage de
-  l'Arduino), 4,7 kΩ vers +5 V sur `CLK`/`DATA` du PS/2 (et éloigner ces
-  fils de `D0`/`D1`/`D4`/`D5`/`A4`/`A5`, dont la diaphonie perturbe les
-  trames — voir Directives.md).
+  `PA11`/`PA12` sont réservées à l'USB. Résistances de tirage : 10 kΩ vers
+  +5 V sur `STB#`/`ACK#` (drain ouvert : vrai niveau haut à 5 V, lignes
+  hautes pendant un reset ou une reprogrammation du STM32), 4,7-10 kΩ
+  vers +5 V sur `CLK`/`DATA` du PS/2. Masse commune avec le 8088.
 
 > **Câblage USB → PS/2** (pour un clavier/câble USB adapté en PS/2) :
 > `VBUS`→`+5V`, `D−`→`Data`, `D+`→`Clock`, `GND`→`GND`. Fonctionne avec
@@ -115,9 +128,9 @@ flowchart TD
         PIC["8259 PIC\nPorts 20h-21h"]
     end
 
-    ARD["Arduino UNO\n(pont: PS/2, UART, LCD I2C)"]
+    ARD["Pont Black Pill STM32F411\n(PS/2, UART USB, LCD I2C,\nRTC, disque, CLK, RESET)"]
     PS2["Clavier PS/2"]
-    PC["PC - terminal (USB, 57600 8N1)"]
+    PC["PC - terminal (port serie USB)"]
     LCD["LCD I2C 4x20\n(PCF8574)"]
     BTN["Bouton-poussoir de test (IR0)"]
 
@@ -155,46 +168,47 @@ la fenêtre `C0000h-FFFFFh`. Même remarque pour la RAM (128 Ko, moitié
 basse de 1 Mo) : seuls `00000h-1FFFFh` sont réellement testés par
 `test_ram` (voir `solution-01.asm`).
 
-## Pont Arduino (8255 en mode 2)
+## Pont STM32 (8255 en mode 2)
 
 Le 8255 est programmé par `init_8255` avec le mot de mode `C1h`
 (`MASQUE_PIO`, `include/hardware.inc`) : **Port A en mode 2**, Port B en
 sortie (mode 0), `PC0`-`PC2` en entrée. Le mode 2 fournit un bus de 8 bits
 **bidirectionnel** avec une poignée de main matérielle sur le Port C, et
 le 8255 ne pilote le bus **que pendant `ACK#` bas** — aucun conflit
-possible avec l'Arduino.
+possible avec le pont.
 
 | Signal | Rôle |
 |---|---|
 | Port A (`PA0-PA7`) | bus de données, dans les deux sens |
 | Port B (`PB0`/`PB1`) | **canal** de l'octet que le 8088 envoie : `0` = octet UART (`PB_CHAN_UART`), `1` = commande LCD (`PB_CHAN_LCD_CMD`), `2` = donnée LCD (`PB_CHAN_LCD_DATA`), `3` = **commande pour le pont** (`PB_CHAN_CMD`, horloge RTC : voir `lib/bridge.asm`) |
-| `PC7` `OBF#` | 8088 → Arduino : `0` = un octet attend (le 8255 le repasse à `1` dès que l'Arduino abaisse `ACK#`) |
-| `PC6` `ACK#` | Arduino → 8255 : l'Arduino le pulse pour lire l'octet |
-| `PC4` `STB#` | Arduino → 8255 : impulsion qui verrouille l'octet à destination du 8088 |
-| `PC5` `IBF` | octet reçu de l'Arduino pas encore lu |
+| `PC7` `OBF#` | 8088 → pont : `0` = un octet attend (le 8255 le repasse à `1` dès que le pont abaisse `ACK#`) |
+| `PC6` `ACK#` | pont → 8255 : le pont le pulse pour lire l'octet |
+| `PC4` `STB#` | pont → 8255 : impulsion qui verrouille l'octet à destination du 8088 |
+| `PC5` `IBF` | octet reçu du pont pas encore lu (aussi lue par le pont : `USE_IBF`) |
 | `PC3` `INTR` | câblée sur `IR1` du 8259 (`INTE2` actif, `INTE1` inactif) |
-| `PC0` | étiquette posée par l'Arduino : `0` = scan code clavier, `1` = octet UART reçu |
-| `PC1` | étiquette (pont STM32) : `1` = l'octet est une **réponse** à une commande du canal 3 (prioritaire sur `PC0`). `PC1` doit être reliée à la sortie `TAG1` du pont et **tirée à 0 par 10 kΩ**. Elle n'est lue que **pendant une commande** (`BRIDGE_EXPECT_OFF`) : non câblée, elle ne perturbe pas le clavier ni l'UART, mais un octet tapé pendant la lecture de l'heure (~ 10 ms) risque d'être pris pour une réponse |
+| `PC0` | étiquette posée par le pont : `0` = scan code clavier, `1` = octet UART reçu |
+| `PC1` | étiquette `TAG1` : `1` = l'octet est une **réponse** à une commande du canal 3 (prioritaire sur `PC0`). `PC1` doit être reliée à la sortie `TAG1` du pont et **tirée à 0 par 10 kΩ**. Elle n'est lue que **pendant une commande** (`BRIDGE_EXPECT_OFF`) : non câblée, elle ne perturbe pas le clavier ni l'UART, mais un octet tapé pendant la lecture de l'heure (~ 10 ms) risque d'être pris pour une réponse |
 
-**8088 → Arduino** (`arduino_send`, `lib/common.asm`) : pose le canal sur
+**8088 → pont** (`arduino_send`, `lib/common.asm`) : pose le canal sur
 le Port B puis écrit l'octet sur le Port A (les deux `OUT` sous
 `pushf`/`cli`/`popf`). **Contrôle de flux** : elle attend d'abord `OBF#`
-à `1`. Pour ne jamais bloquer le boot sans Arduino : `ARD_UNKNOWN` (rien
-consommé depuis le reset) attend jusqu'à ~3 s (l'UNO met 1-2 s à
-démarrer), `ARD_ALIVE` ~0,5 s puis passe à `ARD_ABSENT`, qui n'attend
+à `1`. Pour ne jamais bloquer le boot sans pont : `ARD_UNKNOWN` (rien
+consommé depuis le reset) attend jusqu'à ~3 s (délai hérité de l'UNO, qui
+mettait 1-2 s à démarrer ; le pont STM32 tient le 8088 en RESET
+jusqu'à ce qu'il soit prêt), `ARD_ALIVE` ~0,5 s puis passe à `ARD_ABSENT`, qui n'attend
 plus (l'octet est perdu) jusqu'à revoir `OBF#` à `1`. Tous les affichages
 (UART et LCD) passent par cette seule routine ; l'ordre est conservé
-(une seule file côté Arduino).
+(une seule file côté pont).
 
-**Commandes du pont (canal 3, `lib/bridge.asm`)** — pont STM32 seulement : le 8088
+**Commandes du pont (canal 3, `lib/bridge.asm`)** : le 8088
 envoie sur le canal 3 un octet d'opération puis ses arguments ; le pont répond par
 des octets étiquetés `PC1 = 1`, que `irq1_arduino_handler` range dans un tampon
 circulaire (`BRIDGE_RX_*`, `bridge_rx_get` avec délai). `00h` PING (réponse `B1h`,
 version, capacités), `01h` LIRE l'heure (8 octets : année sur 2 octets, mois, jour,
-heures, minutes, secondes, centièmes), `02h` + 7 octets RÉGLER l'heure. Un pont sans
-RTC (UNO) ne répond pas : `rtc_get` rend `CF = 1` (`Device Timeout` en BASIC). Le **disque** utilise les codes `10h`-`19h` (statut, formater, ouvrir, lire 1-32 octets, écrire 1-32 octets, fermer, répertoire début/suivant, supprimer, espace libre ; les routines `fs_*` de `lib/bridge.asm`) ; le tampon des réponses (`BRIDGE_RX_*`) fait 64 octets.
+heures, minutes, secondes, centièmes), `02h` + 7 octets RÉGLER l'heure. Un pont qui ne
+répond pas (ancien pont UNO : aucune commande) : `rtc_get` rend `CF = 1` (`Device Timeout` en BASIC). Le **disque** utilise les codes `10h`-`19h` (statut, formater, ouvrir, lire 1-32 octets, écrire 1-32 octets, fermer, répertoire début/suivant, supprimer, espace libre ; les routines `fs_*` de `lib/bridge.asm`) ; le tampon des réponses (`BRIDGE_RX_*`) fait 64 octets.
 
-**Arduino → 8088** : l'Arduino pose l'étiquette (`PC0`) et l'octet, puis
+**Pont → 8088** : le pont pose l'étiquette (`PC0`) et l'octet, puis
 pulse `STB#`. `INTR` déclenche `irq1_arduino_handler` (`INT 09h`) : elle
 lit le Port C (`IBF` confirme qu'un octet est là, `PC0` donne l'origine),
 lit le Port A (ce qui acquitte le 8255) puis enfile l'octet dans le
@@ -204,38 +218,43 @@ juste avant le `sti` de `start:` vide un éventuel octet arrivé avant
 l'initialisation du 8259 (`INTR` reste haute tant que le Port A n'est pas
 lu et le 8259 est déclenché par front).
 
-**Côté Arduino** (`../arduino/ve2cuy_bridge/ve2cuy_bridge.ino`) :
+**Côté pont** (`arduino/8088_bridge_stm32/src/main.cpp`, détails dans
+le `README.md` de ce dossier) :
 
-- **8255 → périphériques** : file de 255 entrées ; UART → `Serial`, LCD →
-  bibliothèque maison sur `Wire` (init 4 bits complète au démarrage, une
-  transaction I2C de 4 octets par octet HD44780, attente 2 ms pour
-  Clear/Home). Chaque commande `28h` (Function Set, début de
+- **8255 → périphériques** : file de 256 entrées ; UART → port série USB,
+  LCD → I2C2 (init 4 bits complète au démarrage, attente 2 ms pour
+  Clear/Home), canal 3 → interpréteur de commandes (RTC, disque, horloge,
+  version). Chaque commande `28h` (Function Set, début de
   `i2c_lcd_init` côté 8088) rejoue l'initialisation « par instruction »
   (`lcdResync`) pour récupérer un LCD déréglé.
 - **Lecture du bus** : `OBF#` repasse à `1` dès que `ACK#` *descend*, et le
-  8088 peut alors écrire l'octet suivant : le croquis prend donc un
-  **instantané** de `PINB`/`PINC`/`PIND` (< 1 µs) — canal et octet — puis
+  8088 peut alors écrire l'octet suivant : le pont prend donc un
+  **instantané** de `GPIOA->IDR`/`GPIOB->IDR` — canal et octet — puis
   relâche `ACK#`.
-- **Clavier PS/2** : interruption `INT0` sur chaque front descendant de
+- **Clavier PS/2** : interruption `EXTI1` sur chaque front descendant de
   `CLK`. Filtre anti-parasite (`CLK` doit rester basse `PS2_GLITCH_US` =
   10 µs), `DATA` par vote majoritaire de 3 lectures, resynchronisation
   après `PS2_FRAME_GAP_US` = 250 µs sans front, contrôle start/parité
   impaire/stop.
-- **Aucun accès au bus pendant une trame PS/2** : l'Arduino n'envoie un
+- **Aucun accès au bus pendant une trame PS/2** : le pont n'envoie un
   octet clavier qu'après `KBD_QUIET_US` = 3 ms sans front `CLK` (fin de la
   rafale `F0` + code) et n'acquitte/n'envoie le reste qu'après
   `BUS_QUIET_US` = 0,4 ms. Sans cela, les impulsions `STB#`/`ACK#`
   perturbaient la trame suivante (touche perdue, la suivante avalée).
-- `GAP_US` = 1 ms d'espace minimal entre deux octets Arduino → 8088 (pas de
-  broche libre pour lire `IBF`).
+- **Contrôle de flux** : avec `IBF` câblée (`USE_IBF`), le pont n'envoie
+  un octet que si le 8088 a lu le précédent, plus `GAP_US` = 1 ms d'espace
+  minimal entre deux octets (`REPLY_GAP_US` pour les réponses aux
+  commandes).
 
-Réglages en tête du croquis :
+Réglages principaux en tête de `main.cpp` (liste complète dans le
+`README.md` du pont) :
 
 | Constante | Défaut | Rôle |
 |---|---|---|
-| `UART_BAUD` | 57600 | débit 8N1 vers le PC (validé sur le matériel) |
 | `LCD_ADDR` | `0x27` | adresse I2C du PCF8574 (`0x3F` pour un PCF8574A) |
-| `GAP_US` | 1000 | espace minimal entre deux octets Arduino → 8088 |
+| `USE_IBF` | 1 | `IBF` (`PC5`) câblée sur `PA15` |
+| `GAP_US` | 1000 | espace minimal entre deux octets pont → 8088 |
+| `LINE_DELAY_MS` | 15 | pause après chaque `CR` venant du PC (collage de code BASIC) |
 | `KBD_QUIET_US` / `BUS_QUIET_US` | 3000 / 400 | silence `CLK` avant d'agir sur le bus |
 | `DEBUG_PS2` | 0 | `1` = trace PS/2 sur le terminal (voir ci-dessous) |
 
@@ -245,21 +264,16 @@ que pour diagnostiquer) : `{76}` octet décodé, `{>76}` octet envoyé au
 `{Rn}` resynchronisation à `n` bits, `{O}` file PS/2 pleine, `{g}`
 parasite filtré.
 
-**Variante STM32** : le pont a été **porté** sur une WeAct Black Pill V3.1
-(STM32F411, USB natif, 100 MHz) dans `../arduino/8088_bridge_stm32/` (projet PlatformIO) — même
-protocole côté 8088 (aucun changement du firmware), câblage et vérifications
-dans le `README.md` de ce dossier. **Validé sur le matériel** (clavier PS/2,
-terminal USB, LCD, menu et BASIC).
-
-**Compilation** (`arduino-cli`, installé sous WSL avec le cœur
-`arduino:avr`) :
+**Compilation et téléversement** (PlatformIO ; plaquette en mode DFU :
+tenir `BOOT0`, appuyer sur `NRST`, relâcher) :
 
 ```sh
-arduino-cli compile --fqbn arduino:avr:uno breadboard/arduino/ve2cuy_bridge
+cd arduino/8088_bridge_stm32
+platformio run -e blackpill_f411ce_usbdrive -t upload
 ```
 
-Ouvrir le moniteur série réinitialise l'UNO (DTR) : la sortie du 8088
-est perdue ~2 s pendant ce redémarrage. Le terminal doit interpréter
+Ouvrir le port série USB **ne réinitialise pas** le pont (contrairement à
+l'ancien UNO). Le terminal doit interpréter
 l'ANSI (PuTTY, Tera Term, minicom…), faire au moins 24 lignes × 80
 colonnes, avoir l'**écho local désactivé** (c'est le 8088 qui fait
 l'écho) et envoyer Entrée en `CR`.
@@ -275,10 +289,10 @@ flottantes).
 | Ligne | Vecteur | Gestionnaire | Rôle |
 |---|---|---|---|
 | `IR0` | `INT 08h` | `irq0_test_handler` | bouton-poussoir de test : affiche un message sur l'UART |
-| `IR1` | `INT 09h` | `irq1_arduino_handler` | `INTR` du 8255 : scan code clavier **ou** octet UART reçu (voir [Pont Arduino](#pont-arduino-8255-en-mode-2)) |
+| `IR1` | `INT 09h` | `irq1_arduino_handler` | `INTR` du 8255 : scan code clavier, octet UART reçu **ou** réponse du pont (voir [Pont STM32](#pont-stm32-8255-en-mode-2)) |
 
 `IR4` (UART, convention PC/XT) n'est **pas** utilisée : il n'y avait plus
-de broche libre sur l'Arduino, l'UART reçu passe donc lui aussi par `IR1`.
+de broche libre sur le pont d'origine (Arduino UNO), l'UART reçu passe donc lui aussi par `IR1`.
 La réception est pilotée par interruption ; la **lecture** ne l'est pas :
 `ps2_get_char` scrute les deux tampons circulaires (16 octets pour le clavier PS/2, 256 pour l'UART).
 
@@ -295,8 +309,8 @@ i86/                            (racine du dépôt Git)
 ├── medias/                     Datasheets (8259A, ATmega328P) et schémas
 └── breadboard/
     ├── arduino/
-    │   ├── ve2cuy_bridge/      Croquis du pont Arduino (PS/2, UART, LCD I2C)
-    │   ├── 8088_bridge_stm32/  Portage du pont sur WeAct Black Pill V3.1 (STM32F411), PlatformIO — validé
+    │   ├── 8088_bridge_stm32/  Firmware du pont : WeAct Black Pill V3.1 (STM32F411), PlatformIO
+    │   ├── ve2cuy_bridge/      Ancien pont Arduino UNO (historique, remplacé par le précédent)
     │   └── irq_test/           Ancien test de branchement IR1/IR4 (obsolète)
     └── Solution-01/
         ├── solution-01.asm     Flux principal (start, menus, éditeur RAM,
@@ -322,13 +336,13 @@ i86/                            (racine du dépôt Git)
         │                       `i2c_lcd_show` + `gotoxy`/`print` (INT 10h -
         │                       voir plus bas)
         └── lib/
-            ├── common.asm      `arduino_send` (8088 → Arduino, contrôle de
+            ├── common.asm      `arduino_send` (8088 → pont, contrôle de
             │                   flux OBF#), `porta_write` (historique, LCD
             │                   parallèle) + hex_table
             ├── lcd.asm         Pilote du LCD parallèle (historique, inutilisé)
-            ├── uart.asm        UART via l'Arduino (TX, RX, décimal, ANSI)
+            ├── uart.asm        UART via le pont (TX, RX, décimal, ANSI)
             ├── utils.asm       delay_ms_proc (routine derrière la macro)
-            ├── lcd_i2c.asm     LCD I2C via l'Arduino (commande/donnée HD44780)
+            ├── lcd_i2c.asm     LCD I2C via le pont (commande/donnée HD44780)
             ├── ps2.asm         Clavier PS/2 + terminal UART : ps2_get_char
             ├── tiny_basic.asm  Interpréteur Tiny BASIC (sous-menu Basic, option 1)
             ├── basic.asm       BASIC « GW-BASIC-like » (sous-menu Basic, option 2) : cœur, tokeniseur ;
@@ -352,9 +366,9 @@ un sous-dossier.
 ## Fonctions d'accès au LCD parallèle (`lib/lcd.asm`) — historique
 
 ⚠️ **Plus utilisé** : aucun code du firmware n'écrit sur le LCD parallèle
-(tout l'affichage passe par le LCD I2C, via l'Arduino). Le fichier reste
+(tout l'affichage passe par le LCD I2C, via le pont). Le fichier reste
 dans le dépôt ; il écrit sur le Port A via `porta_write`, donc **ne pas
-l'appeler** : le Port A est maintenant le bus du pont Arduino. Ses délais
+l'appeler** : le Port A est maintenant le bus du pont. Ses délais
 (`lcd_delay`…) ne servent plus non plus à `lib/lcd_i2c.asm`.
 
 | Fonction | Rôle |
@@ -365,14 +379,14 @@ l'appeler** : le Port A est maintenant le bus du pont Arduino. Ses délais
 
 ## Fonctions d'accès à l'UART (`lib/uart.asm`)
 
-UART « relayé » par l'Arduino : l'UART **matériel** de l'Arduino (USB, vers
+UART « relayé » par le pont : le port série **USB** du pont (vers
 le PC) gère le cadencement — aucune temporisation liée au débit ni à
 l'horloge du 8088.
 
 | Fonction | Rôle |
 |---|---|
 | `uart_tx_string` | Transmet une chaîne terminée par `0` depuis `DS:SI` |
-| `uart_tx_byte` | Envoie `AL` à l'Arduino sur le canal `PB_CHAN_UART` (`arduino_send` : contrôle de flux `OBF#`). **Préserve tous les registres** |
+| `uart_tx_byte` | Envoie `AL` au pont sur le canal `PB_CHAN_UART` (`arduino_send` : contrôle de flux `OBF#`). **Préserve tous les registres** |
 | `uart_tx_hex_nibble` / `uart_tx_hex_byte` / `uart_tx_hex_word` | Affiche une valeur en hexadécimal majuscule (entrée : `AL` ou `AX`) — générées par `def_tx_hex_nibble`/`byte`/`word` |
 | `uart_tx_bin_word` | Affiche `AX` en binaire (16 caractères) |
 | `uart_tx_dec8` | Affiche `AL` en décimal, sans zéros de tête |
@@ -384,18 +398,18 @@ l'horloge du 8088.
 ## Fonctions d'accès au LCD I2C (`lib/lcd_i2c.asm`)
 
 LCD HD44780 4×20 derrière un PCF8574. Le 8088 **ne parle plus I2C** : il
-envoie à l'Arduino des octets HD44780 complets (même encodage standard
+envoie au pont des octets HD44780 complets (même encodage standard
 qu'avant : `01h` = clear, `28h` = function set, `80h+adresse` = curseur…),
-sur le canal `PB_CHAN_LCD_CMD` (RS=0) ou `PB_CHAN_LCD_DATA` (RS=1). L'Arduino
+sur le canal `PB_CHAN_LCD_CMD` (RS=0) ou `PB_CHAN_LCD_DATA` (RS=1). Le pont
 possède la séquence de démarrage 4 bits, le découpage en quartets, le
 protocole I2C et les délais d'exécution du contrôleur : **le 8088 n'a plus
 aucun délai à respecter** — le contrôle de flux `OBF#` l'arrête si
-l'Arduino prend du retard. Résultat : un octet LCD = 3 écritures de port
+le pont prend du retard. Résultat : un octet LCD = 3 écritures de port
 au lieu d'une transaction I2C bit-bang de plusieurs centaines de µs.
 
 | Fonction | Rôle |
 |---|---|
-| `i2c_lcd_init` | Envoie Function Set / Display ON / Entry Mode / Clear (l'Arduino resynchronise le LCD sur le Function Set) |
+| `i2c_lcd_init` | Envoie Function Set / Display ON / Entry Mode / Clear (le pont resynchronise le LCD sur le Function Set) |
 | `i2c_lcd_command` / `i2c_lcd_data` | Envoie un octet complet (entrée : `AL`) — RS=0 / RS=1 |
 | `i2c_lcd_send_byte` | Choisit le canal selon `BL` (bit 0 = RS) et appelle `arduino_send` |
 | `i2c_lcd_print` | Affiche une chaîne terminée par `0` depuis `DS:SI` |
@@ -458,13 +472,13 @@ parallèle au LCD I2C — la directive `TEST_I2C_DUMP` a été retirée.
 
 ## Fonctions d'accès au clavier PS/2 et au terminal UART (`lib/ps2.asm`)
 
-Le clavier PS/2 est décodé par l'**Arduino** (trame de 11 bits : start,
-8 données, parité impaire, stop — voir [Pont Arduino](#pont-arduino-8255-en-mode-2)),
+Le clavier PS/2 est décodé par le **pont** (trame de 11 bits : start,
+8 données, parité impaire, stop — voir [Pont STM32](#pont-stm32-8255-en-mode-2)),
 qui envoie au 8088 le **scan code brut** (Set 2) : le 8088 ne fait plus
 aucun bit-bang. `irq1_arduino_handler` enfile chaque octet dans un
 tampon circulaire de 16 octets (`PS2_RX_BUF_OFF`) ; `ps2_read_byte` le
 vide. `ps2_read_byte` garde le contrat historique (`AL` = octet, `CF` = 0
-toujours puisque l'Arduino a déjà validé la trame).
+toujours puisque le pont a déjà validé la trame).
 
 **Le terminal UART vaut le clavier** : `ps2_get_char` consulte aussi le
 tampon UART (`uart_get_key`), donc **tous** les menus, saisies hexadécimales
@@ -514,10 +528,10 @@ Scan code recu: 0xF0
 Scan code recu: 0x1C
 ```
 
-Utile pour vérifier la chaîne Arduino → 8255 → `IR1` → tampon PS/2
+Utile pour vérifier la chaîne pont → 8255 → `IR1` → tampon PS/2
 indépendamment de la couche de traduction (`ps2_get_char`) qu'utilise le
 menu : c'est le scan code tel que le **8088** l'a reçu (à comparer avec la
-trace `DEBUG_PS2` de l'Arduino).
+trace `DEBUG_PS2` du pont).
 
 **Façon recommandée de l'activer — sans modifier le fichier** : passer
 la définition directement à NASM en ligne de commande, avec le flag `-d` :
@@ -551,7 +565,7 @@ avis de licence complets figurent en tête de `lib/tiny_basic.asm` et doivent
 
 ### Utilisation
 
-- Terminal : 57600 8N1 (voir `UART_BAUD`), **écho local désactivé**, Entrée =
+- Terminal : port série USB du pont (débit sans objet), **écho local désactivé**, Entrée =
   `CR`. Les mots-clés se tapent en majuscules ou minuscules, avec abréviation
   par un point (`P.`, `PR.`… = `PRINT`).
 - **Ctrl-C** interrompt un programme (retour à `Ok`) ; **Ctrl-X** ou la
@@ -700,7 +714,7 @@ ligne comme le ferait un utilisateur. Ce n'est **pas** un test sur le matériel.
 ## BASIC « GW-BASIC-like » (`lib/basic*.asm`)
 
 Second interpréteur, **beaucoup plus riche que Tiny BASIC** : lancé par
-`2) BASIC` du sous-menu Basic, piloté par le **terminal UART** du PC (57600 8N1,
+`2) BASIC` du sous-menu Basic, piloté par le **terminal UART** du PC (port série USB du pont,
 écho local désactivé, Entrée = `CR`), il offre des **chaînes de caractères**, des
 **nombres à virgule flottante**, `RND`/`RANDOMIZE`, `PEEK`/`POKE`, les
 fonctions mathématiques, les tableaux, `DEF FN`, `WHILE`/`WEND`, `DATA`/`READ`…
@@ -847,7 +861,7 @@ sur le matériel.
 ## Interruptions logicielles type BIOS (`INT 10h` / `INT 16h`)
 
 Sous-ensemble « esprit BIOS » (IBM PC), adapté au matériel réel de ce
-projet (LCD HD44780 4×20 via l'Arduino, pas de mémoire vidéo ni de VGA).
+projet (LCD HD44780 4×20 via le pont, pas de mémoire vidéo ni de VGA).
 `INT n`/`IRET` sont purement logiciels sur le 8088 — **aucun 8259 (PIC)
 requis** pour eux, contrairement aux interruptions matérielles décrites
 dans [Interruptions matérielles](#interruptions-matérielles-8259).
@@ -945,7 +959,7 @@ print  lcd_txt_splash_l1, LCD       ; affiche (texte, device)
 |---|---|---|
 | `LCD` | 1 | LCD parallèle (historique, inutilisé) |
 | `LCDI2C` | 2 | LCD I2C (PCF8574 `0x27`) |
-| `UART` | 3 | UART (via l'Arduino, pas de curseur — `gotoxy` y est un no-op) |
+| `UART` | 3 | UART (via le pont, pas de curseur — `gotoxy` y est un no-op) |
 
 `print` appelle `int10h_print_string`, qui affiche caractère par
 caractère pour `LCD`/`LCDI2C` (repositionnement `AH=02h` avant chaque
@@ -1476,7 +1490,7 @@ dump UART reste toujours exact quelle que soit la taille de la plage).
 | GNU Make | Orchestre l'assemblage via le `Makefile` (voir `Makefile.md`) |
 | Python 3 | Exécute `check_rom.py` (cible `make check`) |
 | Git | Suivi de version du projet |
-| [arduino-cli](https://arduino.github.io/arduino-cli/) | Compile/téléverse le croquis du pont Arduino (cœur `arduino:avr`) |
+| [PlatformIO](https://platformio.org/) | Compile/téléverse le firmware du pont (`arduino/8088_bridge_stm32`, plateforme `ststm32`) |
 | [Unicorn](https://www.unicorn-engine.org/) (`pip install unicorn`) | Émulateur CPU pour `make test` (bancs d'essai de Tiny BASIC, de la bibliothèque flottante et du BASIC ; ces derniers utilisent aussi `numpy`) — facultatif |
 | Un shell POSIX (`cp`, `mkdir -p`, `rm -f`) | Requis par les recettes du `Makefile` |
 

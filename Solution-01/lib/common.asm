@@ -67,20 +67,20 @@ porta_write:
 
 ; ============================================================
 ; arduino_send
-; Envoie UN octet du 8088 vers l'Arduino (UART a emettre OU octet
+; Envoie UN octet du 8088 vers le pont (UART a emettre OU octet
 ; LCD a relayer en I2C) par le Port A du 8255 en MODE 2 (voir
-; MASQUE_PIO, hardware.inc): pose d'abord le CANAL sur le Port B (l'Arduino
+; MASQUE_PIO, hardware.inc): pose d'abord le CANAL sur le Port B (le pont
 ; le lit des qu'il voit OBF# bas), puis ecrit l'octet sur le Port A, ce qui
-; met OBF# a 0 (PC7). L'Arduino lit l'octet en abaissant ACK#, ce qui
+; met OBF# a 0 (PC7). Le pont lit l'octet en abaissant ACK#, ce qui
 ; remet OBF# a 1.
 ;
 ; CONTROLE DE FLUX (nouveau, le mode 2 le donne gratuitement): avant
 ; d'ecrire, on attend que OBF# soit a 1 (l'octet precedent a ete lu). Pour
-; ne jamais bloquer le boot quand l'Arduino est absent/pas encore demarre:
-;   - ARD_UNKNOWN (jamais vu consommer): attend jusqu'a ~3 s (l'Arduino
+; ne jamais bloquer le boot quand le pont est absent/pas encore demarre:
+;   - ARD_UNKNOWN (jamais vu consommer): attend jusqu'a ~3 s (le pont
 ;     UNO met 1 a 2 s a demarrer apres un reset commun) - sinon les
 ;     premiers ecrans/lignes UART seraient perdus;
-;   - ARD_ALIVE: attend ~0,5 s puis declare l'Arduino absent;
+;   - ARD_ALIVE: attend ~0,5 s puis declare le pont absent;
 ;   - ARD_ABSENT: n'attend plus du tout (l'octet ecrase le precedent,
 ;     perdu) jusqu'a ce qu'on revoie OBF# a 1.
 ; Le tour d'attente (CX=0 -> 65536 iterations de IN/TEST/LOOP, ~36 cycles

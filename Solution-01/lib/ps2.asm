@@ -1,12 +1,12 @@
 ; ============================================================
 ; ps2.asm
-; Clavier PS/2 decode par un Arduino externe (version Arduino - voir
-; Directives.md), qui gere lui-meme le protocole bit-a-bit (CLOCK/
+; Clavier PS/2 decode par le pont externe (plaquette Black Pill
+; STM32F411 - voir Directives.md), qui gere lui-meme le protocole bit-a-bit (CLOCK/
 ; DATA, timing asynchrone impose par le clavier) et presente le scan
 ; code assemble (Set 2, brut) sur le Port A du 8255 (mode 2, etiquette
 ; PC0=0) - INTR du 8255, cable sur IR1 du 8259, declenche l'ISR. REMPLACE l'ancien decodage bit-bangue sur le Port B (voir git
 ; log pour l'historique du protocole CLOCK/DATA/parite, desormais
-; gere par l'Arduino et non plus par le 8088).
+; gere par le pont et non plus par le 8088).
 ;
 ; ps2_read_byte (ci-dessous) garde EXACTEMENT le meme contrat qu'avant
 ; (AL=octet recu, CF=erreur) pour que ps2_get_char et tout ce qui en
@@ -14,10 +14,10 @@
 ; plus bas) n'aient RIEN a savoir du changement de transport - seul
 ; change CE QUI remplit le tampon (irq1_arduino_handler, solution-01.asm,
 ; au lieu d'un bit-bang direct). CF vaut maintenant TOUJOURS 0 (succes)
-; puisque l'Arduino a deja valide la trame de son cote.
+; puisque le pont a deja valide la trame de son cote.
 ;
 ; Scan Code Set 2 (defaut du clavier a la mise sous tension, aucune
-; commande d'initialisation requise, inchange cote Arduino): un
+; commande d'initialisation requise, inchange cote pont): un
 ; "make" (touche pressee) envoie 1 octet (ou 2 pour les touches
 ; etendues, prefixees de 0E0h); un "break" (touche relachee) est
 ; prefixe de 0F0h. ps2_get_char gere ces prefixes (voir plus bas) et
@@ -50,8 +50,8 @@ PS2_KEY_RIGHT   equ     14h
 ; ps2_rx_push / ps2_read_byte
 ; Tampon circulaire (16 octets, PS2_RX_BUF_OFF - voir hardware.inc,
 ; tete=queue -> vide, 15 octets utiles) rempli de facon ASYNCHRONE par
-; irq1_arduino_handler (solution-01.asm) a chaque scan code recu de
-; l'Arduino. Producteur (ISR)/consommateur (boucle principale) uniques
+; irq1_arduino_handler (solution-01.asm) a chaque scan code recu du
+; pont. Producteur (ISR)/consommateur (boucle principale) uniques
 ; - sans danger sans desactiver les interruptions (indices tete/queue
 ; d'un seul octet, lus/ecrits de facon atomique par rapport a une
 ; IRQ). Aucune detection de debordement (ecrase le plus ancien octet
@@ -59,7 +59,7 @@ PS2_KEY_RIGHT   equ     14h
 ;
 ; ps2_read_byte BLOQUE (attente active) jusqu'a ce qu'un octet soit
 ; disponible - MEME CONTRAT que l'ancienne version bit-bangue (voir
-; en-tete du fichier): Sortie AL=octet recu, CF=0 TOUJOURS (l'Arduino
+; en-tete du fichier): Sortie AL=octet recu, CF=0 TOUJOURS (le pont
 ; a deja valide la trame). Detruit AX, BX, CX, DX (comme avant - CX/DX
 ; ne servent plus, mais gardes dans le contrat pour ne RIEN changer
 ; cote appelants). Jamais SI/DI/ES/BP.
@@ -104,7 +104,7 @@ ps2_read_byte:
 ; ps2_read_byte). Utilisee par dump_memory_action pour verifier Echap
 ; SANS bloquer avant chaque ligne (remplace l'ancien "IN AL,PORTB /
 ; TEST AL,PS2_CLOCK", le Port B n'etant plus le clavier direct depuis
-; la version Arduino). Detruit AX. Jamais BX/CX/DX/SI/DI/ES/BP.
+; la version a pont). Detruit AX. Jamais BX/CX/DX/SI/DI/ES/BP.
 ps2_rx_available:
         push    bp
         mov     bp, PS2_RX_HEAD_OFF
@@ -246,7 +246,7 @@ ps2_extended_to_char:
 ; relachements (prefixe 0F0h) en consommant correctement leur
 ; sequence, ainsi que les touches non reconnues (normales ou
 ; etendues).
-; TERMINAL UART: les octets recus de l'Arduino (irq1_arduino_handler,
+; TERMINAL UART: les octets recus du pont (irq1_arduino_handler,
 ; etiquette UART) sont eux aussi consultes - meme resultat que la touche
 ; PS/2 equivalente (voir uart_get_key), BH = 0.
 ; Sortie: AL = caractere ASCII de la touche pressee, OU PS2_KEY_UP/

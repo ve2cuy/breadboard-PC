@@ -1,6 +1,6 @@
 ;============================================================
 ; bridge.asm
-; Commandes du 8088 pour le PONT (Arduino/STM32) sur le canal PB_CHAN_CMD (3) et
+; Commandes du 8088 pour le PONT (Black Pill STM32F411) sur le canal PB_CHAN_CMD (3) et
 ; reponses en retour (etiquette PC1 = 1, tampon BRIDGE_RX_*). Sert a l'horloge
 ; temps reel (RTC) et au DISQUE (systeme de fichiers FAT sur la flash SPI) du pont
 ; STM32 (voir breadboard/arduino/8088_bridge_stm32): TIMER/TIME$/DATE$, SAVE/LOAD/

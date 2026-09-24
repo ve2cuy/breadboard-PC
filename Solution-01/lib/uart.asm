@@ -1,22 +1,22 @@
 ; ============================================================
 ; uart.asm
-; UART "relaye" via un Arduino externe (version Arduino - voir
-; Directives.md), qui possede son propre UART MATERIEL (RX/TX reels,
-; independants de l'horloge du 8088). REMPLACE l'ancienne
+; UART "relaye" par le pont externe (plaquette Black Pill STM32F411 -
+; voir Directives.md), qui presente au PC un port serie USB natif (RX/TX
+; reels, independants de l'horloge du 8088). REMPLACE l'ancienne
 ; transmission serie logicielle bit-bangue sur PA7 (voir git log pour
 ; l'historique de calibration UART_BIT_COUNT, desormais obsolete).
 ;
-; TX (8088 -> Arduino -> UART materiel): uart_tx_byte passe l'octet a
+; TX (8088 -> pont -> UART materiel): uart_tx_byte passe l'octet a
 ; arduino_send (lib/common.asm) sur le canal PB_CHAN_UART - Port A du 8255
 ; en MODE 2, avec CONTROLE DE FLUX materiel (OBF#): plus de delai a
-; calibrer, le 8088 attend simplement que l'Arduino ait lu l'octet
+; calibrer, le 8088 attend simplement que le pont ait lu l'octet
 ; precedent. Le meme canal transporte aussi les octets LCD (voir
 ; lib/lcd_i2c.asm), distingues par le canal.
 ;
-; RX (Arduino -> 8088, via IRQ1): voir uart_rx_push/uart_rx_available/
+; RX (pont -> 8088, via IRQ1): voir uart_rx_push/uart_rx_available/
 ; uart_rx_byte plus bas - rempli de facon ASYNCHRONE par
 ; irq1_arduino_handler (solution-01.asm) a chaque octet recu par
-; l'UART materiel de l'Arduino (etiquette PC0=1 - un scan code clavier
+; l'UART materiel du pont (etiquette PC0=1 - un scan code clavier
 ; porte l'etiquette PC0=0 et va dans le tampon de lib/ps2.asm). Nouvelle
 ; capacite, pas encore consommee ailleurs dans ce projet.
 ;
@@ -48,7 +48,7 @@ uart_tx_string:
         pop     ax
         ret
 
-; uart_tx_byte: envoie AL a l'Arduino (canal UART, voir arduino_send).
+; uart_tx_byte: envoie AL au pont (canal UART, voir arduino_send).
 ; Preserve tous les registres (BX y compris: test_segment y garde l'octet
 ; original pendant tout le cycle test-restauration).
 uart_tx_byte:
@@ -238,7 +238,7 @@ uart_ansi_goto:
 ; Tampon circulaire (256 octets, UART_RX_BUF_OFF - voir hardware.inc,
 ; tete=queue -> vide, 255 octets utiles) rempli de facon ASYNCHRONE par
 ; irq1_arduino_handler (solution-01.asm) a chaque octet UART recu
-; de l'Arduino. Producteur (ISR)/consommateur (boucle
+; du pont. Producteur (ISR)/consommateur (boucle
 ; principale) uniques - sans danger sans desactiver les interruptions
 ; (indices tete/queue d'un seul octet, lus/ecrits de facon atomique
 ; par rapport a une IRQ). Aucune detection de debordement (ecrase le

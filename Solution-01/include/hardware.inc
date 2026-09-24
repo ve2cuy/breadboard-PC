@@ -26,28 +26,28 @@ PORTC       EQU    10000010B
 PIO         EQU    10000011B
 
 ; MASQUE_PIO: mot de mode du 8255 - MODE 2 (bus bidirectionnel) sur le
-; Port A depuis la version Arduino "18 broches" (voir Directives.md). Le
-; clavier PS/2, l'UART (RX/TX) ET le LCD I2C sont geres par un Arduino
-; externe (decodage PS/2, UART materiel reel independant de l'horloge du
-; 8088, bus I2C materiel vers le LCD). Le 8088 ne parle a l'Arduino que
-; par ce 8255:
+; Port A depuis la version a pont "18 broches" (voir Directives.md). Le
+; clavier PS/2, l'UART (RX/TX) ET le LCD I2C sont geres par le pont
+; externe, une plaquette Black Pill STM32F411 (decodage PS/2, port
+; serie USB independant de l'horloge du 8088, bus I2C materiel vers
+; le LCD). Le 8088 ne parle au pont que par ce 8255:
 ;   Port A = BUS BIDIRECTIONNEL de 8 bits (mode 2), avec poignee de main
 ;            MATERIELLE sur le Port C (PC3-PC7, voir ci-dessous):
-;              8088 -> Arduino: OUT PORTA (OBF# passe a 0); l'Arduino
+;              8088 -> pont: OUT PORTA (OBF# passe a 0); le pont
 ;                               abaisse ACK# pour lire l'octet (le 8255
 ;                               ne pilote le bus QUE pendant ACK# bas -
-;                               aucun conflit possible avec l'Arduino).
-;              Arduino -> 8088: l'Arduino pose l'octet et pulse STB#;
+;                               aucun conflit possible avec le pont).
+;              pont -> 8088: le pont pose l'octet et pulse STB#;
 ;                               INTR (PC3, cable sur IR1 du 8259)
 ;                               declenche irq1_arduino_handler, qui lit
 ;                               le Port A (efface IBF/INTR).
 ;   Port B = SORTIE (mode 0): CANAL de l'octet sortant (PB_CHAN_*), pose
-;            AVANT chaque ecriture du Port A - l'Arduino le lit quand il
+;            AVANT chaque ecriture du Port A - le pont le lit quand il
 ;            voit OBF# bas. Bits 2-7 libres.
 ;   Port C = poignee de main du mode 2 (PC3 INTR, PC4 STB#, PC5 IBF,
 ;            PC6 ACK#, PC7 OBF#) + PC0-PC2 en ENTREE: PC0 = "etiquette"
 ;            de l'octet entrant (0 = scan code clavier, 1 = octet UART
-;            recu), posee par l'Arduino AVANT le pulse STB#. PC1/PC2
+;            recu), posee par le pont AVANT le pulse STB#. PC1/PC2
 ;            libres.
 ; Mot de mode = 11000001b: D7=1 (mode), D6-D5=11 (groupe A mode 2),
 ; D4/D3 ignores en mode 2, D2=0 (groupe B mode 0), D1=0 (Port B sortie),
@@ -56,16 +56,16 @@ MASQUE_PIO  EQU    11000001B   ;PORT A MODE 2, PORT B SORTIE, PC0-PC2 ENTREES
 
 ; --- mots "bit set/reset" du Port C (mode 2: INTE1=PC6, INTE2=PC4). Un
 ; --- mot de mode remet les deux a 0; seul INTE2 (interruption sur octet
-; --- RECU de l'Arduino) est active - INTE1 (fin d'emission) reste a 0:
+; --- RECU du pont) est active - INTE1 (fin d'emission) reste a 0:
 ; --- le 8088 interroge OBF# lui-meme (arduino_send). ---
 PIO_INTE2_SET    EQU   00001001B   ;PC4 = 1 (INTE2: INTR sur octet recu)
 PIO_INTE1_RESET  EQU   00001100B   ;PC6 = 0 (INTE1: pas d'INTR a l'emission)
 
 ; --- bits du mot d'etat lu sur le Port C en mode 2 ---
-PC_OBF_N      equ     10000000b     ; PC7: 1 = tampon de sortie LIBRE (l'Arduino
+PC_OBF_N      equ     10000000b     ; PC7: 1 = tampon de sortie LIBRE (le pont
                                      ; a lu le dernier octet), 0 = octet en attente
-PC_IBF        equ     00100000b     ; PC5: 1 = octet de l'Arduino recu, pas encore lu
-PC_TAG_UART   equ     00000001b     ; PC0 (entree, pilotee par l'Arduino): 1 = l'octet
+PC_IBF        equ     00100000b     ; PC5: 1 = octet du pont recu, pas encore lu
+PC_TAG_UART   equ     00000001b     ; PC0 (entree, pilotee par le pont): 1 = l'octet
                                      ; du Port A est un octet UART recu, 0 = scan code
 PC_TAG_REPLY  equ     00000010b     ; PC1 (entree, pilotee par le pont): 1 = l'octet du
                                      ; Port A est un octet de REPONSE a une commande du
@@ -82,7 +82,7 @@ PB_CHAN_LCD_CMD   equ 1             ; commande HD44780 (RS=0) a relayer au LCD I
 PB_CHAN_LCD_DATA  equ 2             ; donnee HD44780 (RS=1, caractere)
 PB_CHAN_CMD       equ 3             ; commande pour le pont (RTC...): voir lib/bridge.asm
 
-; --- etat de l'Arduino vu par arduino_send (ARD_TX_STATE_OFF) ---
+; --- etat du pont vu par arduino_send (ARD_TX_STATE_OFF) ---
 ARD_UNKNOWN   equ     0             ; jamais vu consommer un octet (apres reset)
 ARD_ALIVE     equ     1             ; a deja consomme au moins un octet
 ARD_ABSENT    equ     2             ; delai depasse: on n'attend plus (voir
@@ -187,7 +187,7 @@ RUN_REG_DI_OFF      equ 0FC25h  ; (mot)
 ; --- entree dans l'action. ---
 IVT_WINDOW_OFF      equ 0FC27h  ; (mot)
 
-; --- etat de l'Arduino vu par arduino_send (lib/common.asm): ARD_UNKNOWN/
+; --- etat du pont vu par arduino_send (lib/common.asm): ARD_UNKNOWN/
 ; --- ARD_ALIVE/ARD_ABSENT ci-dessus. Remis a 0 par l'effacement complet du
 ; --- segment au demarrage (voir start:). ---
 ARD_TX_STATE_OFF    equ 0FC29h  ; (octet)

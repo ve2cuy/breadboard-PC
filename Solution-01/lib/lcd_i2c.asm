@@ -3,8 +3,8 @@
 ; Deuxieme afficheur LCD (HD44780 derriere un expandeur I2C
 ; PCF8574, adresse 0x27 - "backpack" standard le plus courant, ex.
 ; "LCM1602 IIC").
-; Le 8088 NE PARLE PLUS I2C DU TOUT depuis la version Arduino (voir
-; Directives.md): c'est l'Arduino qui possede le bus I2C materiel (broches
+; Le 8088 NE PARLE PLUS I2C DU TOUT depuis la version a pont (voir
+; Directives.md): c'est le pont qui possede le bus I2C materiel (broches
 ; A4/A5 d'un UNO, cablees directement au module LCD) et qui traduit en
 ; I2C reel les octets que le 8088 lui relaie par le Port A du 8255 (mode 2,
 ; voir MASQUE_PIO, hardware.inc), via arduino_send (lib/common.asm):
@@ -13,15 +13,15 @@
 ;   - canal (Port B) = PB_CHAN_LCD_CMD (RS=0) ou PB_CHAN_LCD_DATA (RS=1)
 ;
 ; Le Port A est PARTAGE avec l'UART (canal PB_CHAN_UART, lib/uart.asm):
-; un octet a la fois, le canal dit a l'Arduino ou l'envoyer. Ordre
-; preserve: tout passe par la meme file cote Arduino.
+; un octet a la fois, le canal dit au pont ou l'envoyer. Ordre
+; preserve: tout passe par la meme file cote pont.
 ;
-; L'Arduino possede TOUTE la logique auparavant ici: la sequence de
+; Le pont possede TOUTE la logique auparavant ici: la sequence de
 ; demarrage 4 bits du HD44780 (0011b x3 puis 0010b), le decoupage d'un
 ; octet en 2 quartets + impulsions EN, le protocole I2C (START/adresse/
 ; ACK/STOP) et les delais d'execution du controleur (37-43us, 1,52ms
 ; pour Clear/Home): le 8088 n'a plus aucun delai a respecter ici - le
-; controle de flux OBF# (arduino_send) l'arrete si l'Arduino prend du
+; controle de flux OBF# (arduino_send) l'arrete si le pont prend du
 ; retard. Seul le codage standard des commandes/donnees HD44780 survit
 ; cote 8088, via i2c_lcd_command/i2c_lcd_data ci-dessous.
 ;
@@ -34,7 +34,7 @@
 
 %include "include/hardware.inc"
 %include "lib/common.asm"
-%include "lib/lcd.asm"          ; plus utilise ici (delais desormais cote Arduino);
+%include "lib/lcd.asm"          ; plus utilise ici (delais desormais cote pont);
                                  ; garde pour les modules qui en dependent encore
 
 I2C_LCD_RS      equ     1               ; flag LOGIQUE (pas un bit materiel du
@@ -44,7 +44,7 @@ I2C_LCD_RS      equ     1               ; flag LOGIQUE (pas un bit materiel du
 
 ; ============================================================
 ; i2c_lcd_send_byte
-; Envoie un octet complet (commande ou donnee) a l'Arduino via
+; Envoie un octet complet (commande ou donnee) au pont via
 ; arduino_send, qui l'ecrit au LCD par son propre bus I2C. Jamais
 ; appele directement ailleurs que par i2c_lcd_command/i2c_lcd_data.
 ; Entree: AL = octet complet. BL bit0 = RS voulu (0 = commande,
@@ -65,7 +65,7 @@ i2c_lcd_send_byte:
 ; ============================================================
 ; i2c_lcd_command / i2c_lcd_data
 ; Envoient un octet complet au LCD I2C (voir i2c_lcd_send_byte). Aucun
-; delai ici: l'Arduino respecte les temps d'execution du HD44780 (voir
+; delai ici: le pont respecte les temps d'execution du HD44780 (voir
 ; l'en-tete du fichier).
 ; Entree: AL = octet a envoyer. lcd_command: RS=0. lcd_data: RS=1.
 ; ============================================================
@@ -161,7 +161,7 @@ i2c_lcd_tx_dec3:
 ; Ecran "propre" pour le menu/une action - N'INITIALISE PLUS le
 ; controleur HD44780 (la sequence de demarrage, y compris le mode 4 bits
 ; AVANT que le controleur comprenne un octet complet, vit dans le setup()
-; de l'Arduino). Renvoie les commandes standard de remise en etat par le
+; du pont). Renvoie les commandes standard de remise en etat par le
 ; meme canal que i2c_lcd_command (Function Set/Display ON/Entry Mode/
 ; Clear) - inoffensif si superflu.
 ; ============================================================
@@ -177,7 +177,7 @@ i2c_lcd_init:
         mov     al, 00000110b          ; Entry Mode: incremente, pas de decalage
         call    i2c_lcd_command
 
-        mov     al, 00000001b          ; Clear Display (l'Arduino attend les 1,52ms)
+        mov     al, 00000001b          ; Clear Display (le pont attend les 1,52ms)
         call    i2c_lcd_command
 
         pop     ax

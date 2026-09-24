@@ -1,10 +1,10 @@
 ; ============================================================
 ; isr.asm - irq1_arduino_handler
 ; Gestionnaire REEL de IR1 (INT 09h): INTR du 8255 (PC3, mode 2) se
-; declenche a chaque octet que l'Arduino a pousse sur le Port A. Lit
+; declenche a chaque octet que le pont a pousse sur le Port A. Lit
 ; d'abord le mot d'etat (Port C): PC5 (IBF) confirme qu'un octet est
 ; bien la (sinon interruption parasite: rien a lire), PC0 (etiquette
-; posee par l'Arduino AVANT son impulsion STB#) dit d'ou vient l'octet -
+; posee par le pont AVANT son impulsion STB#) dit d'ou vient l'octet -
 ; 0 = scan code clavier (ps2_rx_push, lib/ps2.asm), 1 = octet recu par
 ; l'UART materiel (uart_rx_push, lib/uart.asm); PC1 = 1 (prioritaire) = octet
 ; de REPONSE a une commande du pont (bridge_rx_push, lib/bridge.asm). Lit ensuite le Port A
