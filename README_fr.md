@@ -1,8 +1,9 @@
 # breadboard-PC — un ordinateur 8088 sur plaquette d'essai
 
 Un micro-ordinateur d'architecture inspirée du PC/XT, construit sur plaquette d'essai (*breadboard*)
-autour d'un **Intel 8088**, avec sa propre ROM écrite en assembleur. Il démarre sur un menu interactif, exécute
-deux interpréteurs BASIC et **amorce PC-DOS 2.1 et MS-DOS 3.30** depuis des images de disquette.
+autour d'un **Intel 8088**. Sa ROM, dont le code source est **entièrement écrit en assembleur** 8086,
+démarre sur un menu interactif, exécute deux interpréteurs BASIC et **amorce PC-DOS 2.1 et MS-DOS 3.30**
+depuis des images de disquette.
 
 Projet d'Alain Boudreault (VE2CUY), 2026.
 
@@ -20,7 +21,7 @@ Projet d'Alain Boudreault (VE2CUY), 2026.
 | **Mémoire** | ROM 256 Ko (W29C020C, `C0000h`–`FFFFFh`), RAM statique 128 Ko (HM628128, `00000h`–`1FFFFh`) |
 | **Entrées/sorties** | 8255A en mode 2 (bus vers le pont), 8259A (interruptions), LCD 4×20 I2C, clavier PS/2 |
 | **Pont** | Plaquette WeAct **Black Pill STM32F411** : clavier, terminal USB, LCD, horloge, disque, RESET |
-| **Logiciel** | ROM en NASM (8086 strict) : menu, BIOS pour DOS, Tiny BASIC, BASIC de type GW-BASIC |
+| **Logiciel** | ROM entièrement en assembleur (NASM, jeu d'instructions 8086 strict), y compris les deux BASIC : menu, BIOS pour DOS, Tiny BASIC, BASIC de type GW-BASIC |
 | **Systèmes** | PC-DOS 2.1 et MS-DOS 3.30 amorcés depuis une image de disquette |
 
 ## Le montage
