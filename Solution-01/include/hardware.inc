@@ -91,7 +91,7 @@ ARD_ABSENT    equ     2             ; delai depasse: on n'attend plus (voir
 ;*****************
 ; CONST. 8259   *
 ;*****************
-; CS# du 8259 decode via IO.A6./A7 (NAND 3 entrees) - memes ports que
+; CS# du 8259 decode via IO.A5 (NAND 2 entrees, 74LS00) - memes ports que
 ; le PC/XT reel (20h/21h). A0 du 8259 (commande/ICW1/OCW2/OCW3 vs
 ; donnees/ICW2/ICW4/OCW1=IMR) correspond a l'ecart d'un octet entre
 ; PIC_CMD et PIC_DATA, comme PORTA/PORTB/PORTC/PIO ci-dessus pour le

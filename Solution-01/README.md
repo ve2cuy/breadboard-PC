@@ -45,8 +45,8 @@ splash.
 - ROM 256 Ko, mappée à l'adresse physique `C0000h-FFFFFh`
 - RAM statique 128 Ko
 - Un **8259A** (contrôleur d'interruptions) : ports `20h`/`21h` (comme le
-  PC/XT), `CS#` décodé par une porte NAND sur `IO`, `A6` et `/A7`. `IR0` =
-  bouton-poussoir de test, `IR1` = `INTR` du 8255 (octet reçu de
+  PC/XT), `CS#` décodé par une porte NAND (74LS00) sur `IO` et `A5`. `IR0` =
+  bouton-poussoir de test, `IR1` = `INTR` du 8255 (octet reçu du
   pont). Détails : [Interruptions matérielles](#interruptions-matérielles-8259)
 - Un **8255** (PIO, ports `80h-83h`) en **mode 2** — voir
   [Pont STM32](#pont-stm32-8255-en-mode-2)
@@ -101,7 +101,7 @@ d'E/S se faisant sur le bus d'E/S) :
   `A0`/`A1` vont directement aux broches `A0`/`A1` du 8255 pour
   sélectionner Port A/B/C/registre de commande — voir `PORTA`/`PORTB`/
   `PORTC`/`PIO` dans `include/hardware.inc`, ports 80h-83h)
-- **8259 (PIC)** : `CS#` par NAND(`IO`, `A6`, `/A7`) — ports `20h`/`21h`
+- **8259 (PIC)** : `CS#` par NAND(`IO`, `A5`) (une porte de 74LS00) — ports `20h`/`21h`
 
 ```mermaid
 flowchart TD
@@ -115,7 +115,7 @@ flowchart TD
         A19G["A19"]
         NOTA19["NOT A19"]
         A7IO["A7 AND IO/M"]
-        PICCS["NAND(IO, A6, /A7)"]
+        PICCS["NAND(IO, A5)"]
     end
 
     subgraph MEM["Memoire"]

@@ -5044,7 +5044,7 @@ setup_bios_interrupts:
 
 ; ============================================================
 ; init_8259
-; Initialise le controleur d'interruptions 8259A (CS# = IO.A6./A7,
+; Initialise le controleur d'interruptions 8259A (CS# = IO.A5,
 ; ports PIC_CMD/PIC_DATA = 20h/21h - memes adresses que le PC/XT reel,
 ; voir include/hardware.inc et Directives.md) en mode STANDARD PC/XT:
 ;   - Declenchement par FRONT (edge-triggered), pas par niveau.
