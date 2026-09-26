@@ -60,3 +60,13 @@ Présentement, l'heure LCD est actualisé seulement à la saisie d'une touche cl
 
 --------------------------------------------------------------
 
+J'aimerais raccorder la broche reset du 8088 à une des broches de STM32.
+
+Étant donné que le clavier est directement connecté sur STM32, je devrais être en mesure de redémarrer le 8088 avec une séquence clavier.
+
+De plus, au démarrage de STM32, la ligne reset de 8088 devrait être tenue haute jusqu'à ce que STM32 soit prêt à recevoir des requêtes.
+
+Il y a une résistance de 10k qui tire Reset à la masse.
+
+Après un reset, la broche de STM32 devrait passer en mode Input pour ne pas interférer avec le bouton reset du montage.
+
