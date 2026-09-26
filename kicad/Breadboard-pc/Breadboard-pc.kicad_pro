@@ -488,7 +488,7 @@
     "pinned_symbol_libs": []
   },
   "meta": {
-    "filename": "Breadbord-pc.kicad_pro",
+    "filename": "Breadboard-pc.kicad_pro",
     "version": 3
   },
   "net_settings": {
@@ -656,18 +656,22 @@
     "subpart_id_separator": 0,
     "top_level_sheets": [
       {
-        "filename": "Breadbord-pc.kicad_sch",
-        "name": "Racine",
+        "filename": "Breadboard-pc.kicad_sch",
+        "name": "Breadboard-pc",
         "uuid": "9d61a1d3-9821-4007-b279-ae2500300156"
       }
     ],
-    "used_designators": "RN1,BAR1,IC\\-6,SW1,R1,#PWR1-23,#PWR102-103,#PWR110-112,#PWR126,#PWR129,U1-9,U11",
+    "used_designators": "RN1,BAR1,U1-9,U11,IC\\-6,SW1,R1,#PWR1-33,#PWR102-103,#PWR110-112,#PWR126,#PWR129",
     "variants": []
   },
   "sheets": [
     [
       "9d61a1d3-9821-4007-b279-ae2500300156",
-      "Racine"
+      "Breadboard-pc"
+    ],
+    [
+      "ba038072-b687-4fdb-907c-63fc9607ed21",
+      "STM32 Bridge"
     ]
   ],
   "text_variables": {},
