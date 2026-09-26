@@ -314,6 +314,8 @@ breadboard-PC/                  (racine du dépôt Git)
 ├── code-examples/              Exemples : hello.asm (programme DOS, INT 10h),
 │                                sin.bas (courbe de SIN en ASCII, BASIC)
 ├── kicad/                      Schémas KiCad du montage
+│   └── 3dmodels/               Modèle 3D (STEP/VRML) du support ZIF 32 broches 3M Textool
+│                                232-1285-00-0602J et son générateur CadQuery
 ├── PC-DOS/                     Images de disquette de test (PC-DOS 2.1, MS-DOS 3.30)
 ├── arduino/
 │   ├── 8088_bridge_stm32/  Firmware du pont : WeAct Black Pill V3.1 (STM32F411), PlatformIO
