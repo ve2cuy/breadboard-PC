@@ -33,7 +33,7 @@ NAND gates:
 - **ROM**: `A19 = 1` (window `C0000h`–`FFFFFh`);
 - **RAM**: `A19 = 0`;
 - **8255** (ports `80h`–`83h`): `A7` and an I/O cycle;
-- **8259** (ports `20h`–`21h`): `NAND(IO, A6, /A7)`.
+- **8259** (ports `20h`–`21h`): `NAND(IO, A5)` (one gate of a 74LS00).
 
 <p align="center">
   <img src="medias/breadboard-step-02.png" alt="KiCad schematic of the core: 8088, latches, ROM, RAM and decoding" width="820"><br>

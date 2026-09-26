@@ -32,7 +32,7 @@ d'essai en logique 74HC/74HCT, sans logique programmable (ni GAL ni CPLD). Le d�
 - **ROM** : `A19 = 1` (fenêtre `C0000h`–`FFFFFh`) ;
 - **RAM** : `A19 = 0` ;
 - **8255** (ports `80h`–`83h`) : `A7` et cycle d'E/S ;
-- **8259** (ports `20h`–`21h`) : `NAND(IO, A6, /A7)`.
+- **8259** (ports `20h`–`21h`) : `NAND(IO, A5)` (une porte de 74LS00).
 
 <p align="center">
   <img src="medias/breadboard-step-02.png" alt="Schéma KiCad du cœur : 8088, verrous, ROM, RAM et décodage" width="820"><br>

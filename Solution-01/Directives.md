@@ -537,3 +537,4 @@ Suite à discussion avec Claude Code (session du 14 septembre 2026), voici les t
   - JP1 (Jumper_3_Open, barrette 1x3): 1 = CLK_STM (PA3 du pont; l'etiquette globale CLK du pont est renommee CLK_STM), 2 = CLK (8088), 3 = CLK_EXT; J4 (barrette 1x2): entree d'horloge externe CLK_EXT + GND.
   - Bouton RESET: il existait deja (SW1 +5V -> RESET, rappel R1 4,7k): nomme "RESET", empreintes du bouton (SW_PUSH_6mm) et de R1 ajoutees.
   - Verifie par kicad-cli: 37 liaisons + 22 alimentations, 0 ecart; ERC sans nouvelle erreur (5 avertissements pin_to_pin: broches 5V/G du symbole Black Pill et SP/EN du 8259 declarees bidirectionnelles).
+* README.md / README_fr.md (approuve par l'utilisateur): decodage du 8259 corrige en NAND(IO, A5), une porte de 74LS00.
