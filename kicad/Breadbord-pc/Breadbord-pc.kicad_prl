@@ -1,6 +1,6 @@
 {
   "board": {
-    "active_layer": 0,
+    "active_layer": 5,
     "active_layer_preset": "",
     "auto_track_width": true,
     "hidden_netclasses": [],
@@ -53,7 +53,7 @@
       "board_outline_area",
       "ly_points"
     ],
-    "visible_layers": "ffffffff_ffffffff_ffffffff_ffffffff",
+    "visible_layers": "ffffffff_ffffffff_ffffffff_fffffffa",
     "zone_display_mode": 0
   },
   "git": {
@@ -63,7 +63,7 @@
     "ssh_key": ""
   },
   "meta": {
-    "filename": "montage_8088_etape_01.kicad_prl",
+    "filename": "Breadbord-pc.kicad_prl",
     "version": 5
   },
   "net_inspector_panel": {
@@ -101,7 +101,7 @@
       105,
       109,
       103,
-      0
+      103
     ],
     "custom_group_rules": [],
     "expanded_rows": [],
