@@ -38,7 +38,7 @@ BAS_SRC     = lib/basic.asm lib/basic_tokens.inc lib/basic_float.asm lib/basic_f
 # du fichier de sortie. Un dossier local du projet n'a pas ce probleme.
 CHECK_DIR   = build/check
 
-.PHONY: all rom rom-fr rom-en rom-pause lib check clean check-modules test test-rom test-rom-complet map trace trace-nohd
+.PHONY: all rom rom-fr rom-en rom-512 rom-512-en rom-pause lib check clean check-modules test test-rom test-rom-complet map trace trace-nohd
 
 # --- Cible par defaut: la ROM complete + les modules individuels ---
 all: rom lib
@@ -71,6 +71,18 @@ rom-en: $(BAS_SRC) solution-01.asm lib/bios.asm
 	$(NASM) $(NASMFLAGS) -dLANG_EN=1 -w-error=label-redef-late solution-01.asm -o solution-01-en.bin
 	cp solution-01-en.bin "$(dir $(ROM_OUT))solution-01-en.bin"
 	@echo "ROM (anglais): solution-01-en.bin, copiee vers $(dir $(ROM_OUT))"
+
+# --- RAM de 512 Ko (AS6C4008: A17 sur sa broche 30, A18 sur sa broche 1): -dRAM_512K ---
+# --- zone reservee en 7000:F800, 510 Ko annonces au DOS, test RAM de 510 blocs + test d'adressage ---
+rom-512: $(BAS_SRC) solution-01.asm lib/bios.asm
+	$(NASM) $(NASMFLAGS) -dRAM_512K solution-01.asm -o solution-01-512k.bin
+	cp solution-01-512k.bin "$(dir $(ROM_OUT))solution-01-512k.bin"
+	@echo "ROM 512 Ko (francais): solution-01-512k.bin, copiee vers $(dir $(ROM_OUT))"
+
+rom-512-en: $(BAS_SRC) solution-01.asm lib/bios.asm
+	$(NASM) $(NASMFLAGS) -dRAM_512K -dLANG_EN=1 -w-error=label-redef-late solution-01.asm -o solution-01-512k-en.bin
+	cp solution-01-512k-en.bin "$(dir $(ROM_OUT))solution-01-512k-en.bin"
+	@echo "ROM 512 Ko (anglais): solution-01-512k-en.bin, copiee vers $(dir $(ROM_OUT))"
 
 # --- ROM d'ESSAI: pause (~5 ms) apres chaque ecriture de secteur (BRIDGE_WRITE_PAUSE, lib/bridge.asm) ---
 rom-pause: $(BAS_SRC) solution-01.asm lib/bios.asm

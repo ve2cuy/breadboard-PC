@@ -94,6 +94,19 @@ out = st['out'].decode('latin-1')
 check('PS/2: Information rafraichit l heure sans frappe (56 -> 59), puis Echap revient au sous-menu',
       st['done'] and out.count('Sous-menu Configuration') == 2, out[-300:])
 
+# --- RAM de 512 Ko (-dRAM_512K, make rom-512): zone reservee en 7000:F800, 510 Ko annonces au DOS ---
+st = S.run_rom([(S.MENU, b'4'), (b'4) ', b'4'), (b'Disque', b'\x1b'), (b'1) ', b'')], defines=('RAM_512K',),
+               tail_blocks=50_000)
+out = st['out'].decode('latin-1')
+check('RAM 512K: l ecran Information annonce 510 Ko', st['done'] and 'RAM:510K' in out, out[-300:])
+if os.path.exists(os.path.join(DOS, 'pcdos2_1.img')):
+    st = S.run_rom([(S.MENU, b'3'), (b'Boot disk image', b'3'), (b'): ', b'1'), (b'Enter new date: ', b'\r'),
+                    (b'Enter new time: ', b'\r'), (b'A>', b'chkdsk\r'), (b'A>', b'')], defines=('RAM_512K',),
+                   bridge=S.H.BridgeModel(files={'D.IMG': img('pcdos2_1.img')}), tail_blocks=200_000)
+    out = st['out'].decode('latin-1')
+    check('RAM 512K: PC-DOS 2.1 demarre et CHKDSK voit 522240 octets (INT 12h = 510 Ko)',
+          st['done'] and '522240 bytes total memory' in out, out[-400:])
+
 # --- ROM COMPLETE (option --complet: plusieurs minutes) ---
 if '--complet' in sys.argv:
     if os.path.exists(os.path.join(DOS, 'pcdos2_1.img')):

@@ -20,6 +20,10 @@ Cible par défaut si on tape juste `make`. Dépend de `rom` et `lib` — constru
 
 C'est le principe de base de make : chaque cible peut avoir des **prérequis** (fichiers listés après `:`), et sa recette (les lignes indentées en dessous) ne s'exécute que si la cible n'existe pas encore ou est plus vieille qu'un de ses prérequis. Ça évite de tout réassembler à chaque fois.
 
+### `rom-512` / `rom-512-en`
+
+RAM de 512 Ko (AS6C4008) : assemblent avec `-dRAM_512K` (anglais : `-dLANG_EN=1` en plus) et produisent `solution-01-512k.bin` / `solution-01-512k-en.bin`, copiés vers `Z:\Partage\Alain` sous ces noms (jamais sur `rom.bin`). Zone réservée en `7000:F800`, 510 Ko annoncés au DOS, test RAM de 510 blocs suivi d'un test d'adressage — voir `README.md`, section « RAM de 512 Ko ». Sans `-dRAM_512K`, la ROM est inchangée.
+
 ### `rom-fr` / `rom-en`
 
 Bilinguisme (voir `README.md`, section « Bilinguisme (FR/EN) »): produisent respectivement `solution-01-fr.bin` (français - identique au comportement de `rom`, sans aucun `-d`) et `solution-01-en.bin` (anglais - `nasm -dLANG_EN=1`). `rom-en` ajoute `-w-error=label-redef-late`: la taille légèrement différente des textes anglais retarde la convergence normale de NASM (plusieurs passes) sur certains sauts éloignés du fichier - inoffensif (deux compilations successives produisent un binaire identique), `rom`/`rom-fr` n'en ont jamais eu besoin.

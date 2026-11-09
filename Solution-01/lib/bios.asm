@@ -16,8 +16,9 @@
 ; l'acces etendu (INT 13h AH=41h-48h, LBA 32 bits) est aussi fourni. Pas de disquette: INT 11h
 ; annonce 0 lecteur.
 ;
-; MEMOIRE. Le DOS recoit la RAM de 0000:0500 a 1000:F7FF (126 Ko, INT 12h); 1000:F800-FFFF reste
-; au micrologiciel (tampons du pont, pile privee du BIOS).
+; MEMOIRE. Le DOS recoit la RAM de 0000:0500 a VAR_SEG:F7FF (INT 12h): 1000:F7FF = 126 Ko, ou
+; 7000:F7FF = 510 Ko avec RAM_512K; VAR_SEG:F800-FFFF reste au micrologiciel (tampons du pont, pile
+; privee du BIOS).
 ;
 ; Inclus par solution-01.asm et tests/bios_test.asm apres lib/bridge.asm, lib/ps2.asm et
 ; lib/uart.asm - garde requise.
@@ -25,7 +26,11 @@
 %ifndef BIOS_ASM
 %define BIOS_ASM
 
+%ifdef RAM_512K
+BIOS_MEM_KB     equ     510             ; RAM annoncee: 0000:0000-7000:F7FF (510 Ko)
+%else
 BIOS_MEM_KB     equ     126             ; RAM annoncee: 0000:0000-1000:F7FF (126 Ko)
+%endif
 %ifndef BIOS_HIDE_HD
 BIOS_HIDE_HD    equ     0                       ; 1 = INT 13h refuse tout disque DL >= 80h (le DOS ne voit pas la flash comme disque dur C:; diagnostic)
 %endif

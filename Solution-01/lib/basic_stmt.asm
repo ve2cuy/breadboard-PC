@@ -2512,7 +2512,7 @@ poke_guard:
         jb      .bad
         jmp     .ok
 .h:
-        cmp     dx, 1
+        cmp     dx, VAR_SEG >> 12       ; banc de 64 Ko du segment de travail (1 en 128 Ko, 7 en 512 Ko)
         jne     .ok
         cmp     ax, 0400h
         jb      .bad

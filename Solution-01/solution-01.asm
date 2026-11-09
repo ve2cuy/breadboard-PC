@@ -70,7 +70,7 @@ ORG     0000h                   ; = physique C0000h (debut de la ROM)
 ; la note dans include/hardware.inc. Le Makefile lance toujours nasm
 ; depuis cette racine, meme pour assembler un module seul.
 ; ------------------------------------------------------------
-STACK_SEG       equ     1000h
+; STACK_SEG (= VAR_SEG, 1000h ou 7000h selon RAM_512K): include/hardware.inc
 
 SECONDE         equ     1000            ; 1 seconde = 1000 ms
 
@@ -167,6 +167,20 @@ start:
         ; encore ete empile a ce stade. AX reste a 0 (valeur de
         ; remplissage de "rep stosw") tout du long - CX sert de
         ; registre de transfert pour le 2e segment. ---
+%ifdef RAM_512K
+        ; 512 Ko: les 8 segments 0000h-7000h, du bas vers VAR_SEG (le dernier,
+        ; qui contient la pile): ES = VAR_SEG en sortie, comme en 128 Ko.
+        xor     ax, ax
+        xor     dx, dx          ; DX = segment courant
+.efface_ram:
+        mov     es, dx
+        xor     di, di
+        mov     cx, 8000h       ; 32768 mots = 65536 octets
+        rep     stosw
+        add     dx, 1000h
+        cmp     dx, VAR_SEG
+        jbe     .efface_ram
+%else
         xor     ax, ax
         mov     es, ax
         xor     di, di
@@ -177,6 +191,7 @@ start:
         xor     di, di
         mov     cx, 8000h       ; segment 1000h (STACK_SEG/VAR_SEG)
         rep     stosw
+%endif
 
         ; --- Valeur par defaut de CLOCK_FREQ_HZ_OFF (VAR_SEG), affichee au
         ; menu principal AVANT toute visite du sous-menu Configuration/Clock
@@ -580,14 +595,29 @@ test_ram:
 
         call    msg_banniere
 
+%ifdef RAM_512K
+        ; --- Segments 0000h-6000h: physique 00000h-6FFFFh, testes en entier ---
+        xor     ax, ax
+.seg_plein:
+        push    ax              ; test_segment detruit AX (la pile est dans la zone non testee)
+        mov     es, ax
+        xor     di, di
+        mov     cx, 0           ; CX=0 -> 65536 iterations
+        call    test_segment
+        pop     ax
+        add     ax, 1000h
+        cmp     ax, VAR_SEG
+        jb      .seg_plein
+%else
         ; --- Segment 0000h: physique 00000h-0FFFFh, teste en entier (64K) ---
         xor     ax, ax
         mov     es, ax
         xor     di, di
         mov     cx, 0           ; CX=0 -> 65536 iterations (astuce classique)
         call    test_segment
+%endif
 
-        ; --- Segment 1000h: physique 10000h-1FFFFh, moins les 2       ---
+        ; --- Segment VAR_SEG (1000h, ou 7000h en 512 Ko), moins les 2 ---
         ; --- derniers Ko reserves a la pile -> 63488 octets testes    ---
         mov     ax, STACK_SEG
         mov     es, ax
@@ -596,6 +626,10 @@ test_ram:
                                  ; tampon d'edition et aux autres variables
                                  ; partagees - voir en en-tete de hardware.inc)
         call    test_segment
+
+%ifdef RAM_512K
+        call    test_adressage  ; repliement / A17-A18 sur les broches multiplexees (met BH a 1)
+%endif
 
         ; --- Bilan final ---
         cmp     bh, 0
@@ -611,6 +645,120 @@ test_ram:
         call    msg_ram_total_defauts
         popf                    ; restaure IF (voir le PUSHF en tete)
         ret
+
+%ifdef RAM_512K
+; ============================================================
+; test_adressage (RAM_512K seulement)
+; Le test octet par octet ci-dessus ne voit PAS deux defauts de cablage
+; de A17/A18: il tourne interruptions coupees (IF = 0) et n'adresse la RAM
+; que par ES. Or le 8088 multiplexe A17/S4 et A18/S5: apres T1, S5 = IF et
+; S4-S3 = registre de segment (ES = 00, DS = 11). Si A17/A18 sont prises sur
+; le 8088 au lieu des sorties du verrou (IC-03 broches 14/13), la RAM voit
+; une autre adresse pendant la phase de donnees - mais seulement avec IF = 1
+; ou par DS: le test passe et le systeme plante.
+; Ici: une signature par segment de 64 Ko (A0h, A1h... en SEG:TA_OFF) est
+; ECRITE par DS avec IF = 1, puis RELUE par ES avec IF = 0. Detecte aussi
+; tout repliement (A16-A18 absente, flottante ou collee: une ecriture
+; ulterieure ecrase une signature precedente). Les octets d'origine sont
+; sauvegardes (pile) et restaures.
+; Appelee par test_ram (IF = 0, DS = CS). Sortie: BH = 1 si defaut (sinon
+; inchange). Preserve AX, CX, DX, SI, DI, DS, ES (BP inchange).
+; ============================================================
+TA_OFF  equ     8000h                   ; hors IVT, hors zone reservee, hors pile
+
+test_adressage:
+        push    ax
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    ds
+        push    es
+        mov     si, txt_adr_titre
+        call    uart_tx_string
+        ; --- sauvegarde des octets d'origine (8 mots sur la pile), lus par ES, IF = 0
+        xor     dx, dx
+.sauve:
+        mov     es, dx
+        mov     al, [es:TA_OFF]
+        push    ax
+        add     dx, 1000h
+        cmp     dx, VAR_SEG
+        jbe     .sauve
+        ; --- signatures ecrites par DS (S4 S3 = 1 1), interruptions ACTIVES (S5 = 1)
+        xor     dx, dx
+        mov     al, 0A0h
+        sti
+.ecrit:
+        mov     ds, dx
+        mov     [TA_OFF], al
+        inc     al
+        add     dx, 1000h
+        cmp     dx, VAR_SEG
+        jbe     .ecrit
+        cli
+        mov     ax, cs
+        mov     ds, ax                  ; DS = CS: messages en ROM
+        ; --- relecture par ES (S4 S3 = 0 0), IF = 0 (S5 = 0)
+        xor     dx, dx
+        mov     cl, 0A0h                ; CL = signature attendue
+        mov     ch, 0                   ; CH = nombre de segments en defaut
+.relit:
+        mov     es, dx
+        mov     al, [es:TA_OFF]
+        cmp     al, cl
+        je      .bon
+        inc     ch
+        push    bx                      ; uart_tx_hex_* detruisent AX et BX (BH = drapeau global)
+        push    ax
+        mov     si, txt_adr_seg
+        call    uart_tx_string
+        mov     ax, dx
+        call    uart_tx_hex_word
+        mov     si, txt_adr_lu
+        call    uart_tx_string
+        pop     ax
+        call    uart_tx_hex_byte        ; AL = valeur lue
+        mov     si, txt_adr_attendu
+        call    uart_tx_string
+        mov     al, cl
+        call    uart_tx_hex_byte
+        mov     si, txt_adr_fin
+        call    uart_tx_string
+        pop     bx
+.bon:
+        inc     cl
+        add     dx, 1000h
+        cmp     dx, VAR_SEG
+        jbe     .relit
+        ; --- restauration, du dernier segment sauvegarde au premier
+        mov     dx, VAR_SEG
+.restaure:
+        pop     ax
+        mov     es, dx
+        mov     [es:TA_OFF], al
+        sub     dx, 1000h
+        jnc     .restaure               ; DX: 7000h ... 0000h, puis emprunt -> fin
+        ; --- bilan
+        or      ch, ch
+        jnz     .defaut
+        mov     si, txt_adr_ok
+        call    uart_tx_string
+        jmp     .fin
+.defaut:
+        mov     bh, 1                   ; RAM declaree defectueuse au bilan de test_ram
+        mov     si, txt_adr_aide
+        call    uart_tx_string
+.fin:
+        pop     es
+        pop     ds
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     ax
+        ret
+%endif
 
 ; ============================================================
 ; test_segment
@@ -4716,6 +4864,10 @@ msg_bloc_progression:
         cmp     bp, 0
         je      .no_defect_incr
         mov     di, DEFECT_COUNTER_OFF
+%ifdef RAM_512K
+        cmp     byte [es:di], 255       ; 510 blocs: le compteur d'un octet sature a 255
+        je      .no_defect_incr
+%endif
         inc     byte [es:di]
 .no_defect_incr:
         pop     di
@@ -4846,8 +4998,29 @@ msg_bloc_progression:
         i2c_lcd_goto LCD_LINE4
         mov     si, lcd_txt_bloc_prefix
         call    i2c_lcd_print
+%ifdef RAM_512K
+        ; 512 Ko: 510 blocs - le compteur d'un octet ne suffit plus: numero
+        ; calcule a partir de l'adresse physique du bloc (1 a 510)
+        push    bx
+        push    cx                      ; CX/BH: etat vivant de test_segment/test_ram
+        push    dx                      ; DH: compteur de blocs defectueux
+        mov     ax, es
+        mov     bx, di
+        sub     bx, 0400h               ; debut du bloc
+        call    mem_calc_physical       ; DX:AX = adresse physique (detruit CX)
+        mov     cl, 10
+        shr     ax, cl
+        mov     cl, 6
+        shl     dx, cl
+        or      ax, dx                  ; AX = adresse / 1024
+        inc     ax                      ; numero de bloc, a partir de 1
+        pop     dx
+        pop     cx
+        pop     bx
+%else
         mov     al, dl
         xor     ah, ah
+%endif
         call    i2c_lcd_tx_dec3
         mov     si, lcd_txt_bloc_mid
         call    i2c_lcd_print
@@ -5534,10 +5707,29 @@ txt_attendu:            db      '  expected=',0
 txt_lu:                 db      '  read=',0
 txt_defaut_detail:      db      '  >> MEMORY FAULT @ ',0
 
+%ifdef RAM_512K
+txt_banniere1:          db      27,'[0m','=== RAM Test 512K (VE2CUY, UART report 9600 8N1, PA7) ===',27,'[0m',13,10,0
+%else
 txt_banniere1:          db      27,'[0m','=== RAM Test 128K (VE2CUY, UART report 9600 8N1, PA7) ===',27,'[0m',13,10,0
+%endif
+%ifdef RAM_512K
+txt_banniere2:          db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocks) + seg 7000h (70000h-7F7FFh, 62 blocks)',13,10,'2 KB reserved for the stack + Edit RAM buffer + PA7 shadow copy: 7F800h-7FFFFh (not tested)',13,10,13,10,0
+%else
 txt_banniere2:          db      'Plan: seg 0000h (00000h-0FFFFh, 64 blocks) + seg 1000h (10000h-1F7FFh, 62 blocks)',13,10,'2 KB reserved for the stack + Edit RAM buffer + PA7 shadow copy: 1F800h-1FFFFh (not tested)',13,10,13,10,0
+%endif
 
+%ifdef RAM_512K
+txt_ram_ok:             db      27,'[32m','*** RAM OK - 522240 bytes tested (510 blocks of 1 KB), no errors ***',27,'[0m',13,10,13,10,0
+txt_adr_titre:          db      13,10,'Address test: one signature per 64 KB segment, written through DS (IF=1), read back through ES (IF=0)',13,10,0
+txt_adr_seg:            db      27,'[31m','  ADDRESSING: segment ',0
+txt_adr_lu:             db      'h: read ',0
+txt_adr_attendu:        db      'h, expected ',0
+txt_adr_fin:            db      'h',27,'[0m',13,10,0
+txt_adr_ok:             db      27,'[32m','  Addressing OK: no aliasing, A16-A18 correctly latched',27,'[0m',13,10,0
+txt_adr_aide:           db      27,'[31m','  Check A17 (latch IC-03 pin 14 -> RAM pin 30) and A18 (IC-03 pin 13 -> RAM pin 1)',27,'[0m',13,10,0
+%else
 txt_ram_ok:             db      27,'[32m','*** RAM OK - 129024 bytes tested (126 blocks of 1 KB), no errors ***',27,'[0m',13,10,13,10,0
+%endif
 txt_ram_defaut:         db      27,'[31m','*** FAULTY RAM - see fault details above ***',27,'[0m',13,10,13,10,0
 txt_total_defaut:       db      'TOTAL FAULTS: ',0
 txt_total_defaut_fin:   db      ' byte(s)',13,10,13,10,0
@@ -5671,7 +5863,11 @@ lcd_text lcd_txt_run_ram_l2, 'Running...', 20
 lcd_text lcd_txt_etat_ok, 'Status: OK', 20
 lcd_text lcd_txt_etat_defaut, 'Status: FAULT', 20
 lcd_txt_bloc_prefix:    db      'Blk:', 0
+%ifdef RAM_512K
+lcd_txt_bloc_mid:       db      '/510 Flt:', 0
+%else
 lcd_txt_bloc_mid:       db      '/126 Flt:', 0
+%endif
 
 %else
 
@@ -5686,10 +5882,29 @@ txt_attendu:            db      '  attendu=',0
 txt_lu:                 db      '  lu=',0
 txt_defaut_detail:      db      '  >> DEFAUT memoire @ ',0
 
+%ifdef RAM_512K
+txt_banniere1:          db      27,'[0m','=== Test RAM 512K (VE2CUY, rapport UART 9600 8N1, PA7) ===',27,'[0m',13,10,0
+%else
 txt_banniere1:          db      27,'[0m','=== Test RAM 128K (VE2CUY, rapport UART 9600 8N1, PA7) ===',27,'[0m',13,10,0
+%endif
+%ifdef RAM_512K
+txt_banniere2:          db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocs) + seg 7000h (70000h-7F7FFh, 62 blocs)',13,10,'2 Ko reserves a la pile + tampon Edit RAM + copie fantome PA7: 7F800h-7FFFFh (non testes)',13,10,13,10,0
+%else
 txt_banniere2:          db      'Plan: seg 0000h (00000h-0FFFFh, 64 blocs) + seg 1000h (10000h-1F7FFh, 62 blocs)',13,10,'2 Ko reserves a la pile + tampon Edit RAM + copie fantome PA7: 1F800h-1FFFFh (non testes)',13,10,13,10,0
+%endif
 
+%ifdef RAM_512K
+txt_ram_ok:             db      27,'[32m','*** RAM OK - 522240 octets testes (510 blocs de 1 Ko), aucune erreur ***',27,'[0m',13,10,13,10,0
+txt_adr_titre:          db      13,10,"Test d'adressage: une signature par segment de 64 Ko, ecrite par DS (IF=1), relue par ES (IF=0)",13,10,0
+txt_adr_seg:            db      27,'[31m','  ADRESSAGE: segment ',0
+txt_adr_lu:             db      'h: lu ',0
+txt_adr_attendu:        db      'h, attendu ',0
+txt_adr_fin:            db      'h',27,'[0m',13,10,0
+txt_adr_ok:             db      27,'[32m','  Adressage OK: aucun repliement, A16-A18 correctement verrouillees',27,'[0m',13,10,0
+txt_adr_aide:           db      27,'[31m','  Verifier A17 (verrou IC-03 broche 14 -> RAM broche 30) et A18 (IC-03 broche 13 -> RAM broche 1)',27,'[0m',13,10,0
+%else
 txt_ram_ok:             db      27,'[32m','*** RAM OK - 129024 octets testes (126 blocs de 1 Ko), aucune erreur ***',27,'[0m',13,10,13,10,0
+%endif
 txt_ram_defaut:         db      27,'[31m','*** RAM DEFECTUEUSE - voir le detail des defauts ci-dessus ***',27,'[0m',13,10,13,10,0
 txt_total_defaut:       db      'TOTAL DEFAUT: ',0
 txt_total_defaut_fin:   db      ' octet(s)',13,10,13,10,0
@@ -5857,7 +6072,11 @@ lcd_text lcd_txt_run_ram_l2, 'En cours...', 20
 lcd_text lcd_txt_etat_ok, 'Etat: OK', 20
 lcd_text lcd_txt_etat_defaut, 'Etat: DEFAUT', 20
 lcd_txt_bloc_prefix:    db      'Bloc:', 0
+%ifdef RAM_512K
+lcd_txt_bloc_mid:       db      '/510 Def:', 0
+%else
 lcd_txt_bloc_mid:       db      '/126 Def:', 0
+%endif
 
 %endif ; LANG_EN
 
@@ -6063,7 +6282,11 @@ txt_lcd_page2:          db      '2/2', 0
 ; ---- un menu (lignes 3/4 sont mises a jour en direct par l'action
 ; ---- elle-meme - voir start:) - ligne 2 ("En cours..."/"Running...")
 ; ---- traduite plus haut ----
+%ifdef RAM_512K
+lcd_text lcd_txt_run_ram_l1, 'Test RAM 512K', 20
+%else
 lcd_text lcd_txt_run_ram_l1, 'Test RAM 128K', 20
+%endif
 
 ; ---- remplissage jusqu'au vecteur de reset            ----
 ; ---- calcul en fonction de la taille de la ROM (256K) ----

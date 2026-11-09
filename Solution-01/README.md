@@ -43,7 +43,8 @@ splash.
   voir `CPU 8086` dans `solution-01.asm` — mais ciblé pour tourner sur
   un vrai 8088)
 - ROM 256 Ko, mappée à l'adresse physique `C0000h-FFFFFh`
-- RAM statique 128 Ko
+- RAM statique 128 Ko (HM628128), ou **512 Ko** (AS6C4008, ROM `make rom-512` : voir
+  [RAM de 512 Ko](#ram-de-512-ko-make-rom-512))
 - Un **8259A** (contrôleur d'interruptions) : ports `20h`/`21h` (comme le
   PC/XT), `CS#` décodé par une porte NAND (74LS00) sur `IO` et `A5`. `IR0` =
   bouton-poussoir de test, `IR1` = `INTR` du 8255 (octet reçu du
@@ -1087,13 +1088,55 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
   programmes qui écrivent en mémoire vidéo ou pilotent le matériel PC n'iront pas plus loin), un seul disque dur
   (la flash) sans lecteur C: monté par le BIOS pour l'instant. Testé à l'émulateur (`tests/bios_test.py` : 105
   vérifications, appels faits comme un DOS depuis une autre pile, dont l'amorçage de PC-DOS 2.1 avec la vraie image).
-- **MS-DOS/PC-DOS 5.0 et plus récent : non supportés (mémoire insuffisante)** : PC-DOS 5.0 exige **au moins 256 Ko**
-  de RAM ; ce matériel n'en a que 128 Ko (126 Ko annoncés par `INT 12h`). À l'émulateur, DOS 5.0 (`Dos50-d1.img`)
+- **MS-DOS/PC-DOS 5.0 et plus récent, avec 128 Ko : non supportés (mémoire insuffisante)** — voir
+  [RAM de 512 Ko](#ram-de-512-ko-make-rom-512) : PC-DOS 5.0 exige **au moins 256 Ko**
+  de RAM ; la RAM d'origine n'en a que 128 Ko (126 Ko annoncés par `INT 12h`). À l'émulateur, DOS 5.0 (`Dos50-d1.img`)
   boucle indéfiniment pendant l'initialisation (`SYSINIT`), bien avant `COMMAND.COM` : balayage sans fin d'une table
   interne (probablement dimensionnée à partir de la mémoire disponible, mal calculée faute des 256 Ko attendus),
   dans une boucle dont la condition d'arrêt ne peut mathématiquement jamais être atteinte vu le pas de balayage.
   PC-DOS 2.1 et MS-DOS 3.30, eux, s'amorcent normalement (voir plus haut) : leur initialisation est plus simple et
   n'a pas cette exigence.
+
+## RAM de 512 Ko (`make rom-512`)
+
+Le montage peut recevoir une **AS6C4008** (512 Ko) à la place de la HM628128 (128 Ko). Les deux puces ont le
+même brochage, **sauf deux broches** :
+
+| Broche | HM628128 (128 Ko) | AS6C4008 (512 Ko) |
+|---|---|---|
+| 1 | NC | **A18** |
+| 30 | `CS2` (sélection active haute, reliée au +5 V) | **A17** |
+
+- **Retirer le strap +5 V de la broche 30** : laissé en place, il force A17 à 1 — aussi pour la ROM (W29C020C, dont
+  A17 est la broche 30), qui lit alors son code dans la mauvaise moitié : rien ne démarre.
+- **A17 et A18 viennent du verrou d'adresses IC-03** (74HC573, broches **14** et **13**), jamais directement du 8088 :
+  ses broches 37 (A17/S4) et 36 (A18/S5) ne portent l'adresse qu'au premier temps du cycle, puis des bits d'état
+  (S5 = drapeau `IF`, S4-S3 = registre de segment). La RAM verrait son adresse changer en cours d'accès.
+- Le décodage ne change pas : RAM = `A19` à 0 (00000h-7FFFFh), ROM = `A19` à 1.
+
+**ROM** : `make rom-512` (`solution-01-512k.bin`, `make rom-512-en` en anglais) assemble avec `-dRAM_512K`.
+Sans cette option, la ROM est **identique à l'octet près** à la version 128 Ko.
+
+- **Carte mémoire** : la zone réservée du micrologiciel (pile, tampons du pont et du clavier, variables) monte en
+  **haut de la RAM** : `VAR_SEG` = `STACK_SEG` = `7000h` (zone `7000:F800-FFFF` = 7F800h-7FFFFh), pour que le DOS
+  reçoive une mémoire **contiguë** : `INT 12h` = **510 Ko** (`BIOS_MEM_KB`). Les deux BASIC travaillent dans
+  `VAR_SEG` (segment `7000h`, `DEF SEG` par défaut) ; `POKE`/`DSKREAD` protègent cette zone (`poke_guard`,
+  `lib/basic_stmt.asm`). « Edit+Run RAM » reste en `1000:0000`. L'écran Information affiche `RAM:510K`.
+- **Démarrage** : les 8 segments (`0000h`-`7000h`) sont effacés.
+- **Test RAM** : 510 blocs de 1 Ko (segments `0000h`-`6000h` entiers + `7000h` moins les 2 Ko réservés), numéro de
+  bloc calculé d'après l'adresse (LCD `Bloc:NNN/510`), puis un **test d'adressage** (`test_adressage`) : une
+  signature par segment de 64 Ko est **écrite par DS avec les interruptions actives**, puis **relue par ES avec les
+  interruptions coupées**. Il signale tout repliement (A16-A18 absente, flottante ou collée) et des A17/A18 prises
+  sur les broches multiplexées du 8088 — deux défauts que le test octet par octet ne voit pas, puisqu'il tourne
+  interruptions coupées et n'adresse la RAM que par ES. Vérifié au simulateur avec une A18 ignorée (moitiés de
+  256 Ko repliées) : 510 blocs « OK », mais « ADRESSAGE: segment 0000h: lu A4h, attendu A0h » (et 1000h-3000h), et
+  bilan « RAM DÉFECTUEUSE ».
+- **DOS** (simulateur, 512 Ko modélisés) : PC-DOS 2.1 et MS-DOS 3.30 s'amorcent, `CHKDSK` annonce
+  `522240 bytes total memory`. DOS 5.0 (`Dos50-d1.img`) dépasse au simulateur le point où il bouclait en 128 Ko (environ 180 secteurs lus,
+  contre environ 65) ; son demarrage complet reste à confirmer sur le matériel.
+- **Validé sur le matériel** (2026-11-09, AS6C4008, A17/A18 sur les sorties du verrou) : test RAM de 510 blocs OK et
+  « Adressage OK: aucun repliement, A16-A18 correctement verrouillees ».
+- `make test-rom` vérifie la variante 512 Ko : écran Information (`RAM:510K`) et `CHKDSK` de PC-DOS 2.1.
 
 ## Menu interactif
 
@@ -1656,6 +1699,7 @@ make          # construit tout : ROM complète + modules individuels
 make rom      # ROM complète, copiée vers Z:\Partage\Alain\rom.bin
 make rom-fr   # ROM en français (par défaut - identique à "rom"), solution-01-fr.bin
 make rom-en   # ROM en anglais, solution-01-en.bin (voir "Bilinguisme" ci-dessous)
+make rom-512  # ROM pour une RAM de 512 Ko (AS6C4008), solution-01-512k.bin (rom-512-en: anglais)
 make lib      # modules individuels (lib/bin/lcd.bin, lib/bin/uart.bin, lib/utils.bin, lib/bin/lcd_i2c.bin, lib/bin/ps2.bin, lib/bin/tiny_basic.bin, lib/bin/basic.bin)
 make check    # assemble la ROM puis valide sa structure (check_rom.py)
 make check-modules  # verifie que chaque module s'assemble seul, sans erreur

@@ -112,7 +112,19 @@ PIC_IMR_BRIDGE  equ     11111110b       ; IR0 seule: IR1 masquee (commande au po
 ; --- segment VAR_SEG (agrandie de 1 a 2 Ko pour loger le tampon
 ; --- d'edition de 1024 octets - voir test_ram, solution-01.asm, pour
 ; --- le nombre d'octets reellement testes en consequence). ---
+; --- RAM_512K (make rom-512): RAM de 512 Ko (AS6C4008, A17 sur sa broche 30,
+; --- A18 sur sa broche 1): la zone reservee monte en HAUT de la RAM
+; --- (7000:F800-7000:FFFF = 7F800h-7FFFFh) pour que le DOS recoive une
+; --- memoire CONTIGUE de 510 Ko (INT 12h, BIOS_MEM_KB). Sans RAM_512K: 128 Ko,
+; --- zone en 1000:F800 (1F800h-1FFFFh), ROM identique a la version 1.2.
+; --- VAR_SEG est aussi le segment de pile (STACK_SEG) et le segment de
+; --- travail des deux BASIC (DS = ES = SS = VAR_SEG). ---
+%ifdef RAM_512K
+VAR_SEG             equ     7000h
+%else
 VAR_SEG             equ     1000h
+%endif
+STACK_SEG           equ     VAR_SEG
 
 ; --- tampon de travail de edit_ram_action (1024 octets max) - toute
 ; --- l'edition se fait ICI, jamais directement en RAM reelle: Echap
