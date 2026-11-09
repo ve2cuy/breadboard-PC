@@ -20,9 +20,9 @@ Cible par défaut si on tape juste `make`. Dépend de `rom` et `lib` — constru
 
 C'est le principe de base de make : chaque cible peut avoir des **prérequis** (fichiers listés après `:`), et sa recette (les lignes indentées en dessous) ne s'exécute que si la cible n'existe pas encore ou est plus vieille qu'un de ses prérequis. Ça évite de tout réassembler à chaque fois.
 
-### `rom-512` / `rom-512-en`
+### Variable `RAM` et `rom-128` / `rom-128-en`
 
-RAM de 512 Ko (AS6C4008) : assemblent avec `-dRAM_512K` (anglais : `-dLANG_EN=1` en plus) et produisent `solution-01-512k.bin` / `solution-01-512k-en.bin`, copiés vers `Z:\Partage\Alain` sous ces noms (jamais sur `rom.bin`). Zone réservée en `7000:F800`, 510 Ko annoncés au DOS, test RAM de 510 blocs suivi d'un test d'adressage — voir `README.md`, section « RAM de 512 Ko ». Sans `-dRAM_512K`, la ROM est inchangée.
+Le montage a une RAM de 512 Ko (AS6C4008) : `RAM ?= 512` ajoute `-dRAM_512K` à toutes les ROM (`rom`, `rom-fr`, `rom-en`, `trace`, `rom-pause`…) — zone réservée en `7000:F800`, 510 Ko annoncés au DOS, test RAM de 510 blocs, test des lignes d'adresse A0-A18 et carte mémoire (voir `README.md`, « RAM de 512 Ko »). Pour l'ancienne RAM de 128 Ko : `make rom-128` / `rom-128-en` (`solution-01-128k[-en].bin`, identiques à la ROM 1.2) ou `make <cible> RAM=128`. Le `Makefile` est une dépendance de `solution-01.bin` : changer `RAM` reconstruit.
 
 ### `rom-fr` / `rom-en`
 

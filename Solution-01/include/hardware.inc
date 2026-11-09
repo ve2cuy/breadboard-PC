@@ -132,6 +132,9 @@ STACK_SEG           equ     VAR_SEG
 ; --- RAM reelle (voir edit_ram_load_buffer/edit_ram_commit_buffer).
 ; --- Occupe a lui seul la moitie de la zone reservee. ---
 EDIT_BUFFER_OFF     equ     0F800h  ; 1024 octets: 0F800h-0FBFFh
+; --- RAM_512K: test_ram reutilise ce tampon (inutilise pendant le test) pour sa carte memoire ---
+BLOCK_MAP_OFF       equ     0F800h  ; 512 octets: etat de chaque bloc de 1 Ko (0 bon, 1 defectueux, 2 non teste)
+TA_RESULT_OFF       equ     0FA00h  ; (octet) resultat du test des lignes d'adresse (0 = OK, 1 = defaut)
 
 PORTA_SHADOW_OFF    equ     0FC00h
 BLOCK_COUNTER_OFF   equ     0FC01h  ; numero du bloc courant (1-127)

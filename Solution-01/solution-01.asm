@@ -592,6 +592,13 @@ test_ram:
         mov     byte [es:di], 0
         mov     di, RAM_DEFECT_BYTES
         mov     word [es:di], 0
+%ifdef RAM_512K
+        mov     di, BLOCK_MAP_OFF       ; carte des 512 blocs: 2 = non teste (les 2 Ko reserves le restent)
+        mov     cx, 512
+        mov     al, 2
+        cld
+        rep     stosb
+%endif
 
         call    msg_banniere
 
@@ -628,7 +635,8 @@ test_ram:
         call    test_segment
 
 %ifdef RAM_512K
-        call    test_adressage  ; repliement / A17-A18 sur les broches multiplexees (met BH a 1)
+        call    test_adressage  ; lignes d'adresse A0-A18: capacite reelle (met BH a 1)
+        call    ram_map_print   ; carte memoire + Ko bons / defectueux
 %endif
 
         ; --- Bilan final ---
@@ -648,23 +656,67 @@ test_ram:
 
 %ifdef RAM_512K
 ; ============================================================
-; test_adressage (RAM_512K seulement)
-; Le test octet par octet ci-dessus ne voit PAS deux defauts de cablage
-; de A17/A18: il tourne interruptions coupees (IF = 0) et n'adresse la RAM
-; que par ES. Or le 8088 multiplexe A17/S4 et A18/S5: apres T1, S5 = IF et
-; S4-S3 = registre de segment (ES = 00, DS = 11). Si A17/A18 sont prises sur
-; le 8088 au lieu des sorties du verrou (IC-03 broches 14/13), la RAM voit
-; une autre adresse pendant la phase de donnees - mais seulement avec IF = 1
-; ou par DS: le test passe et le systeme plante.
-; Ici: une signature par segment de 64 Ko (A0h, A1h... en SEG:TA_OFF) est
-; ECRITE par DS avec IF = 1, puis RELUE par ES avec IF = 0. Detecte aussi
-; tout repliement (A16-A18 absente, flottante ou collee: une ecriture
-; ulterieure ecrase une signature precedente). Les octets d'origine sont
+; test_adressage (RAM_512K seulement) - test des LIGNES D'ADRESSE A0-A18
+; Methode classique du bus d'adresses: une valeur de base (5Ah) a l'adresse
+; physique B = TA_BASE, puis une valeur distincte (k+1) a chacune des 19
+; adresses B xor 2^k (k = 0..18: une seule ligne d'adresse inversee). Si une
+; ligne est coupee, collee ou en court-circuit avec une autre, deux de ces
+; adresses tombent sur la meme case: la relecture le montre et nomme la
+; ligne. Une puce de 128 ou 256 Ko vendue pour 512 Ko echoue sur A17/A18:
+; c'est ce qui VERIFIE la capacite reelle (le test octet par octet ne le
+; peut pas: il relit chaque octet aussitot ecrit).
+; Ecritures par DS avec IF = 1, relectures par ES avec IF = 0: le 8088
+; multiplexe A16/S3-A19/S6 (S3-S4 = registre de segment, S5 = IF) - des
+; lignes prises sur le 8088 au lieu du verrou IC-03 sont aussi detectees.
+; B = 35555h: toutes les adresses du test sont entre 15555h et 75555h (hors
+; table des vecteurs, hors zone reservee 7F800h-7FFFFh). Octets d'origine
 ; sauvegardes (pile) et restaures.
 ; Appelee par test_ram (IF = 0, DS = CS). Sortie: BH = 1 si defaut (sinon
-; inchange). Preserve AX, CX, DX, SI, DI, DS, ES (BP inchange).
+; inchange), [VAR_SEG:TA_RESULT_OFF] = 0 (OK) ou 1. Preserve AX, CX, DX,
+; SI, DI, DS, ES (BP inchange).
 ; ============================================================
-TA_OFF  equ     8000h                   ; hors IVT, hors zone reservee, hors pile
+TA_BASE_HI      equ     0003h                   ; B = 35555h (DX:AX)
+TA_BASE_LO      equ     5555h
+TA_N            equ     20                      ; la base + A0..A18
+
+; ta_addr: CL = 0 -> B; CL = k+1 -> B xor 2^k. Sortie: SI = segment, DI = offset. Detruit AX, DX.
+ta_addr:
+        push    cx
+        mov     dx, TA_BASE_HI
+        mov     ax, TA_BASE_LO
+        or      cl, cl
+        jz      .conv
+        dec     cl                      ; CL = k (0..18)
+        mov     di, 1
+        cmp     cl, 16
+        jae     .haut
+        shl     di, cl
+        xor     ax, di
+        jmp     .conv
+.haut:
+        sub     cl, 16
+        shl     di, cl
+        xor     dx, di
+.conv:
+        mov     di, ax
+        and     di, 0Fh                 ; offset = adresse & 0Fh
+        mov     cl, 4
+        shr     ax, cl
+        mov     cl, 12
+        shl     dx, cl
+        or      ax, dx
+        mov     si, ax                  ; segment = adresse >> 4
+        pop     cx
+        ret
+
+; ta_valeur: CL = indice -> AL = valeur ecrite (5Ah pour la base, sinon CL)
+ta_valeur:
+        mov     al, cl
+        or      al, al
+        jnz     .ret
+        mov     al, 5Ah
+.ret:
+        ret
 
 test_adressage:
         push    ax
@@ -676,76 +728,90 @@ test_adressage:
         push    es
         mov     si, txt_adr_titre
         call    uart_tx_string
-        ; --- sauvegarde des octets d'origine (8 mots sur la pile), lus par ES, IF = 0
-        xor     dx, dx
+        ; --- sauvegarde des 20 octets d'origine (pile), lus par ES, IF = 0
+        xor     cl, cl
 .sauve:
-        mov     es, dx
-        mov     al, [es:TA_OFF]
+        call    ta_addr
+        mov     es, si
+        mov     al, [es:di]
         push    ax
-        add     dx, 1000h
-        cmp     dx, VAR_SEG
-        jbe     .sauve
-        ; --- signatures ecrites par DS (S4 S3 = 1 1), interruptions ACTIVES (S5 = 1)
-        xor     dx, dx
-        mov     al, 0A0h
+        inc     cl
+        cmp     cl, TA_N
+        jb      .sauve
+        ; --- ecritures par DS (S4 S3 = 1 1), interruptions ACTIVES (S5 = 1)
+        xor     cl, cl
         sti
 .ecrit:
-        mov     ds, dx
-        mov     [TA_OFF], al
-        inc     al
-        add     dx, 1000h
-        cmp     dx, VAR_SEG
-        jbe     .ecrit
+        call    ta_addr
+        call    ta_valeur
+        mov     ds, si
+        mov     [di], al
+        inc     cl
+        cmp     cl, TA_N
+        jb      .ecrit
         cli
         mov     ax, cs
         mov     ds, ax                  ; DS = CS: messages en ROM
-        ; --- relecture par ES (S4 S3 = 0 0), IF = 0 (S5 = 0)
-        xor     dx, dx
-        mov     cl, 0A0h                ; CL = signature attendue
-        mov     ch, 0                   ; CH = nombre de segments en defaut
+        ; --- relectures par ES (S4 S3 = 0 0), IF = 0 (S5 = 0)
+        xor     cx, cx                  ; CL = indice, CH = nombre de defauts
 .relit:
-        mov     es, dx
-        mov     al, [es:TA_OFF]
-        cmp     al, cl
+        call    ta_addr
+        mov     es, si
+        mov     dl, [es:di]             ; DL = valeur lue
+        call    ta_valeur               ; AL = valeur attendue
+        cmp     dl, al
         je      .bon
         inc     ch
-        push    bx                      ; uart_tx_hex_* detruisent AX et BX (BH = drapeau global)
+        push    bx                      ; uart_tx_hex_byte detruit AX et BX (BH = drapeau global)
         push    ax
-        mov     si, txt_adr_seg
+        or      cl, cl
+        jnz     .ligne
+        mov     si, txt_adr_base        ; la case de base a ete ecrasee
         call    uart_tx_string
-        mov     ax, dx
-        call    uart_tx_hex_word
-        mov     si, txt_adr_lu
-        call    uart_tx_string
-        pop     ax
-        call    uart_tx_hex_byte        ; AL = valeur lue
-        mov     si, txt_adr_attendu
+        jmp     .valeurs
+.ligne:
+        mov     si, txt_adr_ligne       ; "ADDRESS LINE A"
         call    uart_tx_string
         mov     al, cl
-        call    uart_tx_hex_byte
+        dec     al
+        call    uart_tx_dec8            ; numero de la ligne (0-18)
+        mov     si, txt_adr_ligne2
+        call    uart_tx_string
+.valeurs:
+        mov     al, dl
+        call    uart_tx_hex_byte        ; lu
+        mov     si, txt_adr_attendu
+        call    uart_tx_string
+        pop     ax
+        call    uart_tx_hex_byte        ; attendu
         mov     si, txt_adr_fin
         call    uart_tx_string
         pop     bx
 .bon:
         inc     cl
-        add     dx, 1000h
-        cmp     dx, VAR_SEG
-        jbe     .relit
-        ; --- restauration, du dernier segment sauvegarde au premier
-        mov     dx, VAR_SEG
+        cmp     cl, TA_N
+        jb      .relit
+        ; --- restauration, du dernier octet sauvegarde au premier
+        mov     cl, TA_N
 .restaure:
+        dec     cl
+        call    ta_addr
         pop     ax
-        mov     es, dx
-        mov     [es:TA_OFF], al
-        sub     dx, 1000h
-        jnc     .restaure               ; DX: 7000h ... 0000h, puis emprunt -> fin
+        mov     es, si
+        mov     [es:di], al
+        or      cl, cl
+        jnz     .restaure
         ; --- bilan
+        mov     ax, VAR_SEG
+        mov     es, ax
         or      ch, ch
         jnz     .defaut
+        mov     byte [es:TA_RESULT_OFF], 0
         mov     si, txt_adr_ok
         call    uart_tx_string
         jmp     .fin
 .defaut:
+        mov     byte [es:TA_RESULT_OFF], 1
         mov     bh, 1                   ; RAM declaree defectueuse au bilan de test_ram
         mov     si, txt_adr_aide
         call    uart_tx_string
@@ -756,6 +822,119 @@ test_adressage:
         pop     si
         pop     dx
         pop     cx
+        pop     ax
+        ret
+
+; ============================================================
+; ram_map_print (RAM_512K seulement) - CARTE MEMOIRE et bilan chiffre,
+; a la fin de test_ram: une ligne par segment de 64 Ko, un caractere par
+; bloc de 1 Ko ('.' bon, 'X' defectueux en rouge, 'R' zone reservee non
+; testee), d'apres la carte remplie par msg_bloc_progression
+; (VAR_SEG:BLOCK_MAP_OFF, 512 octets: 0 bon, 1 defectueux, 2 non teste).
+; Puis: Ko testes / bons / defectueux, octets defectueux, lignes d'adresse.
+; Preserve tous les registres (BH = drapeau global de test_ram).
+; ============================================================
+ram_map_print:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    es
+        mov     si, txt_map_titre
+        call    uart_tx_string
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     di, BLOCK_MAP_OFF
+        xor     dx, dx                  ; DL = segment courant (0-7)
+.ligne:
+        mov     al, dl
+        call    uart_tx_hex_nibble      ; '0'..'7' -> "00000h" ... "70000h"
+        mov     si, txt_map_adr
+        call    uart_tx_string
+        mov     cx, 64
+.bloc:
+        mov     al, [es:di]
+        inc     di
+        cmp     al, 0
+        je      .bon
+        cmp     al, 1
+        je      .mauvais
+        mov     al, 'R'
+        call    uart_tx_byte
+        jmp     .suite
+.bon:
+        mov     al, '.'
+        call    uart_tx_byte
+        jmp     .suite
+.mauvais:
+        mov     si, txt_map_x           ; 'X' en rouge
+        call    uart_tx_string
+.suite:
+        loop    .bloc
+        mov     si, txt_crlf
+        call    uart_tx_string
+        inc     dl
+        cmp     dl, 8
+        jb      .ligne
+        mov     si, txt_map_legende
+        call    uart_tx_string
+        ; --- comptes: CX = bons, DX = defectueux (blocs de 1 Ko)
+        mov     di, BLOCK_MAP_OFF
+        xor     cx, cx
+        xor     dx, dx
+        mov     bx, 512
+.compte:
+        mov     al, [es:di]
+        inc     di
+        cmp     al, 0
+        jne     .pas_bon
+        inc     cx
+.pas_bon:
+        cmp     al, 1
+        jne     .pas_mauvais
+        inc     dx
+.pas_mauvais:
+        dec     bx
+        jnz     .compte
+        mov     si, txt_map_teste       ; "RAM tested: "
+        call    uart_tx_string
+        mov     ax, cx
+        add     ax, dx
+        call    uart_tx_dec_word
+        mov     si, txt_map_ko
+        call    uart_tx_string
+        mov     si, txt_map_bon         ; "Good: "
+        call    uart_tx_string
+        mov     ax, cx
+        call    uart_tx_dec_word
+        mov     si, txt_map_ko
+        call    uart_tx_string
+        mov     si, txt_map_mauvais     ; "Defective: "
+        call    uart_tx_string
+        mov     ax, dx
+        call    uart_tx_dec_word
+        mov     si, txt_map_ko_octets   ; " KB ("
+        call    uart_tx_string
+        mov     ax, [es:RAM_DEFECT_BYTES]
+        call    uart_tx_dec_word
+        mov     si, txt_map_octets      ; " bytes)"
+        call    uart_tx_string
+        mov     si, txt_map_reserve
+        call    uart_tx_string
+        mov     si, txt_map_lignes_ok
+        cmp     byte [es:TA_RESULT_OFF], 0
+        je      .lignes
+        mov     si, txt_map_lignes_ko
+.lignes:
+        call    uart_tx_string
+        pop     es
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
         pop     ax
         ret
 %endif
@@ -1187,6 +1366,8 @@ TERM_GRID_ROW           equ     3               ; 1re ligne ecran de la grille
 TERM_GRID_COL           equ     7               ; 1re colonne ecran d'une case ("SSSS: " = 6)
 TERM_HELP_ROW           equ     TERM_GRID_ROW + TERM_ROWS + 1
 TERM_REGS_ROW           equ     TERM_HELP_ROW + 2   ; registres apres 'r' (edit_run_action)
+EDIT_RUN_SEG            equ     1000h           ; segment du code d'Edit+Run (1000:0000), FIXE:
+                                                  ; = VAR_SEG en 128 Ko, mais VAR_SEG = 7000h en 512 Ko
 EDIT_RUN_SIZE           equ     0FFh            ; taille FIXE (255 octets) de la plage
                                                   ; editable/executable a 1000:0000 (voir
                                                   ; edit_run_action) - pas de saisie, valeur
@@ -1533,7 +1714,7 @@ edit_run_load_buffer:
         mov     bp, EDIT_SIZE_OFF
         mov     cx, [bp]                ; CX = taille (nombre d'octets a copier)
 
-        mov     ax, VAR_SEG
+        mov     ax, EDIT_RUN_SEG
         mov     es, ax                  ; ES = 1000h (RAM reelle, source)
         mov     si, dx                  ; SI = adresse source courante
 
@@ -1566,7 +1747,7 @@ edit_run_commit_buffer:
         mov     bp, EDIT_SIZE_OFF
         mov     cx, [bp]                ; CX = taille
 
-        mov     ax, VAR_SEG
+        mov     ax, EDIT_RUN_SEG
         mov     es, ax                  ; ES = 1000h (RAM reelle, destination)
         mov     di, dx                  ; DI = adresse destination courante
 
@@ -2634,7 +2815,7 @@ edit_run_action:
         ; modification faite par l'utilisateur avant de tester 'r'
         ; serait perdue a chaque execution. DS=CS en PERMANENCE (voir
         ; start:), donc [SI] lit directement la ROM sans changer DS. ---
-        mov     ax, VAR_SEG
+        mov     ax, EDIT_RUN_SEG
         mov     es, ax
         mov     di, 0
         mov     si, edit_run_default_code
@@ -2948,7 +3129,7 @@ edit_run_execute_and_show:
         mov     bp, RUN_REG_DI_OFF
         mov     di, [bp]
 
-        call    1000h:0000h              ; CALL FAR - le code injecte doit finir par RETF
+        call    EDIT_RUN_SEG:0000h       ; CALL FAR - le code injecte doit finir par RETF
 
         push    bp
         mov     bp, sp                   ; [bp+0] = BP (code injecte); bp+2 = SP (code injecte)
@@ -5013,6 +5194,21 @@ msg_bloc_progression:
         mov     cl, 6
         shl     dx, cl
         or      ax, dx                  ; AX = adresse / 1024
+        push    es                      ; carte memoire: etat de ce bloc (0 bon, 1 defectueux)
+        push    di
+        mov     di, ax
+        add     di, BLOCK_MAP_OFF
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     byte [es:di], 0
+        or      bp, bp
+        jz      .carte_ok
+        mov     byte [es:di], 1
+.carte_ok:
+        sub     di, BLOCK_MAP_OFF
+        mov     ax, di
+        pop     di
+        pop     es
         inc     ax                      ; numero de bloc, a partir de 1
         pop     dx
         pop     cx
@@ -5720,13 +5916,27 @@ txt_banniere2:          db      'Plan: seg 0000h (00000h-0FFFFh, 64 blocks) + se
 
 %ifdef RAM_512K
 txt_ram_ok:             db      27,'[32m','*** RAM OK - 522240 bytes tested (510 blocks of 1 KB), no errors ***',27,'[0m',13,10,13,10,0
-txt_adr_titre:          db      13,10,'Address test: one signature per 64 KB segment, written through DS (IF=1), read back through ES (IF=0)',13,10,0
-txt_adr_seg:            db      27,'[31m','  ADDRESSING: segment ',0
-txt_adr_lu:             db      'h: read ',0
+txt_adr_titre:          db      13,10,'Address line test A0-A18 (written through DS with IF=1, read back through ES with IF=0):',13,10,0
+txt_adr_base:           db      27,'[31m','  ADDRESS LINE FAULT: base location 35555h overwritten: read ',0
+txt_adr_ligne:          db      27,'[31m','  ADDRESS LINE A',0
+txt_adr_ligne2:         db      ' FAULT (stuck, open or shorted): read ',0
 txt_adr_attendu:        db      'h, expected ',0
 txt_adr_fin:            db      'h',27,'[0m',13,10,0
-txt_adr_ok:             db      27,'[32m','  Addressing OK: no aliasing, A16-A18 correctly latched',27,'[0m',13,10,0
-txt_adr_aide:           db      27,'[31m','  Check A17 (latch IC-03 pin 14 -> RAM pin 30) and A18 (IC-03 pin 13 -> RAM pin 1)',27,'[0m',13,10,0
+txt_adr_ok:             db      27,'[32m','  Address lines A0-A18 OK: 19 independent lines, 512 KB really addressable (true capacity verified)',27,'[0m',13,10,0
+txt_adr_aide:           db      27,'[31m','  A 128/256 KB chip sold as 512 KB fails on A17/A18. Check also A17 (latch IC-03 pin 15 -> RAM pin 30) and A18 (IC-03 pin 16 -> RAM pin 1)',27,'[0m',13,10,0
+txt_map_titre:          db      13,10,'MEMORY MAP (1 character = 1 KB block)',13,10,'         0K              16K             32K             48K',13,10,0
+txt_map_adr:            db      '0000h:  ',0
+txt_map_x:              db      27,'[31m','X',27,'[0m',0
+txt_map_legende:        db      '         . = good   X = defective   R = reserved for the firmware (not tested)',13,10,13,10,0
+txt_map_teste:          db      'RAM tested: ',0
+txt_map_ko:             db      ' KB   ',0
+txt_map_bon:            db      'Good: ',0
+txt_map_mauvais:        db      'Defective: ',0
+txt_map_ko_octets:      db      ' KB (',0
+txt_map_octets:         db      ' bytes)',13,10,0
+txt_map_reserve:        db      'Reserved (firmware, not tested): 2 KB   Total: 512 KB',13,10,0
+txt_map_lignes_ok:      db      27,'[32m','Address lines A0-A18: OK (512 KB capacity verified)',27,'[0m',13,10,0
+txt_map_lignes_ko:      db      27,'[31m','Address lines A0-A18: FAULT (see above)',27,'[0m',13,10,0
 %else
 txt_ram_ok:             db      27,'[32m','*** RAM OK - 129024 bytes tested (126 blocks of 1 KB), no errors ***',27,'[0m',13,10,13,10,0
 %endif
@@ -5895,13 +6105,27 @@ txt_banniere2:          db      'Plan: seg 0000h (00000h-0FFFFh, 64 blocs) + seg
 
 %ifdef RAM_512K
 txt_ram_ok:             db      27,'[32m','*** RAM OK - 522240 octets testes (510 blocs de 1 Ko), aucune erreur ***',27,'[0m',13,10,13,10,0
-txt_adr_titre:          db      13,10,"Test d'adressage: une signature par segment de 64 Ko, ecrite par DS (IF=1), relue par ES (IF=0)",13,10,0
-txt_adr_seg:            db      27,'[31m','  ADRESSAGE: segment ',0
-txt_adr_lu:             db      'h: lu ',0
+txt_adr_titre:          db      13,10,"Test des lignes d'adresse A0-A18 (ecriture par DS avec IF=1, relecture par ES avec IF=0):",13,10,0
+txt_adr_base:           db      27,'[31m',"  DEFAUT D'ADRESSAGE: case de base 35555h ecrasee: lu ",0
+txt_adr_ligne:          db      27,'[31m',"  LIGNE D'ADRESSE A",0
+txt_adr_ligne2:         db      ' EN DEFAUT (collee, coupee ou en court-circuit): lu ',0
 txt_adr_attendu:        db      'h, attendu ',0
 txt_adr_fin:            db      'h',27,'[0m',13,10,0
-txt_adr_ok:             db      27,'[32m','  Adressage OK: aucun repliement, A16-A18 correctement verrouillees',27,'[0m',13,10,0
-txt_adr_aide:           db      27,'[31m','  Verifier A17 (verrou IC-03 broche 14 -> RAM broche 30) et A18 (IC-03 broche 13 -> RAM broche 1)',27,'[0m',13,10,0
+txt_adr_ok:             db      27,'[32m',"  Lignes d'adresse A0-A18 OK: 19 lignes independantes, 512 Ko reellement adressables (capacite verifiee)",27,'[0m',13,10,0
+txt_adr_aide:           db      27,'[31m','  Une puce de 128/256 Ko vendue pour 512 Ko echoue sur A17/A18. Verifier aussi A17 (verrou IC-03 broche 15 -> RAM broche 30) et A18 (IC-03 broche 16 -> RAM broche 1)',27,'[0m',13,10,0
+txt_map_titre:          db      13,10,'CARTE MEMOIRE (1 caractere = 1 bloc de 1 Ko)',13,10,'         0K              16K             32K             48K',13,10,0
+txt_map_adr:            db      '0000h:  ',0
+txt_map_x:              db      27,'[31m','X',27,'[0m',0
+txt_map_legende:        db      '         . = bon   X = defectueux   R = reserve au micrologiciel (non teste)',13,10,13,10,0
+txt_map_teste:          db      'RAM testee: ',0
+txt_map_ko:             db      ' Ko   ',0
+txt_map_bon:            db      'Bonne: ',0
+txt_map_mauvais:        db      'Defectueuse: ',0
+txt_map_ko_octets:      db      ' Ko (',0
+txt_map_octets:         db      ' octets)',13,10,0
+txt_map_reserve:        db      'Reservee (micrologiciel, non testee): 2 Ko   Total: 512 Ko',13,10,0
+txt_map_lignes_ok:      db      27,'[32m',"Lignes d'adresse A0-A18: OK (capacite de 512 Ko verifiee)",27,'[0m',13,10,0
+txt_map_lignes_ko:      db      27,'[31m',"Lignes d'adresse A0-A18: DEFAUT (voir plus haut)",27,'[0m',13,10,0
 %else
 txt_ram_ok:             db      27,'[32m','*** RAM OK - 129024 octets testes (126 blocs de 1 Ko), aucune erreur ***',27,'[0m',13,10,13,10,0
 %endif

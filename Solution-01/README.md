@@ -43,8 +43,8 @@ splash.
   voir `CPU 8086` dans `solution-01.asm` — mais ciblé pour tourner sur
   un vrai 8088)
 - ROM 256 Ko, mappée à l'adresse physique `C0000h-FFFFFh`
-- RAM statique 128 Ko (HM628128), ou **512 Ko** (AS6C4008, ROM `make rom-512` : voir
-  [RAM de 512 Ko](#ram-de-512-ko-make-rom-512))
+- RAM statique **512 Ko** (AS6C4008, ROM par défaut) ; à l'origine 128 Ko (HM628128, `make rom-128`) : voir
+  [RAM de 512 Ko](#ram-de-512-ko))
 - Un **8259A** (contrôleur d'interruptions) : ports `20h`/`21h` (comme le
   PC/XT), `CS#` décodé par une porte NAND (74LS00) sur `IO` et `A5`. `IR0` =
   bouton-poussoir de test, `IR1` = `INTR` du 8255 (octet reçu du
@@ -1039,9 +1039,10 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
 | `INT 16h` | clavier = **terminal UART** : `AH` = 00h/10h lire, 01h/11h consulter (sans consommer, `ZF`), 02h/12h indicateurs. Octets bruts (minuscules, ponctuation, Ctrl-lettre, DEL = retour arrière) ; séquences ESC = touches étendues (`AL` = 0 : flèches 48h/50h/4Dh/4Bh, Début/Fin, Inser/Suppr, Page haut/bas, F1-F4). Le clavier PS/2 n'est pas géré (le BASIC non plus). |
 | `INT 1Ah` | horloge = **RTC du pont** : `AH` = 00h (ticks depuis minuit, 18,2/s), 02h/04h (heure/date en BCD), 03h/05h (régler). |
 | `INT 10h` | fonctions standard sur le terminal : `AH` = 0Eh (téléscripteur), 0Fh (mode : 80 colonnes), 02h/03h (curseur, page 0 : séquences ANSI), 06h/07h (`AL` = 0 efface l'écran), 08h, 09h/0Ah. `BH` = 1/2/3 garde l'interface LCD/UART du projet. |
-| `INT 11h`, `12h`, `15h`, `14h`, `17h` | équipement (0220h : pas de disquette ; 0221h avec une image montée), **mémoire 126 Ko**, `AH` = 88h (aucune mémoire étendue), série/imprimante (absents). |
+| `INT 11h`, `12h`, `15h`, `14h`, `17h` | équipement (0220h : pas de disquette ; 0221h avec une image montée), **mémoire 510 Ko** (126 Ko avec la ROM 128 Ko), `AH` = 88h (aucune mémoire étendue), série/imprimante (absents). |
 
-- **Mémoire donnée au DOS** : `0000:0500` à `1000:F7FF` (126 Ko, `INT 12h`) ; `1000:F800-FFFF` reste au micrologiciel
+- **Mémoire donnée au DOS** : `0000:0500` à `7000:F7FF` (510 Ko, `INT 12h` ; avec la ROM 128 Ko : `1000:F7FF`, 126 Ko) ;
+  `VAR_SEG:F800-FFFF` reste au micrologiciel
   (tampons du pont, pile privée du BIOS `1000:FE00-FEFF`). La zone de données du BIOS `0040:0000` est remplie
   (équipement, mémoire, mode vidéo 3, disque dur = 1, tampon clavier).
 - **Piles indépendantes** : un DOS a sa propre pile et ses segments, alors que le micrologiciel adresse ses tampons
@@ -1089,7 +1090,7 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
   (la flash) sans lecteur C: monté par le BIOS pour l'instant. Testé à l'émulateur (`tests/bios_test.py` : 105
   vérifications, appels faits comme un DOS depuis une autre pile, dont l'amorçage de PC-DOS 2.1 avec la vraie image).
 - **MS-DOS/PC-DOS 5.0 et plus récent, avec 128 Ko : non supportés (mémoire insuffisante)** — voir
-  [RAM de 512 Ko](#ram-de-512-ko-make-rom-512) : PC-DOS 5.0 exige **au moins 256 Ko**
+  [RAM de 512 Ko](#ram-de-512-ko) : PC-DOS 5.0 exige **au moins 256 Ko**
   de RAM ; la RAM d'origine n'en a que 128 Ko (126 Ko annoncés par `INT 12h`). À l'émulateur, DOS 5.0 (`Dos50-d1.img`)
   boucle indéfiniment pendant l'initialisation (`SYSINIT`), bien avant `COMMAND.COM` : balayage sans fin d'une table
   interne (probablement dimensionnée à partir de la mémoire disponible, mal calculée faute des 256 Ko attendus),
@@ -1097,7 +1098,7 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
   PC-DOS 2.1 et MS-DOS 3.30, eux, s'amorcent normalement (voir plus haut) : leur initialisation est plus simple et
   n'a pas cette exigence.
 
-## RAM de 512 Ko (`make rom-512`)
+## RAM de 512 Ko
 
 Le montage peut recevoir une **AS6C4008** (512 Ko) à la place de la HM628128 (128 Ko). Les deux puces ont le
 même brochage, **sauf deux broches** :
@@ -1109,13 +1110,14 @@ même brochage, **sauf deux broches** :
 
 - **Retirer le strap +5 V de la broche 30** : laissé en place, il force A17 à 1 — aussi pour la ROM (W29C020C, dont
   A17 est la broche 30), qui lit alors son code dans la mauvaise moitié : rien ne démarre.
-- **A17 et A18 viennent du verrou d'adresses IC-03** (74HC573, broches **14** et **13**), jamais directement du 8088 :
+- **A17 et A18 viennent du verrou d'adresses IC-03** (74LS373 : sorties Q5 et Q6, broches **15** et **16**), jamais directement du 8088 :
   ses broches 37 (A17/S4) et 36 (A18/S5) ne portent l'adresse qu'au premier temps du cycle, puis des bits d'état
   (S5 = drapeau `IF`, S4-S3 = registre de segment). La RAM verrait son adresse changer en cours d'accès.
 - Le décodage ne change pas : RAM = `A19` à 0 (00000h-7FFFFh), ROM = `A19` à 1.
 
-**ROM** : `make rom-512` (`solution-01-512k.bin`, `make rom-512-en` en anglais) assemble avec `-dRAM_512K`.
-Sans cette option, la ROM est **identique à l'octet près** à la version 128 Ko.
+**ROM** : depuis le 2026-11-09, **toutes les ROM** (`make rom`, `rom-fr`, `rom-en`, `trace`…) sont assemblées avec
+`-dRAM_512K` (variable `RAM` du `Makefile`, 512 par défaut). Pour l'ancienne RAM de 128 Ko : `make rom-128` /
+`rom-128-en` (`solution-01-128k[-en].bin`) ou `make … RAM=128` — ROM identique à l'octet près à la version 1.2.
 
 - **Carte mémoire** : la zone réservée du micrologiciel (pile, tampons du pont et du clavier, variables) monte en
   **haut de la RAM** : `VAR_SEG` = `STACK_SEG` = `7000h` (zone `7000:F800-FFFF` = 7F800h-7FFFFh), pour que le DOS
@@ -1124,18 +1126,30 @@ Sans cette option, la ROM est **identique à l'octet près** à la version 128 K
   `lib/basic_stmt.asm`). « Edit+Run RAM » reste en `1000:0000`. L'écran Information affiche `RAM:510K`.
 - **Démarrage** : les 8 segments (`0000h`-`7000h`) sont effacés.
 - **Test RAM** : 510 blocs de 1 Ko (segments `0000h`-`6000h` entiers + `7000h` moins les 2 Ko réservés), numéro de
-  bloc calculé d'après l'adresse (LCD `Bloc:NNN/510`), puis un **test d'adressage** (`test_adressage`) : une
-  signature par segment de 64 Ko est **écrite par DS avec les interruptions actives**, puis **relue par ES avec les
-  interruptions coupées**. Il signale tout repliement (A16-A18 absente, flottante ou collée) et des A17/A18 prises
-  sur les broches multiplexées du 8088 — deux défauts que le test octet par octet ne voit pas, puisqu'il tourne
-  interruptions coupées et n'adresse la RAM que par ES. Vérifié au simulateur avec une A18 ignorée (moitiés de
-  256 Ko repliées) : 510 blocs « OK », mais « ADRESSAGE: segment 0000h: lu A4h, attendu A0h » (et 1000h-3000h), et
-  bilan « RAM DÉFECTUEUSE ».
+  bloc calculé d'après l'adresse (LCD `Bloc:NNN/510`), puis :
+  - **Test des lignes d'adresse A0-A18** (`test_adressage`, méthode classique du bus d'adresses) : une valeur de base
+    en 35555h, puis une valeur distincte à chacune des 19 adresses obtenues en inversant **une seule** ligne
+    d'adresse ; écritures par DS interruptions actives, relectures par ES interruptions coupées. Une ligne coupée,
+    collée ou en court-circuit fait tomber deux adresses sur la même case : la ligne est nommée (« ADDRESS LINE A17
+    FAULT »). Il **vérifie la capacité réelle** : une puce de 128/256 Ko vendue pour 512 Ko échoue sur A17/A18
+    (le test octet par octet ne le peut pas : il relit chaque octet aussitôt écrit). Il détecte aussi A17/A18 prises
+    sur les broches multiplexées du 8088 (S4 = registre de segment, S5 = `IF`).
+  - **Carte mémoire** (`ram_map_print`) : une ligne par segment de 64 Ko, un caractère par bloc de 1 Ko (`.` bon,
+    `X` défectueux en rouge, `R` réservé au micrologiciel), puis le bilan chiffré : Ko testés / bons / défectueux
+    (et octets défectueux), lignes d'adresse. État des blocs : `VAR_SEG:BLOCK_MAP_OFF` (512 octets, dans le tampon
+    d'Edit RAM, inutilisé pendant le test).
+  - Vérifié au simulateur (ROM anglaise) : RAM saine (510 Ko bons, capacité vérifiée) ; puce de 256 Ko simulée
+    (A18 ignorée) ; écriture de 00h perdue en 7xxFFh (le défaut des puces ci-dessous) : blocs `X` en fin de segment
+    7000h, lignes d'adresse OK.
 - **DOS** (simulateur, 512 Ko modélisés) : PC-DOS 2.1 et MS-DOS 3.30 s'amorcent, `CHKDSK` annonce
   `522240 bytes total memory`. DOS 5.0 (`Dos50-d1.img`) dépasse au simulateur le point où il bouclait en 128 Ko (environ 180 secteurs lus,
-  contre environ 65) ; son demarrage complet reste à confirmer sur le matériel.
-- **Validé sur le matériel** (2026-11-09, AS6C4008, A17/A18 sur les sorties du verrou) : test RAM de 510 blocs OK et
-  « Adressage OK: aucun repliement, A16-A18 correctement verrouillees ».
+  contre environ 65), puis boucle sur `IN 61h` ; sur le matériel, il s'arrête sur « Interruption non implementee:
+  INT C8h/CDh » : sa routine de clavier « AT » (ports 60h/61h/64h, voyants en `0040:0097`) tombe sur le 8259, décodé
+  par A5 seule (`NAND(IO, A5)`) — à reprendre (décodage complet du 8259, ou voie « AT » d'IO.SYS).
+- **Validé sur le matériel** (2026-11-09, AS6C4008 d'origine, A17/A18 sur les sorties du verrou) : test RAM de
+  510 blocs OK et adressage OK. Plusieurs AS6C4008 achetées en Chine échouent toutes sur le même montage (octets
+  `xxFFh` en fin de segment 7000h : 00h écrit, 55h relu), alors que des puces d'origine du fabricant passent à
+  100 % : puces non conformes (la ROM anglaise, `make rom-en`, sert aux captures pour les vendeurs).
 - `make test-rom` vérifie la variante 512 Ko : écran Information (`RAM:510K`) et `CHKDSK` de PC-DOS 2.1.
 
 ## Menu interactif
@@ -1699,7 +1713,8 @@ make          # construit tout : ROM complète + modules individuels
 make rom      # ROM complète, copiée vers Z:\Partage\Alain\rom.bin
 make rom-fr   # ROM en français (par défaut - identique à "rom"), solution-01-fr.bin
 make rom-en   # ROM en anglais, solution-01-en.bin (voir "Bilinguisme" ci-dessous)
-make rom-512  # ROM pour une RAM de 512 Ko (AS6C4008), solution-01-512k.bin (rom-512-en: anglais)
+make rom-128  # ROM pour l'ancienne RAM de 128 Ko (HM628128), solution-01-128k.bin (rom-128-en: anglais)
+              # (toutes les autres ROM visent la RAM de 512 Ko: RAM=512 par defaut, voir le Makefile)
 make lib      # modules individuels (lib/bin/lcd.bin, lib/bin/uart.bin, lib/utils.bin, lib/bin/lcd_i2c.bin, lib/bin/ps2.bin, lib/bin/tiny_basic.bin, lib/bin/basic.bin)
 make check    # assemble la ROM puis valide sa structure (check_rom.py)
 make check-modules  # verifie que chaque module s'assemble seul, sans erreur

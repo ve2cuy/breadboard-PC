@@ -107,6 +107,17 @@ if os.path.exists(os.path.join(DOS, 'pcdos2_1.img')):
     check('RAM 512K: PC-DOS 2.1 demarre et CHKDSK voit 522240 octets (INT 12h = 510 Ko)',
           st['done'] and '522240 bytes total memory' in out, out[-400:])
 
+st = S.run_rom([(S.MENU, b'4'), (b'4) ', b'4'), (b'Disque', b'\x1b'), (b'1) ', b'')], defines=(),
+               tail_blocks=50_000)
+out = st['out'].decode('latin-1')
+check('RAM 128K (make rom-128): l ecran Information annonce 126 Ko', st['done'] and 'RAM:126K' in out, out[-300:])
+# Edit+Run: code edite ET execute en 1000:0000 (EDIT_RUN_SEG), meme quand VAR_SEG = 7000h
+st = S.run_rom([(S.MENU, b'2'), (b'6) ', b'4'), (b'Echap', b'r'), (b'DI', b'\x1b'), (b'6) Test RAM', b'')],
+               tail_blocks=200_000, count=300_000_000)
+out = st['out'].decode('latin-1')
+check('Edit+Run (512K): R execute le code par defaut en 1000:0000 (AX=0001 BX=0002), Echap revient au menu',
+      st['done'] and 'AX=0001' in out and 'BX=0002' in out, out[-400:])
+
 # --- ROM COMPLETE (option --complet: plusieurs minutes) ---
 if '--complet' in sys.argv:
     if os.path.exists(os.path.join(DOS, 'pcdos2_1.img')):

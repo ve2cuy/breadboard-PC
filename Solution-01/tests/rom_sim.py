@@ -177,8 +177,9 @@ class Machine:
 
 
 def run_rom(script, bridge=None, rom=None, **kw):
-    """la ROM complete (build/rom_sim.bin, assemblee depuis solution-01.asm, ou `rom`) + scenario"""
-    rom = rom or build('solution-01.asm', 'rom_sim.bin', kw.pop('defines', ()))
+    """la ROM complete (build/rom_sim.bin, assemblee depuis solution-01.asm, ou `rom`) + scenario.
+    Par defaut la ROM GRAVEE: RAM de 512 Ko (-dRAM_512K, comme le Makefile); defines=() pour la ROM 128 Ko."""
+    rom = rom or build('solution-01.asm', 'rom_sim.bin', kw.pop('defines', ('RAM_512K',)))
     count = kw.pop('count', 3_000_000_000)
     return Machine(rom, bridge=bridge, script=script, **kw).run(count)
 

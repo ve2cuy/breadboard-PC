@@ -15,7 +15,13 @@
 # ============================================================
 
 NASM        = nasm
-NASMFLAGS   = -f bin
+# RAM du montage: 512 Ko (AS6C4008) par defaut -> -dRAM_512K pour TOUTES les ROM (rom, rom-fr, rom-en,
+# trace, rom-pause...); "make ... RAM=128" (ou rom-128 / rom-128-en) pour l'ancienne HM628128 de 128 Ko.
+RAM        ?= 512
+ifeq ($(RAM),512)
+RAMFLAGS    = -dRAM_512K
+endif
+NASMFLAGS   = -f bin $(RAMFLAGS)
 
 ROM_BIN     = solution-01.bin
 ROM_OUT     = Z:/Partage/Alain/rom.bin
@@ -38,7 +44,7 @@ BAS_SRC     = lib/basic.asm lib/basic_tokens.inc lib/basic_float.asm lib/basic_f
 # du fichier de sortie. Un dossier local du projet n'a pas ce probleme.
 CHECK_DIR   = build/check
 
-.PHONY: all rom rom-fr rom-en rom-512 rom-512-en rom-pause lib check clean check-modules test test-rom test-rom-complet map trace trace-nohd
+.PHONY: all rom rom-fr rom-en rom-128 rom-128-en rom-pause lib check clean check-modules test test-rom test-rom-complet map trace trace-nohd
 
 # --- Cible par defaut: la ROM complete + les modules individuels ---
 all: rom lib
@@ -49,7 +55,7 @@ rom: $(ROM_BIN)
 	cp $(ROM_BIN) "$(ROM_OUT)"
 	@echo "ROM copiee vers $(ROM_OUT)"
 
-$(ROM_BIN): solution-01.asm include/hardware.inc include/delay.inc include/lcd_macros.inc \
+$(ROM_BIN): Makefile solution-01.asm include/hardware.inc include/delay.inc include/lcd_macros.inc \
             lib/common.asm lib/lcd.asm lib/uart.asm lib/utils.asm lib/lcd_i2c.asm lib/ps2.asm lib/tiny_basic.asm lib/isr.asm lib/bios.asm $(BAS_SRC)
 	$(NASM) $(NASMFLAGS) solution-01.asm -o $(ROM_BIN)
 
@@ -72,17 +78,16 @@ rom-en: $(BAS_SRC) solution-01.asm lib/bios.asm
 	cp solution-01-en.bin "$(dir $(ROM_OUT))solution-01-en.bin"
 	@echo "ROM (anglais): solution-01-en.bin, copiee vers $(dir $(ROM_OUT))"
 
-# --- RAM de 512 Ko (AS6C4008: A17 sur sa broche 30, A18 sur sa broche 1): -dRAM_512K ---
-# --- zone reservee en 7000:F800, 510 Ko annonces au DOS, test RAM de 510 blocs + test d'adressage ---
-rom-512: $(BAS_SRC) solution-01.asm lib/bios.asm
-	$(NASM) $(NASMFLAGS) -dRAM_512K solution-01.asm -o solution-01-512k.bin
-	cp solution-01-512k.bin "$(dir $(ROM_OUT))solution-01-512k.bin"
-	@echo "ROM 512 Ko (francais): solution-01-512k.bin, copiee vers $(dir $(ROM_OUT))"
+# --- ancienne RAM de 128 Ko (HM628128): sans -dRAM_512K - identique a la ROM 1.2 ---
+rom-128: $(BAS_SRC) solution-01.asm lib/bios.asm
+	$(NASM) -f bin solution-01.asm -o solution-01-128k.bin
+	cp solution-01-128k.bin "$(dir $(ROM_OUT))solution-01-128k.bin"
+	@echo "ROM 128 Ko (francais): solution-01-128k.bin, copiee vers $(dir $(ROM_OUT))"
 
-rom-512-en: $(BAS_SRC) solution-01.asm lib/bios.asm
-	$(NASM) $(NASMFLAGS) -dRAM_512K -dLANG_EN=1 -w-error=label-redef-late solution-01.asm -o solution-01-512k-en.bin
-	cp solution-01-512k-en.bin "$(dir $(ROM_OUT))solution-01-512k-en.bin"
-	@echo "ROM 512 Ko (anglais): solution-01-512k-en.bin, copiee vers $(dir $(ROM_OUT))"
+rom-128-en: $(BAS_SRC) solution-01.asm lib/bios.asm
+	$(NASM) -f bin -dLANG_EN=1 -w-error=label-redef-late solution-01.asm -o solution-01-128k-en.bin
+	cp solution-01-128k-en.bin "$(dir $(ROM_OUT))solution-01-128k-en.bin"
+	@echo "ROM 128 Ko (anglais): solution-01-128k-en.bin, copiee vers $(dir $(ROM_OUT))"
 
 # --- ROM d'ESSAI: pause (~5 ms) apres chaque ecriture de secteur (BRIDGE_WRITE_PAUSE, lib/bridge.asm) ---
 rom-pause: $(BAS_SRC) solution-01.asm lib/bios.asm
