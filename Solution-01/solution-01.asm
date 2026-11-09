@@ -6954,6 +6954,11 @@ lcd_text lcd_txt_run_ram_l1, 'Test RAM 128K', 20
 reset_vector:
         jmp     0C000h:0000h    ; = physique FFFF0h -> saute vers START
 
-db      ' VE2CUY 26'
+db      ' VE2CUY26'             ; FFFF5h-FFFFDh
+; ---- FFFFEh: octet de MODELE du PC (comme le BIOS d'IBM). FEh = PC/XT. ----
+; ---- DOS 5.0 (IO.SYS) le lit: une valeur inconnue (36h, le '6' de    ----
+; ---- l'ancienne signature ' VE2CUY 26') lui faisait choisir le chemin ----
+; ---- "AT" (OUT 60h/64h, IN 61h) qui reprogramme le 8259, decode par A5 ----
+        db      0FEh
 ; ---- remplissage jusqu'a la fin de la ROM (256K) ----
         times   040000h - ($-$$) db 0FFh

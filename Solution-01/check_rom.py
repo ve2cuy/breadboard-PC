@@ -9,7 +9,8 @@
 #   - vecteur de reset a l'offset 03FFF0h (= physique FFFF0h,
 #     l'adresse ou le 8088 saute au demarrage): EA 00 00 00 C0
 #     (jmp far 0C000h:0000h -> START)
-#   - signature ' VE2CUY 26' juste apres, a l'offset 03FFF5h
+#   - signature ' VE2CUY26' juste apres, a l'offset 03FFF5h
+#   - octet de modele FEh (PC/XT) a l'offset 03FFFEh (= F000:FFFE, lu par DOS 5.0)
 #
 # Usage: python3 check_rom.py chemin/vers/solution-01.bin
 # Sortie: 0 = OK, 1 = au moins une verification a echoue.
@@ -20,7 +21,9 @@ EXPECTED_SIZE = 0x40000            # 256 Ko
 RESET_VECTOR_OFFSET = 0x3FFF0
 RESET_VECTOR_BYTES = bytes([0xEA, 0x00, 0x00, 0x00, 0xC0])
 SIGNATURE_OFFSET = RESET_VECTOR_OFFSET + len(RESET_VECTOR_BYTES)
-SIGNATURE_BYTES = b' VE2CUY 26'
+SIGNATURE_BYTES = b' VE2CUY26'
+MODEL_OFFSET = 0x3FFFE
+MODEL_BYTE = 0xFE                  # PC/XT
 
 
 def check_rom(path):
@@ -56,6 +59,12 @@ def check_rom(path):
     else:
         print(f"[FAIL] Signature  @ {SIGNATURE_OFFSET:06X}h: {actual_sig!r} - "
               f"attendu {SIGNATURE_BYTES!r}")
+        ok = False
+
+    if data[MODEL_OFFSET] == MODEL_BYTE:
+        print(f"[OK]   Octet de modele @ {MODEL_OFFSET:06X}h: {MODEL_BYTE:02X}h (PC/XT)")
+    else:
+        print(f"[FAIL] Octet de modele @ {MODEL_OFFSET:06X}h: {data[MODEL_OFFSET]:02X}h - attendu {MODEL_BYTE:02X}h")
         ok = False
 
     return ok
