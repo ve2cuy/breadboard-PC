@@ -445,6 +445,10 @@ int13h_handler:
         je      .ok_only
         cmp     ah, 16h                 ; changement de disquette: non
         je      .ok_only
+        cmp     ah, 17h                 ; type de support pour le formatage (ignore)
+        je      .ok_only
+        cmp     ah, 18h                 ; type de support pour le formatage: table des parametres
+        je      .setmedia
         cmp     ah, 02h
         je      .chs_read
         cmp     ah, 03h
@@ -560,7 +564,37 @@ int13h_handler:
         mov     byte [bp + FR_DX], 1    ; DL = un lecteur
         mov     al, [BIOS_FTYPE_OFF]
         mov     [bp + FR_BX], al        ; BL = type de lecteur
-        mov     word [bp + FR_DI], bios_dpt     ; ES:DI = table des parametres de disquette (en ROM)
+        mov     al, [BIOS_FSPT_OFF]
+        call    bios_dpt_for            ; BX = table des parametres pour ces secteurs/piste
+        mov     [bp + FR_DI], bx        ; ES:DI = table des parametres de disquette (en ROM)
+        mov     [bp + FR_ES], cs
+        xor     ah, ah
+        jmp     .status
+
+; --- AH=18h: type de support pour le formatage (CH = dernier cylindre, CL = secteurs par piste) ---
+; Disquette montee seulement: ES:DI = table des parametres pour CL secteurs par piste. Le format doit etre
+; celui de l'image (on ne change pas la taille d'un fichier): sinon AH = 0Ch (support non reconnu).
+.setmedia:
+        call    .drive
+        or      ah, ah
+        jnz     .status
+        mov     ah, BIOSD_BADCMD
+        cmp     byte [BIOS_DRV_OFF], 1
+        jne     .status
+        mov     ah, 0Ch
+        mov     al, [bp + FR_CX]
+        and     al, 3Fh                 ; CL bits 0-5 = secteurs par piste
+        cmp     al, [BIOS_FSPT_OFF]
+        jne     .status
+        mov     al, [bp + FR_CX + 1]    ; CH = dernier cylindre
+        xor     ah, ah
+        inc     ax
+        cmp     ax, [BIOS_FCYL_OFF]
+        mov     ah, 0Ch
+        jne     .status
+        mov     al, [BIOS_FSPT_OFF]
+        call    bios_dpt_for
+        mov     [bp + FR_DI], bx
         mov     [bp + FR_ES], cs
         xor     ah, ah
         jmp     .status
@@ -836,6 +870,23 @@ bios_flop_types:
 ; table des parametres de disquette (INT 1Eh): 11 octets, valeurs du BIOS d'origine (360 Ko)
 bios_dpt:
         db      0DFh, 02h, 25h, 02h, 09h, 2Ah, 0FFh, 50h, 0F6h, 0Fh, 02h
+; 1,2 Mo (15 secteurs/piste) et 1,44 Mo (18): valeurs des BIOS AT (octet 4 = secteurs par piste)
+bios_dpt_15:
+        db      0DFh, 02h, 25h, 02h, 0Fh, 1Bh, 0FFh, 54h, 0F6h, 0Fh, 08h
+bios_dpt_18:
+        db      0DFh, 02h, 25h, 02h, 12h, 1Bh, 0FFh, 6Ch, 0F6h, 0Fh, 08h
+
+; bios_dpt_for: AL = secteurs par piste -> BX = table des parametres (en ROM, segment CS). Detruit rien d'autre.
+bios_dpt_for:
+        mov     bx, bios_dpt_18
+        cmp     al, 18
+        je      .r
+        mov     bx, bios_dpt_15
+        cmp     al, 15
+        je      .r
+        mov     bx, bios_dpt
+.r:
+        ret
 
 ; bios_xfer: BIOS_OP_OFF (0 lecture, 1 ecriture, 2 verification), BIOS_DRV_OFF (0 disque dur, 1 image de
 ; disquette), CX = nombre de secteurs, ES:DI (lecture) ou ES:SI (ecriture) = tampon, LBA dans BIOS_LBA_OFF
