@@ -1262,6 +1262,7 @@ d'une deuxième carte — et permet de la régler entre **1 et 10 MHz** :
 4) Down : 1 MHz
 5) 4.77 MHz
 6) 8.0 MHz
+7) 7.2 MHz
 (Echap: retour au sous-menu Configuration)
 
 Current speed:  4.77 MHz
@@ -1275,6 +1276,7 @@ Current speed:  4.77 MHz
 | `4` | `-1 MHz` |
 | `5` | Directement `4,77 MHz` (vitesse du PC IBM d'origine, et valeur **par défaut** au démarrage du pont) |
 | `6` | Directement `8 MHz` |
+| `7` | `7,2 MHz` demandés (pont 1.4 et plus) : le timer du STM32 divise une horloge de 96 MHz par un entier, la fréquence réelle affichée est la plus proche possible (96/13 = 7,38 MHz) |
 | Échap | Retour au sous-menu Configuration |
 
 Chaque touche envoie **immédiatement** la nouvelle fréquence au pont (pas de

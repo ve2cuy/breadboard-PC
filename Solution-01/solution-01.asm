@@ -3859,10 +3859,10 @@ clock_speed_action:
         je      .out
         cmp     al, '1'
         jl      .wait                    ; touche non pertinente: reboucle sans rien envoyer
-        cmp     al, '6'
+        cmp     al, '7'
         jg      .wait
         mov     dl, al
-        sub     dl, '0'                  ; '1'-'6' -> 1-6: numerotation IDENTIQUE au code
+        sub     dl, '0'                  ; '1'-'7' -> 1-7 (7 = 7,2 MHz: pont 1.4 et plus): numerotation IDENTIQUE au code
                                           ; d'action attendu par fs_clock_cmd/clockExec
                                           ; (voir arduino/8088_bridge_stm32/src/main.cpp)
         call    fs_clock_cmd
@@ -6416,6 +6416,7 @@ txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
                         db      '4) Down : 1 MHz',13,10
                         db      '5) 4.77 MHz',13,10
                         db      '6) 8.0 MHz',13,10
+                        db      '7) 7.2 MHz',13,10
                         db      '(Esc: back to Configuration submenu)',13,10,13,10,0
 
 txt_cpu_test_head:        db      27,'[36m','--- Test CPU speed ---',27,'[0m',13,10
@@ -6471,7 +6472,7 @@ lcd_text lcd_txt_menu_config_l3, '3) Set date/time', 20
 lcd_text lcd_txt_menu_dump_l3, '3) CPU Registers', 20
 lcd_text lcd_txt_tb_l3, 'BYE or Ctrl-X: menu', 20
 lcd_text lcd_txt_bas_l1, 'BASIC (GW-type)', 20
-lcd_text lcd_txt_clock_opts_l3, '5)4.77 6)8.0 ESC=End', 20
+lcd_text lcd_txt_clock_opts_l3, '6)8.0 7)7.2 ESC=End', 20
 lcd_text lcd_txt_cpu_test_elapsed, 'Elapsed:000 s', 20
 lcd_text lcd_txt_cpu_test_cancel,  'Esc: cancel', 20
 lcd_text lcd_txt_cpu_test_done,    'Esc: back', 20
@@ -6645,6 +6646,7 @@ txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
                         db      '4) Down : 1 MHz',13,10
                         db      '5) 4.77 MHz',13,10
                         db      '6) 8.0 MHz',13,10
+                        db      '7) 7.2 MHz',13,10
                         db      '(Echap: retour au sous-menu Configuration)',13,10,13,10,0
 
 ; ---- option "2) Test CPU speed" du sous-menu Configuration
@@ -6709,7 +6711,7 @@ lcd_text lcd_txt_menu_config_l3, '3) Heure et date', 20
 lcd_text lcd_txt_menu_dump_l3, '3) Registres CPU', 20
 lcd_text lcd_txt_tb_l3, 'BYE ou Ctrl-X: menu', 20
 lcd_text lcd_txt_bas_l1, 'BASIC (type GW)', 20
-lcd_text lcd_txt_clock_opts_l3, '5)4.77 6)8.0 ESC=Fin', 20
+lcd_text lcd_txt_clock_opts_l3, '6)8.0 7)7.2 ESC=Fin', 20
 lcd_text lcd_txt_cpu_test_elapsed, 'Ecoule: 000 s', 20
 lcd_text lcd_txt_cpu_test_cancel,  'Echap: annuler', 20
 lcd_text lcd_txt_cpu_test_done,    'Echap: retour', 20
@@ -6896,7 +6898,7 @@ lcd_text lcd_txt_menu_config_l4, '4) Information', 20
 ; ---- options 1-6 + Echap sont ci-dessous, sur les lignes 1-3 (option
 ; ---- "3" - "5)4.77 6)8.0 ESC=Fin/End" - traduite plus haut) ----
 lcd_text lcd_txt_clock_opts_l1, '1)+0.1 2)-0.1', 20
-lcd_text lcd_txt_clock_opts_l2, '3)+1MHz 4)-1MHz', 20
+lcd_text lcd_txt_clock_opts_l2, '3)+1 4)-1 5)4.77', 20
 
 ; ---- option "2) Test CPU speed" (voir cpu_speed_test_action et suite,
 ; ---- plus haut). Ligne 0: "Ecoule/Elapsed: 000 s" (traduite plus haut,

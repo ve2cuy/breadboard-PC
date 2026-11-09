@@ -109,7 +109,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 3
+#define FW_VERSION_MINOR 4
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -351,9 +351,10 @@ static void clockExec(uint8_t action) {
       break;
     case 5: clockHz = CLOCK_DEFAULT_HZ; break;        // 4,77 MHz
     case 6: clockHz = 8000000UL; break;               // 8 MHz
+    case 7: clockHz = 7200000UL; break;               // 7,2 MHz demandes (le diviseur entier du timer donne la valeur la plus proche)
     default: break;                                   // 0 (ou inconnu) = lire seulement
   }
-  if (action >= 1 && action <= 6) clockApply();
+  if (action >= 1 && action <= 7) clockApply();
   // actualClockHz (REELLEMENT genere), PAS clockHz (seulement DEMANDE) - voir la
   // remarque en tete de section
   replyByte((uint8_t)actualClockHz); replyByte((uint8_t)(actualClockHz >> 8));
