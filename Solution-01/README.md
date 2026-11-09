@@ -1125,8 +1125,14 @@ même brochage, **sauf deux broches** :
   `VAR_SEG` (segment `7000h`, `DEF SEG` par défaut) ; `POKE`/`DSKREAD` protègent cette zone (`poke_guard`,
   `lib/basic_stmt.asm`). « Edit+Run RAM » reste en `1000:0000`. L'écran Information affiche `RAM:510K`.
 - **Démarrage** : les 8 segments (`0000h`-`7000h`) sont effacés.
-- **Test RAM** : 510 blocs de 1 Ko (segments `0000h`-`6000h` entiers + `7000h` moins les 2 Ko réservés), numéro de
-  bloc calculé d'après l'adresse (LCD `Bloc:NNN/510`), puis :
+- **Test RAM** : les **512 Ko**, avec la **pile en bas de la RAM** (`0000:8000`) pendant tout le test : la pile
+  habituelle et les variables du micrologiciel sont dans les 2 derniers Ko, qu'une puce défectueuse dans le haut
+  corromprait (le test planterait au lieu de conclure). Phase 1 : 510 blocs de 1 Ko (segments `0000h`-`6000h`
+  entiers + `7000h` jusqu'à `F7FFh`) ; phase 2 (`zone_reservee_test`) : les 2 derniers Ko, octet par octet sans
+  destruction, sans aucun affichage pendant le test (les variables de l'UART et du LCD y sont), pile temporaire
+  dans un bloc bas déclaré bon, défauts rapportés ensuite. Numéro de bloc calculé d'après l'adresse (LCD
+  `Bloc:NNN/512`) ; chaque ligne de l'UART se termine par la quantité testée
+  à date (`… OK  -> 400K tested`, « testes » en français). Puis :
   - **Test des lignes d'adresse A0-A18** (`test_adressage`, méthode classique du bus d'adresses) : une valeur de base
     en 35555h, puis une valeur distincte à chacune des 19 adresses obtenues en inversant **une seule** ligne
     d'adresse ; écritures par DS interruptions actives, relectures par ES interruptions coupées. Une ligne coupée,
@@ -1134,13 +1140,15 @@ même brochage, **sauf deux broches** :
     FAULT »). Il **vérifie la capacité réelle** : une puce de 128/256 Ko vendue pour 512 Ko échoue sur A17/A18
     (le test octet par octet ne le peut pas : il relit chaque octet aussitôt écrit). Il détecte aussi A17/A18 prises
     sur les broches multiplexées du 8088 (S4 = registre de segment, S5 = `IF`).
+  - Deux options au menu : `6) Test RAM - Trace` (déroulement complet) et `7) Test RAM - MAP` (même test, carte
+    et bilan seulement, beaucoup plus rapide) — voir [Menu interactif](#menu-interactif).
   - **Carte mémoire** (`ram_map_print`) : une ligne par segment de 64 Ko, un caractère par bloc de 1 Ko (`.` bon,
-    `X` défectueux en rouge, `R` réservé au micrologiciel), puis le bilan chiffré : Ko testés / bons / défectueux
-    (et octets défectueux), lignes d'adresse. État des blocs : `VAR_SEG:BLOCK_MAP_OFF` (512 octets, dans le tampon
-    d'Edit RAM, inutilisé pendant le test).
-  - Vérifié au simulateur (ROM anglaise) : RAM saine (510 Ko bons, capacité vérifiée) ; puce de 256 Ko simulée
-    (A18 ignorée) ; écriture de 00h perdue en 7xxFFh (le défaut des puces ci-dessous) : blocs `X` en fin de segment
-    7000h, lignes d'adresse OK.
+    `X` défectueux en rouge, `R` non testé), puis le bilan chiffré : Ko testés / bons / défectueux
+    (et octets défectueux), non testés, lignes d'adresse. État des blocs : 512 octets en
+    `BLOCK_MAP_SEG:BLOCK_MAP_OFF` = `0000:8000`, en bas de la RAM, au-dessus de la pile de test.
+  - Vérifié au simulateur (ROM anglaise) : RAM saine (512 Ko testés et bons, capacité vérifiée) ; écriture de 00h
+    perdue en 7xxFFh, zone haute comprise (le défaut des puces ci-dessous) : le test va au bout, « Good: 500 KB
+    Defective: 12 KB (48 bytes) », blocs `X` en fin de segment 7000h, lignes d'adresse OK.
 - **DOS** (simulateur, 512 Ko modélisés) : PC-DOS 2.1 et MS-DOS 3.30 s'amorcent, `CHKDSK` annonce
   `522240 bytes total memory`. DOS 5.0 (`Dos50-d1.img`) dépasse au simulateur le point où il bouclait en 128 Ko (environ 180 secteurs lus,
   contre environ 65), puis boucle sur `IN 61h` ; sur le matériel, il s'arrête sur « Interruption non implementee:
@@ -1194,15 +1202,22 @@ terminal UART** — voir [Tiny BASIC](#tiny-basic-libtiny_basicasm) et
 3) Registres CPU
 4) Edit+Run RAM
 5) IVT
-6) Test RAM
+6) Test RAM - Trace
+7) Test RAM - MAP
 ```
+
+`6) Test RAM - Trace` affiche le déroulement complet (une ligne par bloc de 1 Ko, détail de chaque défaut) ;
+`7) Test RAM - MAP` fait le **même test** sans déroulement — ni ligne par bloc ni détail des défauts (ils
+restent comptés), progression sur le LCD tous les 64 Ko — et n'affiche que la carte mémoire et le bilan à la
+fin : beaucoup plus rapide sur le matériel (chaque octet affiché passe par le pont), 2 Ko de texte au lieu
+d'environ 42 Ko. Mode dans `BLOCK_MAP_SEG:TEST_QUIET_OFF` (en bas de la RAM, comme la carte), lu par
+`msg_bloc_progression`, `msg_defaut_detail` et `msg_ram_defectueuse`. Avec la ROM 128 Ko : `6) Test RAM` seul.
 
 Le LCD I2C n'a que 4 lignes : depuis l'ajout de `5) IVT`, ce menu se
 **pagine sur 2 écrans** (Gauche/Droite pour basculer, comme le fait
 déjà `Registres CPU` — indicateur `1/2`/`2/2` en haut à droite de la
-première ligne) : page 1 = options 1-4 (inchangée), page 2 = options 5-6
-(`6) Test RAM`, ex-option 1 du menu principal, ajoutée sur la 2e ligne de
-cette page). L'UART, lui, affiche toujours les 6 options d'un coup (pas de
+première ligne) : page 1 = options 1-4 (inchangée), page 2 = options 5-7
+(`6)` et `7)` sur les 2e et 3e lignes de cette page). L'UART, lui, affiche toujours toutes les options d'un coup (pas de
 contrainte de largeur/hauteur), une seule fois à l'entrée dans ce
 menu — pas à chaque bascule de page LCD.
 

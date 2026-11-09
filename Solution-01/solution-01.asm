@@ -426,6 +426,10 @@ start:
         print   txt_lcd_page2, LCDI2C
         gotoxy  1, 0, LCDI2C
         print   lcd_txt_menu_dump_l6, LCDI2C
+%ifdef RAM_512K
+        gotoxy  2, 0, LCDI2C
+        print   lcd_txt_menu_dump_l7, LCDI2C
+%endif
 
 .dump_wait_key:
         call    ps2_get_char
@@ -461,7 +465,11 @@ start:
         jmp     .dump_menu
 .dump_6:
         cmp     al, '6'
+%ifdef RAM_512K
+        jne     .dump_7
+%else
         jne     .dump_esc
+%endif
         call    i2c_lcd_init
         gotoxy  0, 0, LCDI2C
         print   lcd_txt_run_ram_l1, LCDI2C
@@ -469,6 +477,18 @@ start:
         print   lcd_txt_run_ram_l2, LCDI2C
         call    test_ram                ; teste toute la RAM (128K), rapporte via UART+LCD
         jmp     .dump_menu
+%ifdef RAM_512K
+.dump_7:
+        cmp     al, '7'
+        jne     .dump_esc
+        call    i2c_lcd_init
+        gotoxy  0, 0, LCDI2C
+        print   lcd_txt_run_ram_map, LCDI2C
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_run_ram_l2, LCDI2C
+        call    test_ram_map            ; meme test, sans deroulement: carte et bilan a la fin
+        jmp     .dump_menu
+%endif
 .dump_esc:
         cmp     al, 27                  ; Echap: retour au menu principal (remplace
         jne     .dump_redraw            ; l'ancienne option "9) Home menu", non
@@ -569,7 +589,31 @@ start:
 ; voir en en-tete).
 ; Resultat: 129024 octets testes sur 131072 (126 blocs de 1 Ko).
 ; ============================================================
+%ifdef RAM_512K
+; test_ram_map: "7) Test RAM - MAP" - meme test que test_ram ("6) Test RAM - Trace"), mais SANS
+; deroulement: ni ligne par bloc ni detail des defauts (ils restent comptes), progression sur le
+; LCD tous les 64 Ko seulement, carte memoire et bilan a la fin. Le mode vit en
+; BLOCK_MAP_SEG:TEST_QUIET_OFF (en bas de la RAM, comme la carte), lu par msg_bloc_progression et
+; msg_defaut_detail.
+test_ram_map:
+        push    ax
+        mov     al, 1
+        jmp     test_ram_entree
+%endif
 test_ram:
+%ifdef RAM_512K
+        push    ax
+        xor     al, al                  ; mode "Trace"
+test_ram_entree:
+        push    es
+        push    bx
+        mov     bx, BLOCK_MAP_SEG
+        mov     es, bx
+        mov     [es:TEST_QUIET_OFF], al
+        pop     bx
+        pop     es
+        pop     ax
+%endif
         pushf                   ; sauvegarde IF: sans ce PUSHF/POPF, le CLI ci-dessous
                                  ; laissait IF=0 pour de bon apres le test - plus
                                  ; aucune IRQ1 (clavier) servie dans le code appelant,
@@ -577,6 +621,22 @@ test_ram:
         cli                     ; pas d'interruption pendant tout le test
                                  ; (encore plus important ici: protege aussi
                                  ; le timing bit a bit de l'UART)
+%ifdef RAM_512K
+        ; --- PILE EN BAS DE LA RAM pendant tout le test (TEST_PILE_SEG:TEST_PILE_SP):
+        ; la pile habituelle est dans les 2 derniers Ko (VAR_SEG:F800-FFFF); si le
+        ; haut de la puce est defectueux, le test planterait au lieu de conclure.
+        ; Le chemin d'affichage (UART, LCD par INT 10h) adresse ses variables par
+        ; ES = VAR_SEG, jamais par SS: rien d'autre ne suppose SS = VAR_SEG ici.
+        ; Les octets de cette pile basse sont testes comme les autres (chaque octet
+        ; est restaure avant toute instruction qui touche la pile). ---
+        mov     dx, ss
+        mov     ax, sp
+        mov     cx, TEST_PILE_SEG
+        mov     ss, cx
+        mov     sp, TEST_PILE_SP
+        push    dx                      ; pile d'origine, restauree a la sortie
+        push    ax
+%endif
         xor     bh, bh          ; BH = drapeau d'erreur GLOBAL (0 = RAM valide)
         xor     bp, bp          ; BP = drapeau d'erreur du BLOC courant
 
@@ -593,7 +653,9 @@ test_ram:
         mov     di, RAM_DEFECT_BYTES
         mov     word [es:di], 0
 %ifdef RAM_512K
-        mov     di, BLOCK_MAP_OFF       ; carte des 512 blocs: 2 = non teste (les 2 Ko reserves le restent)
+        mov     ax, BLOCK_MAP_SEG
+        mov     es, ax
+        mov     di, BLOCK_MAP_OFF       ; carte des 512 blocs: 2 = non teste
         mov     cx, 512
         mov     al, 2
         cld
@@ -635,6 +697,13 @@ test_ram:
         call    test_segment
 
 %ifdef RAM_512K
+        push    bx
+        call    zone_reservee_test      ; les 2 derniers Ko (pile deplacee en bas): BH = 1 si defaut
+        or      bh, bh
+        pop     bx
+        jz      .zone_ok
+        mov     bh, 1
+.zone_ok:
         call    test_adressage  ; lignes d'adresse A0-A18: capacite reelle (met BH a 1)
         call    ram_map_print   ; carte memoire + Ko bons / defectueux
 %endif
@@ -645,12 +714,24 @@ test_ram:
 
         call    msg_ram_defectueuse
         call    msg_ram_total_defauts   ; quantite totale de RAM defectueuse (0 si .ram_ok)
+%ifdef RAM_512K
+        pop     ax                      ; retour sur la pile d'origine
+        pop     dx
+        mov     ss, dx
+        mov     sp, ax
+%endif
         popf                    ; restaure IF (voir le PUSHF en tete)
         ret                     ; retourne au menu (voir start:)
 
 .ram_ok:
         call    msg_ram_ok
         call    msg_ram_total_defauts
+%ifdef RAM_512K
+        pop     ax                      ; retour sur la pile d'origine
+        pop     dx
+        mov     ss, dx
+        mov     sp, ax
+%endif
         popf                    ; restaure IF (voir le PUSHF en tete)
         ret
 
@@ -672,9 +753,11 @@ test_ram:
 ; table des vecteurs, hors zone reservee 7F800h-7FFFFh). Octets d'origine
 ; sauvegardes (pile) et restaures.
 ; Appelee par test_ram (IF = 0, DS = CS). Sortie: BH = 1 si defaut (sinon
-; inchange), [VAR_SEG:TA_RESULT_OFF] = 0 (OK) ou 1. Preserve AX, CX, DX,
+; inchange), [BLOCK_MAP_SEG:TA_RESULT_OFF] = 0 (OK) ou 1. Preserve AX, CX, DX,
 ; SI, DI, DS, ES (BP inchange).
 ; ============================================================
+TEST_PILE_SEG   equ     0000h                   ; pile de test_ram: 0000:8000 (en bas de la RAM)
+TEST_PILE_SP    equ     8000h
 TA_BASE_HI      equ     0003h                   ; B = 35555h (DX:AX)
 TA_BASE_LO      equ     5555h
 TA_N            equ     20                      ; la base + A0..A18
@@ -802,7 +885,7 @@ test_adressage:
         or      cl, cl
         jnz     .restaure
         ; --- bilan
-        mov     ax, VAR_SEG
+        mov     ax, BLOCK_MAP_SEG
         mov     es, ax
         or      ch, ch
         jnz     .defaut
@@ -826,11 +909,217 @@ test_adressage:
         ret
 
 ; ============================================================
+; zone_reservee_test (RAM_512K seulement) - teste les 2 DERNIERS Ko
+; (VAR_SEG:F800-FFFF: pile, variables et tampons du micrologiciel), que la
+; premiere phase de test_ram ne peut pas toucher puisqu'elle s'en sert.
+; 1) cherche dans la carte un bloc de 1 Ko declare BON en bas de la RAM (a
+;    partir du bloc 2: hors table des vecteurs et donnees du BIOS);
+; 2) y bascule la pile (IF = 0 tout du long: aucune interruption);
+; 3) teste les 2048 octets avec les 4 motifs de test_segment, SANS aucun
+;    appel ni affichage (les variables du micrologiciel, dont celles de
+;    l'UART et du LCD, sont justement dans cette zone): chaque octet est
+;    sauvegarde puis restaure, les defauts sont notes dans le bloc bas
+;    (4 octets chacun: offset, lu, attendu - 64 au plus);
+; 4) remet la pile en place, PUIS rapporte les defauts (msg_defaut_detail)
+;    et les deux lignes de progression (msg_bloc_progression: carte et Ko
+;    testes a jour).
+; Sans bloc bas en bon etat, la zone reste non testee ('R' dans la carte).
+; Appelee par test_ram (IF = 0, DS = CS). Sortie: BH = 1 si defaut.
+; Preserve AX, CX, DX, SI, DI, ES (BP = 0 en sortie, comme test_segment).
+; ============================================================
+zone_motifs:    db      10101010b, 01010101b, 00h, 0FFh
+
+zone_reservee_test:
+        push    ax
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    es
+        ; --- 1) un bloc bas en bon etat pour la pile temporaire
+        mov     ax, BLOCK_MAP_SEG
+        mov     es, ax
+        mov     si, BLOCK_MAP_OFF + 2
+        mov     cx, 446                 ; blocs 2 a 447 (segments 0000h-6000h)
+.cherche:
+        cmp     byte [es:si], 0
+        je      .trouve
+        inc     si
+        loop    .cherche
+        jmp     .fin                    ; aucun: la zone reste non testee
+.trouve:
+        sub     si, BLOCK_MAP_OFF       ; SI = numero du bloc
+        mov     ax, si
+        mov     cl, 6
+        shl     ax, cl                  ; segment du bloc = numero * 1024 / 16
+        ; --- 2) pile temporaire dans ce bloc (sommet en 0400h), IF = 0
+        mov     dx, ss
+        mov     cx, sp
+        mov     ss, ax
+        mov     sp, 0400h
+        push    dx                      ; ancienne pile, sur la nouvelle
+        push    cx
+        ; --- 3) test des 2048 octets, sans appel ni affichage
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     di, 0F800h
+        mov     cx, 2048
+        xor     bp, bp                  ; SS:BP = defauts notes (0000h-00FFh du bloc)
+        xor     dx, dx                  ; DX = nombre total de defauts
+.octet:
+        mov     bl, [es:di]             ; octet d'origine
+        mov     si, zone_motifs         ; DS = CS
+.motif:
+        mov     ah, [si]
+        mov     [es:di], ah
+        mov     al, [es:di]
+        cmp     al, ah
+        jne     .defaut
+        inc     si
+        cmp     si, zone_motifs + 4
+        jb      .motif
+        jmp     .restaure
+.defaut:
+        inc     dx
+        cmp     bp, 0100h
+        jae     .restaure
+        mov     [bp], di                ; offset
+        mov     [bp + 2], ax            ; AL = lu, AH = attendu
+        add     bp, 4
+.restaure:
+        mov     [es:di], bl
+        inc     di
+        loop    .octet
+        ; --- 4) retour sur la pile d'origine
+        mov     si, dx                  ; SI = nombre total de defauts
+        mov     di, bp                  ; DI = octets de defauts notes
+        mov     ax, ss                  ; AX = segment du bloc bas (defauts notes)
+        pop     cx
+        pop     dx
+        mov     ss, dx
+        mov     sp, cx
+        ; --- rapport des defauts notes (blocs 511/512: drapeaux sur la pile)
+        xor     cx, cx
+        push    cx                      ; [defauts du bloc F800h-FBFFh]
+        push    cx                      ; [defauts du bloc FC00h-FFFFh]
+        mov     bp, sp
+        xor     bx, bx                  ; BX = position dans les defauts notes (BH: drapeau global, plus bas)
+.rapport:
+        cmp     bx, di
+        jae     .rapport_fin
+        push    ax
+        push    di
+        mov     es, ax
+        mov     di, [es:bx]             ; offset
+        mov     dx, [es:bx + 2]         ; DL = lu, DH = attendu
+        mov     ax, VAR_SEG
+        mov     es, ax
+        cmp     di, 0FC00h
+        jae     .haut
+        inc     word [bp + 2]
+        jmp     .detail
+.haut:
+        inc     word [bp]
+.detail:
+        push    bx
+        push    si                      ; SI = nombre total de defauts (msg_defaut_detail le detruit)
+        call    msg_defaut_detail       ; "MEMORY FAULT @ 7000:xxxx" (+ RAM_DEFECT_BYTES)
+        pop     si
+        pop     bx
+        pop     di
+        pop     ax
+        add     bx, 4
+        jmp     .rapport
+.rapport_fin:
+        ; defauts au-dela des 64 notes: comptes, non detailles
+        mov     cx, di
+        shr     cx, 1
+        shr     cx, 1                   ; CX = defauts detailles
+        mov     ax, si
+        sub     ax, cx
+        mov     cx, VAR_SEG
+        mov     es, cx
+        add     [es:RAM_DEFECT_BYTES], ax
+        ; --- lignes de progression des 2 blocs (et carte memoire)
+        mov     ax, VAR_SEG
+        mov     es, ax
+        pop     cx                      ; defauts du bloc FC00h-FFFFh
+        pop     dx                      ; defauts du bloc F800h-FBFFh
+        xor     bx, bx
+        or      si, si
+        jz      .lignes
+        mov     bh, 1                   ; RAM declaree defectueuse au bilan
+        or      dx, dx                  ; des defauts non detailles comptent pour le 1er bloc
+        jnz     .lignes
+        or      cx, cx
+        jnz     .lignes
+        inc     dx
+.lignes:
+        push    bx
+        push    cx
+        mov     bp, dx                  ; BP = drapeau du bloc F800h-FBFFh
+        mov     di, 0FC00h              ; DI = juste apres le bloc
+        call    msg_bloc_progression
+        pop     cx
+        pop     bx
+        push    bx
+        mov     bp, cx                  ; BP = drapeau du bloc FC00h-FFFFh
+        xor     di, di                  ; juste apres le bloc (FFFFh + 1 = 0000h)
+        call    msg_bloc_progression
+        pop     bx
+.fin:
+        xor     bp, bp
+        pop     es
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     ax
+        ret
+
+; ============================================================
+; bloc_carte_maj (RAM_512K): etat du bloc de 1 Ko qui finit en ES:DI dans la
+; carte (BP = 0: bon, sinon defectueux). Sortie: AX = numero du bloc (1-512).
+; Preserve le reste.
+; ============================================================
+bloc_carte_maj:
+        push    bx
+        push    cx
+        push    dx
+        push    di
+        push    es
+        mov     ax, es
+        mov     bx, di
+        sub     bx, 0400h               ; debut du bloc
+        call    mem_calc_physical       ; DX:AX = adresse physique (detruit CX)
+        mov     cl, 10
+        shr     ax, cl
+        mov     cl, 6
+        shl     dx, cl
+        or      ax, dx                  ; AX = numero du bloc, a partir de 0
+        mov     di, ax
+        add     di, BLOCK_MAP_OFF
+        mov     bx, BLOCK_MAP_SEG
+        mov     es, bx
+        mov     byte [es:di], 0
+        or      bp, bp
+        jz      .bon
+        mov     byte [es:di], 1
+.bon:
+        inc     ax
+        pop     es
+        pop     di
+        pop     dx
+        pop     cx
+        pop     bx
+        ret
+
+; ============================================================
 ; ram_map_print (RAM_512K seulement) - CARTE MEMOIRE et bilan chiffre,
 ; a la fin de test_ram: une ligne par segment de 64 Ko, un caractere par
 ; bloc de 1 Ko ('.' bon, 'X' defectueux en rouge, 'R' zone reservee non
 ; testee), d'apres la carte remplie par msg_bloc_progression
-; (VAR_SEG:BLOCK_MAP_OFF, 512 octets: 0 bon, 1 defectueux, 2 non teste).
+; (BLOCK_MAP_SEG:BLOCK_MAP_OFF, 512 octets: 0 bon, 1 defectueux, 2 non teste).
 ; Puis: Ko testes / bons / defectueux, octets defectueux, lignes d'adresse.
 ; Preserve tous les registres (BH = drapeau global de test_ram).
 ; ============================================================
@@ -844,7 +1133,7 @@ ram_map_print:
         push    es
         mov     si, txt_map_titre
         call    uart_tx_string
-        mov     ax, VAR_SEG
+        mov     ax, BLOCK_MAP_SEG
         mov     es, ax
         mov     di, BLOCK_MAP_OFF
         xor     dx, dx                  ; DL = segment courant (0-7)
@@ -917,11 +1206,21 @@ ram_map_print:
         call    uart_tx_dec_word
         mov     si, txt_map_ko_octets   ; " KB ("
         call    uart_tx_string
+        push    es
+        mov     ax, VAR_SEG
+        mov     es, ax
         mov     ax, [es:RAM_DEFECT_BYTES]
+        pop     es
         call    uart_tx_dec_word
         mov     si, txt_map_octets      ; " bytes)"
         call    uart_tx_string
-        mov     si, txt_map_reserve
+        mov     si, txt_map_reserve     ; "Not tested: "
+        call    uart_tx_string
+        mov     ax, 512
+        sub     ax, cx
+        sub     ax, dx
+        call    uart_tx_dec_word
+        mov     si, txt_map_total       ; " KB   Total: 512 KB"
         call    uart_tx_string
         mov     si, txt_map_lignes_ok
         cmp     byte [es:TA_RESULT_OFF], 0
@@ -5053,6 +5352,39 @@ msg_bloc_progression:
 .no_defect_incr:
         pop     di
         pop     es
+%ifdef RAM_512K
+        ; --- mode MAP: carte seulement (+ progression sur le LCD tous les 64 Ko) ---
+        push    es
+        mov     ax, BLOCK_MAP_SEG
+        mov     es, ax
+        cmp     byte [es:TEST_QUIET_OFF], 0
+        pop     es
+        je      .detaille
+        call    bloc_carte_maj          ; AX = numero du bloc (1-512)
+        test    al, 3Fh
+        jnz     .silence_fin
+        push    dx
+        push    es
+        push    ax
+        i2c_lcd_goto LCD_LINE4          ; "Bloc:NNN/512 Def:NNN"
+        mov     si, lcd_txt_bloc_prefix
+        call    i2c_lcd_print
+        pop     ax
+        call    i2c_lcd_tx_dec3
+        mov     si, lcd_txt_bloc_mid
+        call    i2c_lcd_print
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     al, [es:DEFECT_COUNTER_OFF]
+        xor     ah, ah
+        call    i2c_lcd_tx_dec3
+        pop     es
+        pop     dx
+.silence_fin:
+        xor     bp, bp
+        ret
+.detaille:
+%endif
 
         mov     si, ANSI_BLANC
         call    uart_tx_string
@@ -5127,6 +5459,33 @@ msg_bloc_progression:
         mov     si, txt_ok_court
         call    uart_tx_string
 .fin:
+%ifdef RAM_512K
+        ; --- fin de la ligne UART: "  -> NNNK tested" = Ko testes a date (le
+        ; test progresse du bas vers le haut: numero du bloc = Ko testes) ---
+        push    ax
+        push    bx
+        push    cx                      ; CX/BH: etat vivant de test_segment/test_ram
+        push    dx
+        mov     ax, es
+        mov     bx, di
+        sub     bx, 0400h               ; debut du bloc
+        call    mem_calc_physical       ; DX:AX = adresse physique (detruit CX)
+        mov     cl, 10
+        shr     ax, cl
+        mov     cl, 6
+        shl     dx, cl
+        or      ax, dx                  ; AX = adresse / 1024
+        inc     ax                      ; = Ko testes jusqu'ici
+        mov     si, txt_teste_avant
+        call    uart_tx_string
+        call    uart_tx_dec_word
+        mov     si, txt_teste_apres
+        call    uart_tx_string          ; ... et la fin de ligne
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+%endif
         ; --- Ligne 2 du LCD: plage complete du bloc "SSSS:OOOO-SSSS:OOOO",
         ; miroir exact de ce qui part sur l'UART (19 caracteres - avant,
         ; sur 16 colonnes, seule l'adresse de DEBUT tenait) ---
@@ -5198,7 +5557,7 @@ msg_bloc_progression:
         push    di
         mov     di, ax
         add     di, BLOCK_MAP_OFF
-        mov     ax, VAR_SEG
+        mov     ax, BLOCK_MAP_SEG
         mov     es, ax
         mov     byte [es:di], 0
         or      bp, bp
@@ -5251,6 +5610,14 @@ msg_defaut_detail:
         inc     word [es:di]
         pop     di
         pop     es
+%ifdef RAM_512K
+        push    es                      ; mode MAP: compte, mais pas de detail
+        mov     ax, BLOCK_MAP_SEG
+        mov     es, ax
+        cmp     byte [es:TEST_QUIET_OFF], 0
+        pop     es
+        jne     .fin_detail
+%endif
 
         mov     si, ANSI_ROUGE
         call    uart_tx_string
@@ -5278,7 +5645,7 @@ msg_defaut_detail:
         call    uart_tx_string
         mov     si, txt_crlf
         call    uart_tx_string
-
+.fin_detail:
         pop     dx
         pop     ax
         ret
@@ -5291,6 +5658,19 @@ msg_ram_ok:
         ret
 
 msg_ram_defectueuse:
+%ifdef RAM_512K
+        push    es                      ; mode MAP: pas de detail au-dessus, renvoi a la carte
+        push    ax
+        mov     ax, BLOCK_MAP_SEG
+        mov     es, ax
+        cmp     byte [es:TEST_QUIET_OFF], 0
+        pop     ax
+        pop     es
+        je      .detail
+        print   txt_ram_defaut_map, UART
+        ret
+.detail:
+%endif
         print   txt_ram_defaut, UART
         ret
 
@@ -5898,7 +6278,13 @@ txt_ps2_recu:           db      'Scan code received: 0x',0
 txt_ps2_erreur:         db      ' <<< ERROR (invalid parity or stop bit)',13,10,0
 %endif
 
+%ifdef RAM_512K
+txt_defaut_court:       db      'FAULT',27,'[0m',0
+txt_teste_avant:        db      '  -> ',0
+txt_teste_apres:        db      'K tested',13,10,0
+%else
 txt_defaut_court:       db      'FAULT',27,'[0m',13,10,0
+%endif
 txt_attendu:            db      '  expected=',0
 txt_lu:                 db      '  read=',0
 txt_defaut_detail:      db      '  >> MEMORY FAULT @ ',0
@@ -5909,13 +6295,13 @@ txt_banniere1:          db      27,'[0m','=== RAM Test 512K (VE2CUY, UART report
 txt_banniere1:          db      27,'[0m','=== RAM Test 128K (VE2CUY, UART report 9600 8N1, PA7) ===',27,'[0m',13,10,0
 %endif
 %ifdef RAM_512K
-txt_banniere2:          db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocks) + seg 7000h (70000h-7F7FFh, 62 blocks)',13,10,'2 KB reserved for the stack + Edit RAM buffer + PA7 shadow copy: 7F800h-7FFFFh (not tested)',13,10,13,10,0
+txt_banniere2:          db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocks) + seg 7000h (70000h-7F7FFh, 62 blocks),',13,10,'then the last 2 KB (firmware stack and variables, 7F800h-7FFFFh) with the stack moved to low RAM',13,10,13,10,0
 %else
 txt_banniere2:          db      'Plan: seg 0000h (00000h-0FFFFh, 64 blocks) + seg 1000h (10000h-1F7FFh, 62 blocks)',13,10,'2 KB reserved for the stack + Edit RAM buffer + PA7 shadow copy: 1F800h-1FFFFh (not tested)',13,10,13,10,0
 %endif
 
 %ifdef RAM_512K
-txt_ram_ok:             db      27,'[32m','*** RAM OK - 522240 bytes tested (510 blocks of 1 KB), no errors ***',27,'[0m',13,10,13,10,0
+txt_ram_ok:             db      27,'[32m','*** RAM OK - 524288 bytes tested (512 blocks of 1 KB), no errors ***',27,'[0m',13,10,13,10,0
 txt_adr_titre:          db      13,10,'Address line test A0-A18 (written through DS with IF=1, read back through ES with IF=0):',13,10,0
 txt_adr_base:           db      27,'[31m','  ADDRESS LINE FAULT: base location 35555h overwritten: read ',0
 txt_adr_ligne:          db      27,'[31m','  ADDRESS LINE A',0
@@ -5927,20 +6313,24 @@ txt_adr_aide:           db      27,'[31m','  A 128/256 KB chip sold as 512 KB fa
 txt_map_titre:          db      13,10,'MEMORY MAP (1 character = 1 KB block)',13,10,'         0K              16K             32K             48K',13,10,0
 txt_map_adr:            db      '0000h:  ',0
 txt_map_x:              db      27,'[31m','X',27,'[0m',0
-txt_map_legende:        db      '         . = good   X = defective   R = reserved for the firmware (not tested)',13,10,13,10,0
+txt_map_legende:        db      '         . = good   X = defective   R = not tested',13,10,13,10,0
 txt_map_teste:          db      'RAM tested: ',0
 txt_map_ko:             db      ' KB   ',0
 txt_map_bon:            db      'Good: ',0
 txt_map_mauvais:        db      'Defective: ',0
 txt_map_ko_octets:      db      ' KB (',0
 txt_map_octets:         db      ' bytes)',13,10,0
-txt_map_reserve:        db      'Reserved (firmware, not tested): 2 KB   Total: 512 KB',13,10,0
+txt_map_reserve:        db      'Not tested: ',0
+txt_map_total:          db      ' KB   Total: 512 KB',13,10,0
 txt_map_lignes_ok:      db      27,'[32m','Address lines A0-A18: OK (512 KB capacity verified)',27,'[0m',13,10,0
 txt_map_lignes_ko:      db      27,'[31m','Address lines A0-A18: FAULT (see above)',27,'[0m',13,10,0
 %else
 txt_ram_ok:             db      27,'[32m','*** RAM OK - 129024 bytes tested (126 blocks of 1 KB), no errors ***',27,'[0m',13,10,13,10,0
 %endif
 txt_ram_defaut:         db      27,'[31m','*** FAULTY RAM - see fault details above ***',27,'[0m',13,10,13,10,0
+%ifdef RAM_512K
+txt_ram_defaut_map:     db      27,'[31m','*** FAULTY RAM - see the memory map above ***',27,'[0m',13,10,13,10,0
+%endif
 txt_total_defaut:       db      'TOTAL FAULTS: ',0
 txt_total_defaut_fin:   db      ' byte(s)',13,10,13,10,0
 
@@ -5987,7 +6377,12 @@ txt_menu_dump:          db      27,'[36m','--- Memory functions Menu ---',27,'[0
                         db      '3) CPU Registers',13,10
                         db      '4) Edit+Run RAM',13,10
                         db      '5) IVT',13,10
+%ifdef RAM_512K
+                        db      '6) Test RAM - Trace',13,10
+                        db      '7) Test RAM - MAP',13,10
+%else
                         db      '6) Test RAM',13,10
+%endif
                         db      '(Esc: back to main menu)',13,10,13,10,0
 
 txt_menu_usb_head:      db      27,'[36m','--- USB Disk Submenu ---',27,'[0m',13,10,0
@@ -6074,7 +6469,7 @@ lcd_text lcd_txt_etat_ok, 'Status: OK', 20
 lcd_text lcd_txt_etat_defaut, 'Status: FAULT', 20
 lcd_txt_bloc_prefix:    db      'Blk:', 0
 %ifdef RAM_512K
-lcd_txt_bloc_mid:       db      '/510 Flt:', 0
+lcd_txt_bloc_mid:       db      '/512 Flt:', 0
 %else
 lcd_txt_bloc_mid:       db      '/126 Flt:', 0
 %endif
@@ -6087,7 +6482,13 @@ txt_ps2_recu:           db      'Scan code recu: 0x',0
 txt_ps2_erreur:         db      ' <<< ERREUR (parite ou bit stop invalide)',13,10,0
 %endif
 
+%ifdef RAM_512K
+txt_defaut_court:       db      'DEFAUT',27,'[0m',0
+txt_teste_avant:        db      '  -> ',0
+txt_teste_apres:        db      'K testes',13,10,0
+%else
 txt_defaut_court:       db      'DEFAUT',27,'[0m',13,10,0
+%endif
 txt_attendu:            db      '  attendu=',0
 txt_lu:                 db      '  lu=',0
 txt_defaut_detail:      db      '  >> DEFAUT memoire @ ',0
@@ -6098,13 +6499,13 @@ txt_banniere1:          db      27,'[0m','=== Test RAM 512K (VE2CUY, rapport UAR
 txt_banniere1:          db      27,'[0m','=== Test RAM 128K (VE2CUY, rapport UART 9600 8N1, PA7) ===',27,'[0m',13,10,0
 %endif
 %ifdef RAM_512K
-txt_banniere2:          db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocs) + seg 7000h (70000h-7F7FFh, 62 blocs)',13,10,'2 Ko reserves a la pile + tampon Edit RAM + copie fantome PA7: 7F800h-7FFFFh (non testes)',13,10,13,10,0
+txt_banniere2:          db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocs) + seg 7000h (70000h-7F7FFh, 62 blocs),',13,10,'puis les 2 derniers Ko (pile et variables du micrologiciel, 7F800h-7FFFFh), pile deplacee en bas de la RAM',13,10,13,10,0
 %else
 txt_banniere2:          db      'Plan: seg 0000h (00000h-0FFFFh, 64 blocs) + seg 1000h (10000h-1F7FFh, 62 blocs)',13,10,'2 Ko reserves a la pile + tampon Edit RAM + copie fantome PA7: 1F800h-1FFFFh (non testes)',13,10,13,10,0
 %endif
 
 %ifdef RAM_512K
-txt_ram_ok:             db      27,'[32m','*** RAM OK - 522240 octets testes (510 blocs de 1 Ko), aucune erreur ***',27,'[0m',13,10,13,10,0
+txt_ram_ok:             db      27,'[32m','*** RAM OK - 524288 octets testes (512 blocs de 1 Ko), aucune erreur ***',27,'[0m',13,10,13,10,0
 txt_adr_titre:          db      13,10,"Test des lignes d'adresse A0-A18 (ecriture par DS avec IF=1, relecture par ES avec IF=0):",13,10,0
 txt_adr_base:           db      27,'[31m',"  DEFAUT D'ADRESSAGE: case de base 35555h ecrasee: lu ",0
 txt_adr_ligne:          db      27,'[31m',"  LIGNE D'ADRESSE A",0
@@ -6116,20 +6517,24 @@ txt_adr_aide:           db      27,'[31m','  Une puce de 128/256 Ko vendue pour 
 txt_map_titre:          db      13,10,'CARTE MEMOIRE (1 caractere = 1 bloc de 1 Ko)',13,10,'         0K              16K             32K             48K',13,10,0
 txt_map_adr:            db      '0000h:  ',0
 txt_map_x:              db      27,'[31m','X',27,'[0m',0
-txt_map_legende:        db      '         . = bon   X = defectueux   R = reserve au micrologiciel (non teste)',13,10,13,10,0
+txt_map_legende:        db      '         . = bon   X = defectueux   R = non teste',13,10,13,10,0
 txt_map_teste:          db      'RAM testee: ',0
 txt_map_ko:             db      ' Ko   ',0
 txt_map_bon:            db      'Bonne: ',0
 txt_map_mauvais:        db      'Defectueuse: ',0
 txt_map_ko_octets:      db      ' Ko (',0
 txt_map_octets:         db      ' octets)',13,10,0
-txt_map_reserve:        db      'Reservee (micrologiciel, non testee): 2 Ko   Total: 512 Ko',13,10,0
+txt_map_reserve:        db      'Non testee: ',0
+txt_map_total:          db      ' Ko   Total: 512 Ko',13,10,0
 txt_map_lignes_ok:      db      27,'[32m',"Lignes d'adresse A0-A18: OK (capacite de 512 Ko verifiee)",27,'[0m',13,10,0
 txt_map_lignes_ko:      db      27,'[31m',"Lignes d'adresse A0-A18: DEFAUT (voir plus haut)",27,'[0m',13,10,0
 %else
 txt_ram_ok:             db      27,'[32m','*** RAM OK - 129024 octets testes (126 blocs de 1 Ko), aucune erreur ***',27,'[0m',13,10,13,10,0
 %endif
 txt_ram_defaut:         db      27,'[31m','*** RAM DEFECTUEUSE - voir le detail des defauts ci-dessus ***',27,'[0m',13,10,13,10,0
+%ifdef RAM_512K
+txt_ram_defaut_map:     db      27,'[31m','*** RAM DEFECTUEUSE - voir la carte memoire ci-dessus ***',27,'[0m',13,10,13,10,0
+%endif
 txt_total_defaut:       db      'TOTAL DEFAUT: ',0
 txt_total_defaut_fin:   db      ' octet(s)',13,10,13,10,0
 
@@ -6192,7 +6597,12 @@ txt_menu_dump:          db      27,'[36m','--- Menu Memory functions ---',27,'[0
                         db      '3) Registres CPU',13,10
                         db      '4) Edit+Run RAM',13,10
                         db      '5) IVT',13,10
+%ifdef RAM_512K
+                        db      '6) Test RAM - Trace',13,10
+                        db      '7) Test RAM - MAP',13,10
+%else
                         db      '6) Test RAM',13,10
+%endif
                         db      '(Echap: retour au menu principal)',13,10,13,10,0
 
 ; ---- sous-menu USB Disk (voir .usb_menu): l'option 1 ("1) USB:
@@ -6297,7 +6707,7 @@ lcd_text lcd_txt_etat_ok, 'Etat: OK', 20
 lcd_text lcd_txt_etat_defaut, 'Etat: DEFAUT', 20
 lcd_txt_bloc_prefix:    db      'Bloc:', 0
 %ifdef RAM_512K
-lcd_txt_bloc_mid:       db      '/510 Def:', 0
+lcd_txt_bloc_mid:       db      '/512 Def:', 0
 %else
 lcd_txt_bloc_mid:       db      '/126 Def:', 0
 %endif
@@ -6307,7 +6717,11 @@ lcd_txt_bloc_mid:       db      '/126 Def:', 0
 ; ---- textes PARTAGES (identiques FR/EN - mnemoniques, separateurs,
 ; ---- sequences ANSI, donnees binaires: rien a traduire) ----
 txt_crlf:               db      13,10,0
+%ifdef RAM_512K
+txt_ok_court:           db      'OK',27,'[0m',0
+%else
 txt_ok_court:           db      'OK',27,'[0m',13,10,0
+%endif
 txt_reg_ax:             db      'AX=', 0
 txt_reg_bx:             db      'BX=', 0
 txt_reg_cx:             db      'CX=', 0
@@ -6442,7 +6856,13 @@ lcd_text lcd_txt_menu_dump_l1, '1) Dump memory', 20
 lcd_text lcd_txt_menu_dump_l2, '2) Edit RAM', 20
 lcd_text lcd_txt_menu_dump_l4, '4) Edit+Run RAM', 20
 lcd_text lcd_txt_menu_dump_l5, '5) IVT', 20
+%ifdef RAM_512K
+lcd_text lcd_txt_menu_dump_l6, '6) Test RAM - Trace', 20
+lcd_text lcd_txt_menu_dump_l7, '7) Test RAM - MAP', 20
+lcd_text lcd_txt_run_ram_map, 'Test RAM - MAP', 20
+%else
 lcd_text lcd_txt_menu_dump_l6, '6) Test RAM', 20
+%endif
 
 ; ---- sous-menu USB Disk (voir .usb_menu, start:) - 3 options,
 ; ---- tiennent sur le LCD sans pagination ("1) USB: OFF"/"1) USB: ON"
