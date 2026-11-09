@@ -5366,6 +5366,18 @@ msg_bloc_progression:
         push    dx
         push    es
         push    ax
+        ; terminal: "  -> NNNK tested" tous les 64 Ko (meme fin de ligne que le mode Trace)
+        push    bx
+        push    cx                      ; CX/BH: etat vivant de test_segment/test_ram
+        mov     si, txt_teste_avant
+        call    uart_tx_string
+        call    uart_tx_dec_word
+        mov     si, txt_teste_apres
+        call    uart_tx_string
+        pop     cx
+        pop     bx
+        pop     ax
+        push    ax
         i2c_lcd_goto LCD_LINE4          ; "Bloc:NNN/512 Def:NNN"
         mov     si, lcd_txt_bloc_prefix
         call    i2c_lcd_print

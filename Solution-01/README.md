@@ -1208,8 +1208,8 @@ terminal UART** — voir [Tiny BASIC](#tiny-basic-libtiny_basicasm) et
 
 `6) Test RAM - Trace` affiche le déroulement complet (une ligne par bloc de 1 Ko, détail de chaque défaut) ;
 `7) Test RAM - MAP` fait le **même test** sans déroulement — ni ligne par bloc ni détail des défauts (ils
-restent comptés), progression sur le LCD tous les 64 Ko — et n'affiche que la carte mémoire et le bilan à la
-fin : beaucoup plus rapide sur le matériel (chaque octet affiché passe par le pont), 2 Ko de texte au lieu
+restent comptés), progression tous les 64 Ko sur le LCD et sur le terminal (`  -> 64K tested`) — puis la
+carte mémoire et le bilan à la fin : beaucoup plus rapide sur le matériel (chaque octet affiché passe par le pont), 2 Ko de texte au lieu
 d'environ 42 Ko. Mode dans `BLOCK_MAP_SEG:TEST_QUIET_OFF` (en bas de la RAM, comme la carte), lu par
 `msg_bloc_progression`, `msg_defaut_detail` et `msg_ram_defectueuse`. Avec la ROM 128 Ko : `6) Test RAM` seul.
 
@@ -1425,6 +1425,13 @@ jamais attendre — les relâchements de touches sont consommés au passage).
 Même technique pour le test de vitesse du CPU et l'écran Information
 (sous-menu Configuration) : avant, le relâchement de la touche qui lançait
 l'action bloquait ces écrans jusqu'à une nouvelle frappe au clavier PS/2.
+
+**Échap du terminal dans l'écran Information à 7,38 MHz** (corrigé dans le firmware du pont 1.3) : après
+chaque commande du 8088, le pont suspendait les octets du terminal pendant `CMD_HOLD_MS` (250 ms, prévu
+pour les collages pendant les accès disque). L'écran Information lit l'heure toutes les `INFO_RTC_THROTTLE`
+passes, soit environ 250 ms à 4,77 MHz mais environ 170 ms à 7,38 MHz : le terminal restait muet en
+permanence, alors que le clavier PS/2 fonctionnait. Le délai ne s'applique plus qu'aux commandes longues
+(disque, fichiers, USB : `op` ≥ 10h, sauf 2Ch). Reproduit au simulateur en modélisant ce délai.
 
 **Edit RAM** (option 2 du sous-menu Memory functions — seul point d'accès
 depuis la refonte du menu principal, qui n'offre plus cette option

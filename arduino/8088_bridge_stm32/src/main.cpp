@@ -109,7 +109,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 2
+#define FW_VERSION_MINOR 3
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -739,7 +739,11 @@ static void cmdByte(uint8_t v) {
   else if (op >= 0x27 && op <= 0x2A) imgExec(cmdBuf);
   else if (op == 0x2B) secSum();
   else if (op == 0x2C) clockExec(cmdBuf[1]);
-  uartHoldUntil = millis() + CMD_HOLD_MS;  // le 8088 est occupe avec sa commande: pas de collage pour l'instant
+  // Le 8088 est occupe avec sa commande: pas de collage pour l'instant - SEULEMENT pour les commandes
+  // longues (disque, fichiers, USB: op >= 10h, sauf 2Ch). Les commandes courtes (ping, heure, version,
+  // horloge) n'en ont pas besoin: l'ecran Information lit l'heure toutes les ~170 ms a 7,38 MHz (moins
+  // de CMD_HOLD_MS) - le terminal etait alors muet en permanence (Echap sans effet, PS/2 normal).
+  if (op >= 0x10 && op != 0x2C) uartHoldUntil = millis() + CMD_HOLD_MS;
   cmdLen = 0;
 }
 
