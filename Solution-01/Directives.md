@@ -584,3 +584,4 @@ Suite à discussion avec Claude Code (session du 14 septembre 2026), voici les t
 * Menu Boot disk image avec USB ON: "Disque non pret" (normal: le PC a la flash) - message precise: "Disque non pret: USB ON (le PC a le disque). Choisir d'abord 1) USB: OFF."
 * Verifications: 0 echec. ROM livrees: solution-01-fr.bin (md5 8aabbf5c...), solution-01-en.bin (md5 dd1becc1...).
   - Simulateur (ROM corrigee, horloge du pont qui avance, Dos62-d1-nokeyb.IMG): 98 lectures de 0040:006C seulement (la pause F5/F8 se termine), DOS 6.22 demarre et INSTALL affiche son ecran d'accueil ("Bienvenue a Install... appuyez sur ENTREE"). Les acces 70h/71h vus au simulateur viennent encore du test de processeur (Unicorn = 386).
+* Pont 1.5 flashe (DFU: SUCCESS).
