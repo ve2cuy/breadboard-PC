@@ -110,7 +110,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 6
+#define FW_VERSION_MINOR 7
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -305,7 +305,8 @@ static void applyTime(const uint8_t *a) {  // annee (2 octets), mois, jour, h, m
 // double arrondi entier de HardwareTimer::setOverflow(), voir
 // framework-arduinoststm32/.../HardwareTimer.cpp):
 //   0 = ne rien changer (sert de LIRE), 1 = +0,1 MHz, 2 = -0,1 MHz, 3 = +1 MHz,
-//   4 = -1 MHz, 5 = aller a 4,77 MHz, 6 = aller a 8 MHz.
+//   4 = -1 MHz, 5 = aller a 4,77 MHz, 6 = aller a 8 MHz, 7 = 7,2 MHz (1.4),
+//   8 = 2,35 MHz (1.7).
 // ============================================================================
 #define CLOCK_MIN_HZ     1000000UL
 #define CLOCK_MAX_HZ    10000000UL
@@ -353,9 +354,10 @@ static void clockExec(uint8_t action) {
     case 5: clockHz = CLOCK_DEFAULT_HZ; break;        // 4,77 MHz
     case 6: clockHz = 8000000UL; break;               // 8 MHz
     case 7: clockHz = 7200000UL; break;               // 7,2 MHz demandes (le diviseur entier du timer donne la valeur la plus proche)
+    case 8: clockHz = 2340000UL; break;               // "2,35 MHz" (1.7): 96 MHz / 41 = 2,341 MHz, le plus proche (2 350 000 donnerait 96/40 = 2,40: division tronquee)
     default: break;                                   // 0 (ou inconnu) = lire seulement
   }
-  if (action >= 1 && action <= 7) clockApply();
+  if (action >= 1 && action <= 8) clockApply();
   // actualClockHz (REELLEMENT genere), PAS clockHz (seulement DEMANDE) - voir la
   // remarque en tete de section
   replyByte((uint8_t)actualClockHz); replyByte((uint8_t)(actualClockHz >> 8));

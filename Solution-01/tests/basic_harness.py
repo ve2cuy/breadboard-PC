@@ -109,6 +109,7 @@ class BridgeModel:
         self.img = None          # nom du fichier monte comme image de disquette (commandes 27h-2Ah)
         self.bad_reads = bad_reads   # nombre de LECTURES de secteur dont un octet est altere en route (test des sommes de controle)
         self.corrupt_now = False
+        self.clock_hz = 4770000  # horloge du 8088 DEMANDEE (commande 2Ch, pont 1.7)
 
     def _need(self):
         c = self.cmd
@@ -121,6 +122,8 @@ class BridgeModel:
             return 5
         if op in (0x25, 0x26, 0x28, 0x2B):
             return 1
+        if op == 0x2C:
+            return 2
         if op == 0x27:
             return 2 + c[1] if len(c) >= 2 else 2
         if op in (0x29, 0x2A):
@@ -169,6 +172,15 @@ class BridgeModel:
                 self.cur = None
             self.usb = (op == 0x25)
             return [0]
+        if op == 0x2C:                                    # horloge (clockExec du pont 1.7)
+            a, hz = c[1], self.clock_hz
+            step = {1: 100000, 2: -100000, 3: 1000000, 4: -1000000}
+            if a in step:
+                hz = min(10000000, max(1000000, hz + step[a]))
+            hz = {5: 4770000, 6: 8000000, 7: 7200000, 8: 2340000}.get(a, hz)
+            self.clock_hz = hz
+            real = 96000000 // (96000000 // hz)               # diviseur entier du minuteur (96 MHz)
+            return [real & 0xFF, (real >> 8) & 0xFF, (real >> 16) & 0xFF, real >> 24]
         if op == 0x2B:
             total = sum(self.secbuf) & 0xFFFF
             return [total & 0xFF, total >> 8]

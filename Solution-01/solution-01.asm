@@ -426,12 +426,6 @@ start:
         print   txt_lcd_page2, LCDI2C
         gotoxy  1, 0, LCDI2C
         print   lcd_txt_menu_dump_l6, LCDI2C
-%ifdef RAM_512K
-        gotoxy  2, 0, LCDI2C
-        print   lcd_txt_menu_dump_l7, LCDI2C
-        gotoxy  3, 0, LCDI2C
-        print   lcd_txt_menu_dump_l8, LCDI2C
-%endif
 
 .dump_wait_key:
         call    ps2_get_char
@@ -467,38 +461,16 @@ start:
         jmp     .dump_menu
 .dump_6:
         cmp     al, '6'
-%ifdef RAM_512K
-        jne     .dump_7
-%else
         jne     .dump_esc
-%endif
+%ifdef RAM_512K
+        jmp     .ramtest_menu           ; sous-menu Test RAM: Trace / MAP / Loop
+%else
         call    i2c_lcd_init
         gotoxy  0, 0, LCDI2C
         print   lcd_txt_run_ram_l1, LCDI2C
         gotoxy  1, 0, LCDI2C
         print   lcd_txt_run_ram_l2, LCDI2C
         call    test_ram                ; teste toute la RAM (128K), rapporte via UART+LCD
-        jmp     .dump_menu
-%ifdef RAM_512K
-.dump_7:
-        cmp     al, '7'
-        jne     .dump_8
-        call    i2c_lcd_init
-        gotoxy  0, 0, LCDI2C
-        print   lcd_txt_run_ram_map, LCDI2C
-        gotoxy  1, 0, LCDI2C
-        print   lcd_txt_run_ram_l2, LCDI2C
-        call    test_ram_map            ; meme test, sans deroulement: carte et bilan a la fin
-        jmp     .dump_menu
-.dump_8:
-        cmp     al, '8'
-        jne     .dump_esc
-        call    i2c_lcd_init
-        gotoxy  0, 0, LCDI2C
-        print   lcd_txt_run_ram_loop, LCDI2C
-        gotoxy  1, 0, LCDI2C
-        print   lcd_txt_run_ram_l2, LCDI2C
-        call    test_ram_loop           ; test MAP en boucle, Echap = arret apres la passe en cours
         jmp     .dump_menu
 %endif
 .dump_esc:
@@ -509,6 +481,60 @@ start:
 .dump_toggle_page:
         xor     si, 1                   ; bascule 0<->1 (page 1 <-> page 2)
         jmp     .dump_redraw
+
+%ifdef RAM_512K
+; --- Sous-menu Test RAM ("6) Test RAM" du menu Memory functions, ROM 512K):
+; 1) Trace (test_ram, deroulement complet), 2) MAP (test_ram_map, carte et
+; bilan), 3) Loop (test_ram_loop, MAP en boucle jusqu'a Echap). Apres un
+; test: retour a ce sous-menu. Echap: retour au menu Memory functions.
+; LCD: titre "Test RAM 512K" + les 3 options (tient sans pagination). ---
+.ramtest_menu:
+        print   txt_menu_ramtest, UART
+        call    i2c_lcd_init
+        gotoxy  0, 0, LCDI2C
+        print   lcd_txt_run_ram_l1, LCDI2C
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_menu_ramtest_l1, LCDI2C
+        gotoxy  2, 0, LCDI2C
+        print   lcd_txt_menu_ramtest_l2, LCDI2C
+        gotoxy  3, 0, LCDI2C
+        print   lcd_txt_menu_ramtest_l3, LCDI2C
+.ramtest_key:
+        call    ps2_get_char
+        cmp     al, '1'
+        jne     .ramtest_2
+        call    i2c_lcd_init
+        gotoxy  0, 0, LCDI2C
+        print   lcd_txt_run_ram_l1, LCDI2C
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_run_ram_l2, LCDI2C
+        call    test_ram                ; deroulement complet (Trace)
+        jmp     .ramtest_menu
+.ramtest_2:
+        cmp     al, '2'
+        jne     .ramtest_3
+        call    i2c_lcd_init
+        gotoxy  0, 0, LCDI2C
+        print   lcd_txt_run_ram_map, LCDI2C
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_run_ram_l2, LCDI2C
+        call    test_ram_map            ; meme test, sans deroulement: carte et bilan a la fin
+        jmp     .ramtest_menu
+.ramtest_3:
+        cmp     al, '3'
+        jne     .ramtest_esc
+        call    i2c_lcd_init
+        gotoxy  0, 0, LCDI2C
+        print   lcd_txt_run_ram_loop, LCDI2C
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_run_ram_l2, LCDI2C
+        call    test_ram_loop           ; test MAP en boucle, Echap = arret apres la passe en cours
+        jmp     .ramtest_menu
+.ramtest_esc:
+        cmp     al, 27
+        jne     .ramtest_key            ; autre touche: ignoree
+        jmp     .dump_menu
+%endif
 
 ; --- Sous-menu USB Disk: 3 options, tiennent sur le LCD sans
 ; pagination. "1) USB ON/OFF" BASCULE (un seul etat memorise, voir
@@ -602,7 +628,7 @@ start:
 ; Resultat: 129024 octets testes sur 131072 (126 blocs de 1 Ko).
 ; ============================================================
 %ifdef RAM_512K
-; test_ram_map: "7) Test RAM - MAP" - meme test que test_ram ("6) Test RAM - Trace"), mais SANS
+; test_ram_map: "6) Test RAM" > "2) Test RAM - MAP" - meme test que test_ram ("1) Test RAM - Trace"), mais SANS
 ; deroulement: ni ligne par bloc ni detail des defauts (ils restent comptes), progression sur le
 ; LCD tous les 64 Ko seulement, carte memoire et bilan a la fin. Le mode vit en
 ; BLOCK_MAP_SEG:TEST_QUIET_OFF (en bas de la RAM, comme la carte), lu par msg_bloc_progression et
@@ -612,7 +638,7 @@ test_ram_map:
         mov     al, 1
         jmp     test_ram_entree
 
-; test_ram_loop: "8) Test RAM - Loop" - le test MAP (test_ram_map) repete sans fin, passe apres passe.
+; test_ram_loop: "6) Test RAM" > "3) Test RAM - Loop" - le test MAP (test_ram_map) repete sans fin, passe apres passe.
 ; Avant chaque passe: "=== Pass N ===" (Echap = arret); apres: bilan cumule (passes, bonnes, avec
 ; defauts). Echap (clavier PS/2 ou terminal) est verifie ENTRE deux passes: pendant une passe IF = 0,
 ; la touche attend dans le 8255 (IBF) et l'IRQ1 est servie au retour de test_ram (POPF). La passe en
@@ -3905,8 +3931,8 @@ usb_state_print:
 ; COURANTE de l'horloge du 8088 (pont STM32, PWM materiel sur PA3 - voir
 ; arduino/8088_bridge_stm32) et permet de la regler, entre 1 et 10 MHz:
 ;   1) +0,1 MHz   2) -0,1 MHz   3) +1 MHz   4) -1 MHz
-;   5) 4,77 MHz (vitesse du PC IBM d'origine, ET valeur PAR DEFAUT au
-;      demarrage du pont)   6) 8 MHz
+;   5) 2,35 MHz (pont 1.7)   6) 4,77 MHz (vitesse du PC IBM d'origine, ET
+;      valeur PAR DEFAUT au demarrage du pont)   7) 8 MHz   8) 7,2 MHz
 ;   Echap - retour au sous-menu Configuration
 ; Chaque touche envoie IMMEDIATEMENT la nouvelle frequence au pont (pas de
 ; "valider" separe - comme le potentiometre d'origine, projets/Clock-8088):
@@ -3941,6 +3967,8 @@ clock_speed_action:
         print   lcd_txt_clock_opts_l2, LCDI2C
         gotoxy  3, 0, LCDI2C
         print   lcd_txt_clock_opts_l3, LCDI2C
+        gotoxy  0, 12, LCDI2C
+        print   lcd_txt_clock_esc, LCDI2C        ; " N.NN MHz" (clock_show) occupe les colonnes 0-8
 
         xor     dl, dl                   ; action 0 = lire seulement
         call    fs_clock_cmd
@@ -3952,11 +3980,12 @@ clock_speed_action:
         je      .out
         cmp     al, '1'
         jl      .wait                    ; touche non pertinente: reboucle sans rien envoyer
-        cmp     al, '7'
+        cmp     al, '8'
         jg      .wait
-        mov     dl, al
-        sub     dl, '0'                  ; '1'-'7' -> 1-7 (7 = 7,2 MHz: pont 1.4 et plus): numerotation IDENTIQUE au code
-                                          ; d'action attendu par fs_clock_cmd/clockExec
+        sub     al, '1'
+        mov     bl, al
+        xor     bh, bh
+        mov     dl, [cs:clock_key_action+bx]  ; touche -> code d'action de fs_clock_cmd/clockExec
                                           ; (voir arduino/8088_bridge_stm32/src/main.cpp)
         call    fs_clock_cmd
         jc      .tmo
@@ -3972,6 +4001,11 @@ clock_speed_action:
         pop     bx
         pop     ax
         ret
+
+; clock_key_action: touches '1'-'8' du sous-menu Clock speed -> code d'action du pont
+; (clockExec): 1) +0,1  2) -0,1  3) +1  4) -1 MHz  5) 2,35 MHz = action 8 (pont 1.7 et plus;
+; un pont plus ancien repond sans rien changer)  6) 4,77 = 5  7) 8,0 = 6  8) 7,2 MHz = 7.
+clock_key_action:       db      1, 2, 3, 4, 8, 5, 6, 7
 
 ; clock_hz_to_wholefrac: DX:AX = frequence en Hz -> BL = partie entiere
 ; (1-10), BH = partie decimale (0-99), en centiemes de MHz (DX:AX / 10000 -
@@ -6489,14 +6523,16 @@ txt_menu_dump:          db      27,'[36m','--- Memory functions Menu ---',27,'[0
                         db      '3) CPU Registers',13,10
                         db      '4) Edit+Run RAM',13,10
                         db      '5) IVT',13,10
-%ifdef RAM_512K
-                        db      '6) Test RAM - Trace',13,10
-                        db      '7) Test RAM - MAP',13,10
-                        db      '8) Test RAM - Loop',13,10
-%else
                         db      '6) Test RAM',13,10
-%endif
                         db      '(Esc: back to main menu)',13,10,13,10,0
+
+%ifdef RAM_512K
+txt_menu_ramtest:       db      27,'[36m','--- Test RAM Submenu ---',27,'[0m',13,10
+                        db      '1) Test RAM - Trace',13,10
+                        db      '2) Test RAM - MAP',13,10
+                        db      '3) Test RAM - Loop',13,10
+                        db      '(Esc: back to Memory functions)',13,10,13,10,0
+%endif
 
 txt_menu_usb_head:      db      27,'[36m','--- USB Disk Submenu ---',27,'[0m',13,10,0
 txt_menu_usb_rest:      db      '2) List files',13,10
@@ -6515,9 +6551,10 @@ txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
                         db      '2) Down : 0.1 MHz',13,10
                         db      '3) Up   : 1 MHz',13,10
                         db      '4) Down : 1 MHz',13,10
-                        db      '5) 4.77 MHz',13,10
-                        db      '6) 8.0 MHz',13,10
-                        db      '7) 7.2 MHz',13,10
+                        db      '5) 2.35 MHz',13,10
+                        db      '6) 4.77 MHz',13,10
+                        db      '7) 8.0 MHz',13,10
+                        db      '8) 7.2 MHz',13,10
                         db      '(Esc: back to Configuration submenu)',13,10,13,10,0
 
 txt_cpu_test_head:        db      27,'[36m','--- Test CPU speed ---',27,'[0m',13,10
@@ -6573,7 +6610,7 @@ lcd_text lcd_txt_menu_config_l3, '3) Set date/time', 20
 lcd_text lcd_txt_menu_dump_l3, '3) CPU Registers', 20
 lcd_text lcd_txt_tb_l3, 'BYE or Ctrl-X: menu', 20
 lcd_text lcd_txt_bas_l1, 'BASIC (GW-type)', 20
-lcd_text lcd_txt_clock_opts_l3, '6)8.0 7)7.2 ESC=End', 20
+lcd_text lcd_txt_clock_esc, 'ESC=End', 8           ; ligne 0, colonne 12 (apres " N.NN MHz")
 lcd_text lcd_txt_cpu_test_elapsed, 'Elapsed:000 s', 20
 lcd_text lcd_txt_cpu_test_cancel,  'Esc: cancel', 20
 lcd_text lcd_txt_cpu_test_done,    'Esc: back', 20
@@ -6718,14 +6755,16 @@ txt_menu_dump:          db      27,'[36m','--- Menu Memory functions ---',27,'[0
                         db      '3) Registres CPU',13,10
                         db      '4) Edit+Run RAM',13,10
                         db      '5) IVT',13,10
-%ifdef RAM_512K
-                        db      '6) Test RAM - Trace',13,10
-                        db      '7) Test RAM - MAP',13,10
-                        db      '8) Test RAM - Loop',13,10
-%else
                         db      '6) Test RAM',13,10
-%endif
                         db      '(Echap: retour au menu principal)',13,10,13,10,0
+
+%ifdef RAM_512K
+txt_menu_ramtest:       db      27,'[36m','--- Sous-menu Test RAM ---',27,'[0m',13,10
+                        db      '1) Test RAM - Trace',13,10
+                        db      '2) Test RAM - MAP',13,10
+                        db      '3) Test RAM - Loop',13,10
+                        db      '(Echap: retour au menu Memory functions)',13,10,13,10,0
+%endif
 
 ; ---- sous-menu USB Disk (voir .usb_menu): l'option 1 ("1) USB:
 ; OFF"/"1) USB: ON") n'est PAS dans ce texte - elle est generee par
@@ -6753,9 +6792,10 @@ txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
                         db      '2) Down : 0.1 MHz',13,10
                         db      '3) Up   : 1 MHz',13,10
                         db      '4) Down : 1 MHz',13,10
-                        db      '5) 4.77 MHz',13,10
-                        db      '6) 8.0 MHz',13,10
-                        db      '7) 7.2 MHz',13,10
+                        db      '5) 2.35 MHz',13,10
+                        db      '6) 4.77 MHz',13,10
+                        db      '7) 8.0 MHz',13,10
+                        db      '8) 7.2 MHz',13,10
                         db      '(Echap: retour au sous-menu Configuration)',13,10,13,10,0
 
 ; ---- option "2) Test CPU speed" du sous-menu Configuration
@@ -6820,7 +6860,7 @@ lcd_text lcd_txt_menu_config_l3, '3) Heure et date', 20
 lcd_text lcd_txt_menu_dump_l3, '3) Registres CPU', 20
 lcd_text lcd_txt_tb_l3, 'BYE ou Ctrl-X: menu', 20
 lcd_text lcd_txt_bas_l1, 'BASIC (type GW)', 20
-lcd_text lcd_txt_clock_opts_l3, '6)8.0 7)7.2 ESC=Fin', 20
+lcd_text lcd_txt_clock_esc, 'ESC=Fin', 8           ; ligne 0, colonne 12 (apres " N.NN MHz")
 lcd_text lcd_txt_cpu_test_elapsed, 'Ecoule: 000 s', 20
 lcd_text lcd_txt_cpu_test_cancel,  'Echap: annuler', 20
 lcd_text lcd_txt_cpu_test_done,    'Echap: retour', 20
@@ -6979,14 +7019,13 @@ lcd_text lcd_txt_menu_dump_l1, '1) Dump memory', 20
 lcd_text lcd_txt_menu_dump_l2, '2) Edit RAM', 20
 lcd_text lcd_txt_menu_dump_l4, '4) Edit+Run RAM', 20
 lcd_text lcd_txt_menu_dump_l5, '5) IVT', 20
+lcd_text lcd_txt_menu_dump_l6, '6) Test RAM', 20
 %ifdef RAM_512K
-lcd_text lcd_txt_menu_dump_l6, '6) Test RAM - Trace', 20
-lcd_text lcd_txt_menu_dump_l7, '7) Test RAM - MAP', 20
-lcd_text lcd_txt_menu_dump_l8, '8) Test RAM - Loop', 20
+lcd_text lcd_txt_menu_ramtest_l1, '1) Trace', 20
+lcd_text lcd_txt_menu_ramtest_l2, '2) MAP', 20
+lcd_text lcd_txt_menu_ramtest_l3, '3) Loop', 20
 lcd_text lcd_txt_run_ram_loop, 'Test RAM - Loop', 20
 lcd_text lcd_txt_run_ram_map, 'Test RAM - MAP', 20
-%else
-lcd_text lcd_txt_menu_dump_l6, '6) Test RAM', 20
 %endif
 
 ; ---- sous-menu USB Disk (voir .usb_menu, start:) - 3 options,
@@ -7009,7 +7048,8 @@ lcd_text lcd_txt_menu_config_l4, '4) Information', 20
 ; ---- options 1-6 + Echap sont ci-dessous, sur les lignes 1-3 (option
 ; ---- "3" - "5)4.77 6)8.0 ESC=Fin/End" - traduite plus haut) ----
 lcd_text lcd_txt_clock_opts_l1, '1)+0.1 2)-0.1', 20
-lcd_text lcd_txt_clock_opts_l2, '3)+1 4)-1 5)4.77', 20
+lcd_text lcd_txt_clock_opts_l2, '3)+1 4)-1 5)2.35', 20
+lcd_text lcd_txt_clock_opts_l3, '6)4.77 7)8.0 8)7.2', 20
 
 ; ---- option "2) Test CPU speed" (voir cpu_speed_test_action et suite,
 ; ---- plus haut). Ligne 0: "Ecoule/Elapsed: 000 s" (traduite plus haut,

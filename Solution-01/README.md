@@ -320,6 +320,12 @@ breadboard-PC/                  (racine du dépôt Git)
 ├── code-examples/              Exemples : hello.asm (programme DOS, INT 10h),
 │                                sin.bas (courbe de SIN en ASCII, BASIC)
 ├── kicad/                      Schémas KiCad du montage
+│   ├── Breadboard-pc/          Projet principal : schéma et PCB 100 x 100 mm, 2 couches,
+│   │                            routé par Freerouting 2.5 (0 liaison manquante, DRC sans
+│   │                            erreur ; rendu : medias/pcb-routage.png). Classe Power
+│   │                            (+5V, GND) en 0,6 mm, signaux en 0,25 mm amincis à
+│   │                            0,187 mm (7 segments à 0,125-0,15 mm) entre les pastilles :
+│   │                            largeur min. du projet 0,12 mm ; cuivre à 0,55 mm du bord
 │   └── 3dmodels/               Modèle 3D (STEP/VRML) du support ZIF 32 broches 3M Textool
 │                                232-1285-00-0602J et son générateur CadQuery
 ├── PC-DOS/                     Images de disquette de test (PC-DOS 2.1, MS-DOS 3.30)
@@ -1155,8 +1161,8 @@ même brochage, **sauf deux broches** :
     FAULT »). Il **vérifie la capacité réelle** : une puce de 128/256 Ko vendue pour 512 Ko échoue sur A17/A18
     (le test octet par octet ne le peut pas : il relit chaque octet aussitôt écrit). Il détecte aussi A17/A18 prises
     sur les broches multiplexées du 8088 (S4 = registre de segment, S5 = `IF`).
-  - Trois options au menu : `6) Test RAM - Trace` (déroulement complet), `7) Test RAM - MAP` (même test, carte
-    et bilan seulement, beaucoup plus rapide) et `8) Test RAM - Loop` (le test MAP en boucle, Échap pour arrêter)
+  - Sous-menu `6) Test RAM` : `1) Test RAM - Trace` (déroulement complet), `2) Test RAM - MAP` (même test, carte
+    et bilan seulement, beaucoup plus rapide) et `3) Test RAM - Loop` (le test MAP en boucle, Échap pour arrêter)
     — voir [Menu interactif](#menu-interactif).
   - **Carte mémoire** (`ram_map_print`) : une ligne par segment de 64 Ko, un caractère par bloc de 1 Ko (`.` bon,
     `X` défectueux en rouge, `R` non testé), puis le bilan chiffré : Ko testés / bons / défectueux
@@ -1218,19 +1224,29 @@ terminal UART** — voir [Tiny BASIC](#tiny-basic-libtiny_basicasm) et
 3) Registres CPU
 4) Edit+Run RAM
 5) IVT
-6) Test RAM - Trace
-7) Test RAM - MAP
-8) Test RAM - Loop
+6) Test RAM
 ```
 
-`6) Test RAM - Trace` affiche le déroulement complet (une ligne par bloc de 1 Ko, détail de chaque défaut) ;
-`7) Test RAM - MAP` fait le **même test** sans déroulement — ni ligne par bloc ni détail des défauts (ils
+Avec la ROM 512 Ko (par défaut), `6) Test RAM` ouvre un **sous-menu** (Échap : retour au menu Memory functions ;
+après un test, retour au sous-menu) :
+
+```
+--- Sous-menu Test RAM ---
+1) Test RAM - Trace
+2) Test RAM - MAP
+3) Test RAM - Loop
+```
+
+Le LCD montre « Test RAM 512K » puis `1) Trace`, `2) MAP`, `3) Loop`.
+
+`1) Test RAM - Trace` affiche le déroulement complet (une ligne par bloc de 1 Ko, détail de chaque défaut) ;
+`2) Test RAM - MAP` fait le **même test** sans déroulement — ni ligne par bloc ni détail des défauts (ils
 restent comptés), progression tous les 64 Ko sur le LCD et sur le terminal (`  -> 64K tested`) — puis la
 carte mémoire et le bilan à la fin : beaucoup plus rapide sur le matériel (chaque octet affiché passe par le pont), 2 Ko de texte au lieu
 d'environ 42 Ko. Mode dans `BLOCK_MAP_SEG:TEST_QUIET_OFF` (en bas de la RAM, comme la carte), lu par
-`msg_bloc_progression`, `msg_defaut_detail` et `msg_ram_defectueuse`. Avec la ROM 128 Ko : `6) Test RAM` seul.
+`msg_bloc_progression`, `msg_defaut_detail` et `msg_ram_defectueuse`. Avec la ROM 128 Ko : `6) Test RAM` lance directement le test (sans sous-menu).
 
-`8) Test RAM - Loop` (`test_ram_loop`) répète le test MAP **sans fin**, pour débusquer les défauts intermittents :
+`3) Test RAM - Loop` (`test_ram_loop`) répète le test MAP **sans fin**, pour débusquer les défauts intermittents :
 avant chaque passe `=== RAM test loop - pass N (Esc: stop after this pass) ===`, après chaque passe le bilan
 cumulé `Loop: N pass(es), G good, F with faults`. **Échap** (clavier PS/2 ou terminal) arrête la boucle à la fin de
 la passe en cours : pendant une passe `IF` = 0, la touche attend dans le 8255 et l'IRQ1 est servie au retour de
@@ -1283,9 +1299,10 @@ d'une deuxième carte — et permet de la régler entre **1 et 10 MHz** :
 2) Down : 0.1 MHz
 3) Up   : 1 MHz
 4) Down : 1 MHz
-5) 4.77 MHz
-6) 8.0 MHz
-7) 7.2 MHz
+5) 2.35 MHz
+6) 4.77 MHz
+7) 8.0 MHz
+8) 7.2 MHz
 (Echap: retour au sous-menu Configuration)
 
 Current speed:  4.77 MHz
@@ -1297,9 +1314,14 @@ Current speed:  4.77 MHz
 | `2` | `-0,1 MHz` |
 | `3` | `+1 MHz` |
 | `4` | `-1 MHz` |
-| `5` | Directement `4,77 MHz` (vitesse du PC IBM d'origine, et valeur **par défaut** au démarrage du pont) |
-| `6` | Directement `8 MHz` |
-| `7` | `7,2 MHz` demandés (pont 1.4 et plus) : le timer du STM32 divise une horloge de 96 MHz par un entier, la fréquence réelle affichée est la plus proche possible (96/13 = 7,38 MHz) |
+| `5` | `2,35 MHz` demandés (pont 1.7 et plus ; un pont plus ancien répond sans rien changer) : 96/41 = 2,34 MHz réels |
+| `6` | Directement `4,77 MHz` (vitesse du PC IBM d'origine, et valeur **par défaut** au démarrage du pont) |
+| `7` | Directement `8 MHz` |
+| `8` | `7,2 MHz` demandés (pont 1.4 et plus) : le timer du STM32 divise une horloge de 96 MHz par un entier, la fréquence réelle affichée est la plus proche possible (96/13 = 7,38 MHz) |
+
+Les touches ne correspondent plus directement aux codes d'action du pont (commande `2Ch`) : la table
+`clock_key_action` les traduit (`5` → 8, `6` → 5, `7` → 6, `8` → 7). LCD : ligne 0 « N.NN MHz » et `ESC=End`
+(colonne 12), lignes 1-3 `1)+0.1 2)-0.1`, `3)+1 4)-1 5)2.35`, `6)4.77 7)8.0 8)7.2`.
 | Échap | Retour au sous-menu Configuration |
 
 Chaque touche envoie **immédiatement** la nouvelle fréquence au pont (pas de
@@ -1353,7 +1375,7 @@ se rapprocher du minimum de 30 s tout en le respectant.
 `CPU_TEST_REF_SECONDS` — la durée de référence utilisée pour le
 pourcentage/la vitesse estimée — est calibrée sur cette mesure (`34`).
 Si la table de cycles du 8088 (donc la durée d'un checkpoint) change un
-jour, relancer le test avec `Clock speed` réglé à `4,77 MHz` (option 5,
+jour, relancer le test avec `Clock speed` réglé à `4,77 MHz` (option 6,
 le réglage par défaut), noter la valeur *réelle* affichée par
 `Ecoule: ...` à la fin, et la reporter dans `CPU_TEST_REF_SECONDS`. La
 durée elle-même (`Ecoule: ...`) est, elle, toujours exacte, quelle que

@@ -119,7 +119,7 @@ clavier PS/2 ou au terminal ; **Échap** revient au menu précédent.
 | **1) Basic** | Tiny BASIC ; BASIC de type GW-BASIC |
 | **2) Memory functions** | Vidage et édition de la mémoire, registres du CPU, saisie et exécution de code, table des vecteurs ; **test de la RAM** : *Trace* (déroulement complet), *MAP* (carte mémoire et bilan seulement) ou *Loop* (MAP en boucle jusqu'à Échap) |
 | **3) USB Disk** | Bascule du lecteur USB, liste des fichiers, **amorçage d'une image disque** |
-| **4) Configuration** | Vitesse d'horloge (pas de 0,1 et 1 MHz ; 4,77, 7,2 et 8 MHz directs), test de vitesse du CPU, date et heure, écran d'information |
+| **4) Configuration** | Vitesse d'horloge (pas de 0,1 et 1 MHz ; 2,35, 4,77, 8 et 7,2 MHz directs), test de vitesse du CPU, date et heure, écran d'information |
 
 Le **test de la RAM** vérifie les 512 Ko octet par octet (la pile du test est déplacée en bas de la
 RAM, les 2 derniers Ko sont testés à part), puis les lignes d'adresse `A0`–`A18` (capacité réelle de la

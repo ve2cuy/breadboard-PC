@@ -119,7 +119,7 @@ the PS/2 keyboard or the terminal; **Esc** goes back to the previous menu.
 | **1) Basic** | Tiny BASIC; GW-BASIC-style BASIC |
 | **2) Memory functions** | Memory dump and editing, CPU registers, code entry and execution, interrupt vector table; **RAM test**: *Trace* (full progress), *MAP* (memory map and summary only) or *Loop* (MAP repeated until Esc) |
 | **3) USB Disk** | USB drive toggle, file list, **booting a disk image** |
-| **4) Configuration** | Clock speed (0.1 and 1 MHz steps; 4.77, 7.2 and 8 MHz presets), CPU speed test, date and time, information screen |
+| **4) Configuration** | Clock speed (0.1 and 1 MHz steps; 2.35, 4.77, 8 and 7.2 MHz presets), CPU speed test, date and time, information screen |
 
 The **RAM test** checks all 512 KB byte by byte (the test stack is moved to low RAM, the last 2 KB are
 tested separately), then the address lines `A0`–`A18` (the chip's real capacity). It ends with a
