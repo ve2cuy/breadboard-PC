@@ -429,6 +429,8 @@ start:
 %ifdef RAM_512K
         gotoxy  2, 0, LCDI2C
         print   lcd_txt_menu_dump_l7, LCDI2C
+        gotoxy  3, 0, LCDI2C
+        print   lcd_txt_menu_dump_l8, LCDI2C
 %endif
 
 .dump_wait_key:
@@ -480,13 +482,23 @@ start:
 %ifdef RAM_512K
 .dump_7:
         cmp     al, '7'
-        jne     .dump_esc
+        jne     .dump_8
         call    i2c_lcd_init
         gotoxy  0, 0, LCDI2C
         print   lcd_txt_run_ram_map, LCDI2C
         gotoxy  1, 0, LCDI2C
         print   lcd_txt_run_ram_l2, LCDI2C
         call    test_ram_map            ; meme test, sans deroulement: carte et bilan a la fin
+        jmp     .dump_menu
+.dump_8:
+        cmp     al, '8'
+        jne     .dump_esc
+        call    i2c_lcd_init
+        gotoxy  0, 0, LCDI2C
+        print   lcd_txt_run_ram_loop, LCDI2C
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_run_ram_l2, LCDI2C
+        call    test_ram_loop           ; test MAP en boucle, Echap = arret apres la passe en cours
         jmp     .dump_menu
 %endif
 .dump_esc:
@@ -599,6 +611,78 @@ test_ram_map:
         push    ax
         mov     al, 1
         jmp     test_ram_entree
+
+; test_ram_loop: "8) Test RAM - Loop" - le test MAP (test_ram_map) repete sans fin, passe apres passe.
+; Avant chaque passe: "=== Pass N ===" (Echap = arret); apres: bilan cumule (passes, bonnes, avec
+; defauts). Echap (clavier PS/2 ou terminal) est verifie ENTRE deux passes: pendant une passe IF = 0,
+; la touche attend dans le 8255 (IBF) et l'IRQ1 est servie au retour de test_ram (POPF). La passe en
+; cours va donc a son terme avant l'arret. Resultat de chaque passe: BLOCK_MAP_SEG:TEST_LAST_OFF.
+test_ram_loop:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    es
+        xor     cx, cx                  ; CX = passes faites
+        xor     dx, dx                  ; DX = passes avec defauts
+.passe:
+        inc     cx
+        mov     si, txt_boucle_passe    ; "=== Pass N (Esc: stop after this pass) ==="
+        call    uart_tx_string
+        mov     ax, cx
+        call    uart_tx_dec_word
+        mov     si, txt_boucle_passe_fin
+        call    uart_tx_string
+        push    cx
+        push    dx
+        call    test_ram_map
+        pop     dx
+        pop     cx
+        mov     ax, BLOCK_MAP_SEG
+        mov     es, ax
+        cmp     byte [es:TEST_LAST_OFF], 0
+        je      .bonne
+        inc     dx
+.bonne:
+        call    .bilan
+.cle:                                   ; Echap en attente? (les autres touches sont ignorees)
+        push    cx
+        push    dx
+        call    ps2_poll_char           ; detruit AX, BX, CX, DX
+        pop     dx
+        pop     cx
+        jc      .passe                  ; plus rien: passe suivante
+        cmp     al, 27
+        jne     .cle
+        mov     si, txt_boucle_arret
+        call    uart_tx_string
+        call    .bilan
+        pop     es
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+; .bilan: "Loop: N pass(es), G good, F with faults" (CX = passes, DX = avec defauts). Preserve CX, DX.
+.bilan:
+        mov     si, txt_boucle_bilan
+        call    uart_tx_string
+        mov     ax, cx
+        call    uart_tx_dec_word
+        mov     si, txt_boucle_bonnes
+        call    uart_tx_string
+        mov     ax, cx
+        sub     ax, dx
+        call    uart_tx_dec_word
+        mov     si, txt_boucle_defauts
+        call    uart_tx_string
+        mov     ax, dx
+        call    uart_tx_dec_word
+        mov     si, txt_boucle_bilan_fin
+        call    uart_tx_string
+        ret
 %endif
 test_ram:
 %ifdef RAM_512K
@@ -709,6 +793,15 @@ test_ram_entree:
 %endif
 
         ; --- Bilan final ---
+%ifdef RAM_512K
+        push    es                      ; resultat de la passe pour test_ram_loop
+        push    ax
+        mov     ax, BLOCK_MAP_SEG
+        mov     es, ax
+        mov     [es:TEST_LAST_OFF], bh
+        pop     ax
+        pop     es
+%endif
         cmp     bh, 0
         je      .ram_ok
 
@@ -6342,6 +6435,13 @@ txt_ram_ok:             db      27,'[32m','*** RAM OK - 129024 bytes tested (126
 txt_ram_defaut:         db      27,'[31m','*** FAULTY RAM - see fault details above ***',27,'[0m',13,10,13,10,0
 %ifdef RAM_512K
 txt_ram_defaut_map:     db      27,'[31m','*** FAULTY RAM - see the memory map above ***',27,'[0m',13,10,13,10,0
+txt_boucle_passe:       db      13,10,27,'[36m','=== RAM test loop - pass ',0
+txt_boucle_passe_fin:   db      ' (Esc: stop after this pass) ===',27,'[0m',13,10,0
+txt_boucle_bilan:       db      27,'[36m','Loop: ',0
+txt_boucle_bonnes:      db      ' pass(es), ',0
+txt_boucle_defauts:     db      ' good, ',0
+txt_boucle_bilan_fin:   db      ' with faults',27,'[0m',13,10,0
+txt_boucle_arret:       db      13,10,'*** RAM test loop stopped (Esc) ***',13,10,0
 %endif
 txt_total_defaut:       db      'TOTAL FAULTS: ',0
 txt_total_defaut_fin:   db      ' byte(s)',13,10,13,10,0
@@ -6392,6 +6492,7 @@ txt_menu_dump:          db      27,'[36m','--- Memory functions Menu ---',27,'[0
 %ifdef RAM_512K
                         db      '6) Test RAM - Trace',13,10
                         db      '7) Test RAM - MAP',13,10
+                        db      '8) Test RAM - Loop',13,10
 %else
                         db      '6) Test RAM',13,10
 %endif
@@ -6547,6 +6648,13 @@ txt_ram_ok:             db      27,'[32m','*** RAM OK - 129024 octets testes (12
 txt_ram_defaut:         db      27,'[31m','*** RAM DEFECTUEUSE - voir le detail des defauts ci-dessus ***',27,'[0m',13,10,13,10,0
 %ifdef RAM_512K
 txt_ram_defaut_map:     db      27,'[31m','*** RAM DEFECTUEUSE - voir la carte memoire ci-dessus ***',27,'[0m',13,10,13,10,0
+txt_boucle_passe:       db      13,10,27,'[36m','=== Test RAM en boucle - passe ',0
+txt_boucle_passe_fin:   db      ' (Echap: arret apres cette passe) ===',27,'[0m',13,10,0
+txt_boucle_bilan:       db      27,'[36m','Boucle: ',0
+txt_boucle_bonnes:      db      ' passe(s), ',0
+txt_boucle_defauts:     db      ' bonne(s), ',0
+txt_boucle_bilan_fin:   db      ' avec defauts',27,'[0m',13,10,0
+txt_boucle_arret:       db      13,10,'*** Test RAM en boucle arrete (Echap) ***',13,10,0
 %endif
 txt_total_defaut:       db      'TOTAL DEFAUT: ',0
 txt_total_defaut_fin:   db      ' octet(s)',13,10,13,10,0
@@ -6613,6 +6721,7 @@ txt_menu_dump:          db      27,'[36m','--- Menu Memory functions ---',27,'[0
 %ifdef RAM_512K
                         db      '6) Test RAM - Trace',13,10
                         db      '7) Test RAM - MAP',13,10
+                        db      '8) Test RAM - Loop',13,10
 %else
                         db      '6) Test RAM',13,10
 %endif
@@ -6873,6 +6982,8 @@ lcd_text lcd_txt_menu_dump_l5, '5) IVT', 20
 %ifdef RAM_512K
 lcd_text lcd_txt_menu_dump_l6, '6) Test RAM - Trace', 20
 lcd_text lcd_txt_menu_dump_l7, '7) Test RAM - MAP', 20
+lcd_text lcd_txt_menu_dump_l8, '8) Test RAM - Loop', 20
+lcd_text lcd_txt_run_ram_loop, 'Test RAM - Loop', 20
 lcd_text lcd_txt_run_ram_map, 'Test RAM - MAP', 20
 %else
 lcd_text lcd_txt_menu_dump_l6, '6) Test RAM', 20

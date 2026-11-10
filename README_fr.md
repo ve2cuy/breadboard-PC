@@ -117,7 +117,7 @@ clavier PS/2 ou au terminal ; **Échap** revient au menu précédent.
 | Menu | Options |
 |---|---|
 | **1) Basic** | Tiny BASIC ; BASIC de type GW-BASIC |
-| **2) Memory functions** | Vidage et édition de la mémoire, registres du CPU, saisie et exécution de code, table des vecteurs ; **test de la RAM** : *Trace* (déroulement complet) ou *MAP* (carte mémoire et bilan seulement) |
+| **2) Memory functions** | Vidage et édition de la mémoire, registres du CPU, saisie et exécution de code, table des vecteurs ; **test de la RAM** : *Trace* (déroulement complet), *MAP* (carte mémoire et bilan seulement) ou *Loop* (MAP en boucle jusqu'à Échap) |
 | **3) USB Disk** | Bascule du lecteur USB, liste des fichiers, **amorçage d'une image disque** |
 | **4) Configuration** | Vitesse d'horloge (pas de 0,1 et 1 MHz ; 4,77, 7,2 et 8 MHz directs), test de vitesse du CPU, date et heure, écran d'information |
 

@@ -1149,8 +1149,9 @@ même brochage, **sauf deux broches** :
     FAULT »). Il **vérifie la capacité réelle** : une puce de 128/256 Ko vendue pour 512 Ko échoue sur A17/A18
     (le test octet par octet ne le peut pas : il relit chaque octet aussitôt écrit). Il détecte aussi A17/A18 prises
     sur les broches multiplexées du 8088 (S4 = registre de segment, S5 = `IF`).
-  - Deux options au menu : `6) Test RAM - Trace` (déroulement complet) et `7) Test RAM - MAP` (même test, carte
-    et bilan seulement, beaucoup plus rapide) — voir [Menu interactif](#menu-interactif).
+  - Trois options au menu : `6) Test RAM - Trace` (déroulement complet), `7) Test RAM - MAP` (même test, carte
+    et bilan seulement, beaucoup plus rapide) et `8) Test RAM - Loop` (le test MAP en boucle, Échap pour arrêter)
+    — voir [Menu interactif](#menu-interactif).
   - **Carte mémoire** (`ram_map_print`) : une ligne par segment de 64 Ko, un caractère par bloc de 1 Ko (`.` bon,
     `X` défectueux en rouge, `R` non testé), puis le bilan chiffré : Ko testés / bons / défectueux
     (et octets défectueux), non testés, lignes d'adresse. État des blocs : 512 octets en
@@ -1213,6 +1214,7 @@ terminal UART** — voir [Tiny BASIC](#tiny-basic-libtiny_basicasm) et
 5) IVT
 6) Test RAM - Trace
 7) Test RAM - MAP
+8) Test RAM - Loop
 ```
 
 `6) Test RAM - Trace` affiche le déroulement complet (une ligne par bloc de 1 Ko, détail de chaque défaut) ;
@@ -1221,6 +1223,12 @@ restent comptés), progression tous les 64 Ko sur le LCD et sur le terminal (`  
 carte mémoire et le bilan à la fin : beaucoup plus rapide sur le matériel (chaque octet affiché passe par le pont), 2 Ko de texte au lieu
 d'environ 42 Ko. Mode dans `BLOCK_MAP_SEG:TEST_QUIET_OFF` (en bas de la RAM, comme la carte), lu par
 `msg_bloc_progression`, `msg_defaut_detail` et `msg_ram_defectueuse`. Avec la ROM 128 Ko : `6) Test RAM` seul.
+
+`8) Test RAM - Loop` (`test_ram_loop`) répète le test MAP **sans fin**, pour débusquer les défauts intermittents :
+avant chaque passe `=== RAM test loop - pass N (Esc: stop after this pass) ===`, après chaque passe le bilan
+cumulé `Loop: N pass(es), G good, F with faults`. **Échap** (clavier PS/2 ou terminal) arrête la boucle à la fin de
+la passe en cours : pendant une passe `IF` = 0, la touche attend dans le 8255 et l'IRQ1 est servie au retour de
+`test_ram`. Le résultat de chaque passe est noté en `BLOCK_MAP_SEG:TEST_LAST_OFF` (0000:8202).
 
 Le LCD I2C n'a que 4 lignes : depuis l'ajout de `5) IVT`, ce menu se
 **pagine sur 2 écrans** (Gauche/Droite pour basculer, comme le fait

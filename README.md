@@ -117,7 +117,7 @@ the PS/2 keyboard or the terminal; **Esc** goes back to the previous menu.
 | Menu | Options |
 |---|---|
 | **1) Basic** | Tiny BASIC; GW-BASIC-style BASIC |
-| **2) Memory functions** | Memory dump and editing, CPU registers, code entry and execution, interrupt vector table; **RAM test**: *Trace* (full progress) or *MAP* (memory map and summary only) |
+| **2) Memory functions** | Memory dump and editing, CPU registers, code entry and execution, interrupt vector table; **RAM test**: *Trace* (full progress), *MAP* (memory map and summary only) or *Loop* (MAP repeated until Esc) |
 | **3) USB Disk** | USB drive toggle, file list, **booting a disk image** |
 | **4) Configuration** | Clock speed (0.1 and 1 MHz steps; 4.77, 7.2 and 8 MHz presets), CPU speed test, date and time, information screen |
 

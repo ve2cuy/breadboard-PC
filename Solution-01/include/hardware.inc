@@ -139,6 +139,7 @@ BLOCK_MAP_SEG       equ     0000h
 BLOCK_MAP_OFF       equ     8000h   ; 512 octets: etat de chaque bloc de 1 Ko (0 bon, 1 defectueux, 2 non teste)
 TA_RESULT_OFF       equ     8200h   ; (octet, BLOCK_MAP_SEG) resultat du test des lignes d'adresse (0 = OK, 1 = defaut)
 TEST_QUIET_OFF      equ     8201h   ; (octet, BLOCK_MAP_SEG) mode du test: 0 = "Trace" (deroulement), 1 = "MAP" (carte seule)
+TEST_LAST_OFF       equ     8202h   ; (octet, BLOCK_MAP_SEG) resultat de la derniere passe de test_ram: 0 = RAM bonne, 1 = defaut (test en boucle)
 
 PORTA_SHADOW_OFF    equ     0FC00h
 BLOCK_COUNTER_OFF   equ     0FC01h  ; numero du bloc courant (1-127)
