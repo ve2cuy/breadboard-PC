@@ -326,6 +326,10 @@ breadboard-PC/                  (racine du dépôt Git)
 │   │                            (+5V, GND) en 0,6 mm, signaux en 0,25 mm amincis à
 │   │                            0,187 mm (7 segments à 0,125-0,15 mm) entre les pastilles :
 │   │                            largeur min. du projet 0,12 mm ; cuivre à 0,55 mm du bord
+│   │                            Plans de masse GND sur les deux faces (zones GND_F et GND_B,
+│   │                            isolement 0,3 mm, freins thermiques 0,5 mm, îlots supprimés),
+│   │                            69 vias de couture (0,8/0,4 mm, grille 2,54 mm) ; U7.20,
+│   │                            U11.7 et IC-6.7 raccordées en plein (frein thermique incomplet)
 │   └── 3dmodels/               Modèle 3D (STEP/VRML) du support ZIF 32 broches 3M Textool
 │                                232-1285-00-0602J et son générateur CadQuery
 ├── PC-DOS/                     Images de disquette de test (PC-DOS 2.1, MS-DOS 3.30)
