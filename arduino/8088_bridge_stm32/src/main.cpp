@@ -109,7 +109,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 4
+#define FW_VERSION_MINOR 5
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -375,6 +375,7 @@ static bool fsStale = false;              // secteurs ecrits en direct: remonter
 static File32 curFile, dirRoot;
 static File32 imgFile;                    // image de disquette montee (commandes 27h-2Ah), independante de curFile
 static bool imgOpen = false;
+static bool imgReadOnly = false;          // image en lecture seule (attribut R du fichier): ecritures refusees
 static uint32_t imgSize = 0;
 static bool fileOpen = false, dirOpen = false;
 static uint8_t curMode = 0;
@@ -622,6 +623,11 @@ static void imgExec(const uint8_t *c) {
         st = FSE_BADNAME;
       } else {
         imgFile = fatfs.open(name, O_RDWR);
+        imgReadOnly = false;
+        if (!imgFile) {                    // fichier en lecture seule (attribut R): l'ouvrir quand meme, en lecture
+          imgFile = fatfs.open(name, O_RDONLY);
+          imgReadOnly = (bool)imgFile;
+        }
         if (!imgFile) { st = FSE_NOTFOUND; }
         else { imgOpen = true; imgSize = imgFile.fileSize(); sz = imgSize; }
       }
@@ -636,6 +642,7 @@ static void imgExec(const uint8_t *c) {
   if (op == 0x29) {
     replyStatus(imgFile.read(secBuf, 512) == 512 ? FSE_OK : FSE_IO);
   } else {
+    if (imgReadOnly) { replyStatus(FSE_IO); return; }   // image en lecture seule: ecriture refusee
     bool ok = imgFile.write(secBuf, 512) == 512 && imgFile.sync();
     flash.syncBlocks();
     replyStatus(ok ? FSE_OK : FSE_IO);

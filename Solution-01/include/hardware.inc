@@ -292,6 +292,7 @@ BIOS_DRV_OFF        equ 0FCD3h  ; (octet) lecteur de l'appel INT 13h en cours: 0
 BIOS_GH_OFF         equ 0FCD4h  ; (mot) tetes de la geometrie courante (disque dur: 255)
 BIOS_GS_OFF         equ 0FCD6h  ; (mot) secteurs par piste de la geometrie courante (disque dur: 63)
 BIOS_NAME_OFF       equ 0FCD8h  ; (16 octets) nom de l'image a monter (copie du nom de l'appelant)
+BIOS_TICK_CNT       equ 0FC57h  ; (octet) INT 16h AH=01h/02h: appels avant la prochaine mise a jour de 0040:006C
 BIOS_LASTTICK       equ 0FCECh  ; (double mot) dernier compteur de ticks rendu par INT 1Ah AH=00h
 BIOS_USB_STATE      equ 0FCE8h  ; (octet) sous-menu USB Disk: 0 = OFF (par defaut, comme au demarrage), 1 = ON
 BIOS_TRY            equ 0FBF0h  ; (octet) tentatives de lecture du secteur courant (INT 13h; fin du tampon d'edition du moniteur)

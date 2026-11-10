@@ -26,4 +26,4 @@ Reproduire tout nouveau symptôme avec tests/rom_sim.py AVANT de modifier le cod
 - 8255 en mode 2 ; 8259 en front, EOI manuel ; IR1 masquée pendant les
   commandes au pont (réponses lues par scrutation — ne pas revenir aux IRQ).
 - RESET du 8088 piloté par PB2 du STM32 (Ctrl-Alt-Suppr / Ctrl-\).
-- Octets libres de VAR_SEG déjà pris : 0FC54h–0FC56h.
+- Octets libres de VAR_SEG déjà pris : 0FC54h–0FC57h.

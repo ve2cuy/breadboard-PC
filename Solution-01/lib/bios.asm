@@ -1177,57 +1177,8 @@ int1ah_handler:
         jmp     bios_return
 
 .ticks:
-        call    .rtc
+        call    bios_rtc_ticks          ; CX:AX = ticks du jour (et 0040:006C a jour)
         jc      .fail
-        ; secondes du jour * 100 + centiemes -> DX:AX, puis * 91 / 500 (= 18,2 ticks/s)
-        mov     al, [BIOS_RTC_OFF + 4]  ; heures
-        xor     ah, ah
-        mov     cx, 3600
-        mul     cx                      ; DX:AX = h * 3600
-        mov     bx, ax
-        mov     si, dx
-        mov     al, [BIOS_RTC_OFF + 5]  ; minutes
-        xor     ah, ah
-        mov     cx, 60
-        mul     cx
-        add     bx, ax
-        adc     si, dx
-        mov     al, [BIOS_RTC_OFF + 6]  ; secondes
-        xor     ah, ah
-        add     bx, ax
-        adc     si, 0                   ; SI:BX = secondes du jour
-        mov     ax, bx
-        mov     dx, si
-        mov     cx, 100
-        ; DX:AX * 100 (32 bits)
-        push    ax
-        mov     ax, dx
-        mul     cx
-        mov     si, ax                  ; poids fort * 100 (bits 16-31)
-        pop     ax
-        mul     cx                      ; DX:AX = poids faible * 100
-        add     dx, si
-        mov     bl, [BIOS_RTC_OFF + 7]  ; centiemes
-        xor     bh, bh
-        add     ax, bx
-        adc     dx, 0                   ; DX:AX = centiemes du jour
-        ; * 91
-        mov     cx, 91
-        push    ax
-        mov     ax, dx
-        mul     cx
-        mov     si, ax
-        pop     ax
-        mul     cx
-        add     dx, si                  ; DX:AX = centiemes * 91
-        ; / 500
-        mov     bx, 500
-        mov     cx, ax
-        mov     ax, dx
-        xor     dx, dx
-        div     bx                      ; AX = quotient haut, DX = reste
-        xchg    ax, cx                  ; CX = quotient haut, AX = poids faible
-        div     bx                      ; AX = quotient bas
         mov     [bp + FR_DX], ax        ; DX = ticks bas
         mov     [bp + FR_CX], cx        ; CX = ticks haut
         mov     byte [bp + FR_AX], 0    ; AL = 0: pas de passage de minuit
@@ -1243,6 +1194,7 @@ int1ah_handler:
         mov     [BIOS_LASTTICK], ax
         mov     [BIOS_LASTTICK + 2], cx
         jmp     bios_return
+
 
 .gettime:
         call    .rtc
@@ -1314,6 +1266,99 @@ int1ah_handler:
         call    rtc_set
         jmp     bios_return
 
+; bios_rtc_ticks: lit l'heure du pont -> CX:AX = ticks depuis minuit (18,2 par seconde), recopies aussi dans le
+; compteur du BIOS 0040:006C (aucune minuterie ne le fait avancer sur ce montage: DOS 6 le lit directement
+; pour sa pause F5/F8 du demarrage). CF = 1 si le pont est muet. DS = VAR_SEG. Detruit BX, DX, SI, DI.
+bios_rtc_ticks:
+        push    es
+        push    ds
+        pop     es
+        mov     di, BIOS_RTC_OFF
+        call    rtc_get
+        pop     es
+        jc      .r
+        ; secondes du jour * 100 + centiemes -> DX:AX, puis * 91 / 500 (= 18,2 ticks/s)
+        mov     al, [BIOS_RTC_OFF + 4]  ; heures
+        xor     ah, ah
+        mov     cx, 3600
+        mul     cx                      ; DX:AX = h * 3600
+        mov     bx, ax
+        mov     si, dx
+        mov     al, [BIOS_RTC_OFF + 5]  ; minutes
+        xor     ah, ah
+        mov     cx, 60
+        mul     cx
+        add     bx, ax
+        adc     si, dx
+        mov     al, [BIOS_RTC_OFF + 6]  ; secondes
+        xor     ah, ah
+        add     bx, ax
+        adc     si, 0                   ; SI:BX = secondes du jour
+        mov     ax, bx
+        mov     dx, si
+        mov     cx, 100
+        ; DX:AX * 100 (32 bits)
+        push    ax
+        mov     ax, dx
+        mul     cx
+        mov     si, ax                  ; poids fort * 100 (bits 16-31)
+        pop     ax
+        mul     cx                      ; DX:AX = poids faible * 100
+        add     dx, si
+        mov     bl, [BIOS_RTC_OFF + 7]  ; centiemes
+        xor     bh, bh
+        add     ax, bx
+        adc     dx, 0                   ; DX:AX = centiemes du jour
+        ; * 91
+        mov     cx, 91
+        push    ax
+        mov     ax, dx
+        mul     cx
+        mov     si, ax
+        pop     ax
+        mul     cx
+        add     dx, si                  ; DX:AX = centiemes * 91
+        ; / 500
+        mov     bx, 500
+        mov     cx, ax
+        mov     ax, dx
+        xor     dx, dx
+        div     bx                      ; AX = quotient haut, DX = reste
+        xchg    ax, cx                  ; CX = quotient haut, AX = poids faible
+        div     bx                      ; AX = quotient bas -> CX:AX = ticks
+        push    ds
+        xor     bx, bx
+        mov     ds, bx
+        mov     [046Ch], ax             ; 0040:006C = compteur du BIOS
+        mov     [046Eh], cx
+        pop     ds
+        clc
+.r:
+        ret
+
+; bios_tick_poll: appelee par INT 16h AH=01h/02h (consultation). Toutes les BIOS_TICK_EVERY consultations,
+; remet 0040:006C a l'heure du pont (bios_rtc_ticks). Preserve tout.
+BIOS_TICK_EVERY equ     32
+bios_tick_poll:
+        dec     byte [BIOS_TICK_CNT]
+        jns     .r
+        mov     byte [BIOS_TICK_CNT], BIOS_TICK_EVERY - 1
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        call    bios_rtc_ticks
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+.r:
+        ret
+
 ; bios_tobcd: AL (0-99) -> AL en BCD. bios_frombcd: l'inverse.
 bios_tobcd:
         xor     ah, ah
@@ -1361,6 +1406,7 @@ int16h_handler:
         mov     [bp + FR_AX], ax
         jmp     bios_return
 .peek:
+        call    bios_tick_poll          ; 0040:006C avance (DOS 6: pause F5/F8 du demarrage)
         call    bios_trykey
         jc      .none
         mov     [bp + FR_AX], ax
@@ -1369,6 +1415,7 @@ int16h_handler:
         mov     byte [BIOS_RETF_OFF], 40h       ; ZF = 1
         jmp     bios_return
 .flags:
+        call    bios_tick_poll
         mov     byte [bp + FR_AX], 0    ; AL = indicateurs: aucun
         jmp     bios_return
 .bad:
@@ -1848,6 +1895,9 @@ dos_menu:
         jmp     .msg
 .nodisk:
         mov     si, dm_e_disk
+        cmp     byte [BIOS_USB_STATE], 0
+        je      .msg
+        mov     si, dm_e_usb            ; USB ON: le PC a la flash du pont
         jmp     .msg
 .tmo:
         mov     si, dm_e_tmo
@@ -1876,6 +1926,7 @@ dm_prompt:      db      'Image number (Esc = cancel): ', 0
 dm_cancel:      db      13, 10, 'Cancelled.', 13, 10, 0
 dm_none:        db      'No .IMG file found on the disk.', 13, 10, 0
 dm_e_disk:      db      'Disk not ready.', 13, 10, 0
+dm_e_usb:       db      'Disk not ready: USB is ON (the PC has the disk). Choose 1) USB: OFF first.', 13, 10, 0
 dm_e_tmo:       db      'The bridge does not answer.', 13, 10, 0
 dm_e_size:      db      13, 10, 'Unsupported image size (160K, 180K, 320K, 360K, 720K, 1.2M or 1.44M expected).', 13, 10, 0
 dm_e_nf:        db      13, 10, 'Image not found.', 13, 10, 0
@@ -1886,6 +1937,7 @@ dm_prompt:      db      'Numero d', 27h, 'image (Echap = annuler): ', 0
 dm_cancel:      db      13, 10, 'Annule.', 13, 10, 0
 dm_none:        db      'Aucun fichier .IMG trouve sur le disque.', 13, 10, 0
 dm_e_disk:      db      'Disque non pret.', 13, 10, 0
+dm_e_usb:       db      'Disque non pret: USB ON (le PC a le disque). Choisir d', 27h, 'abord 1) USB: OFF.', 13, 10, 0
 dm_e_tmo:       db      'Le pont ne repond pas.', 13, 10, 0
 dm_e_size:      db      13, 10, 'Taille d', 27h, 'image non supportee (160K, 180K, 320K, 360K, 720K, 1,2M ou 1,44M attendue).', 13, 10, 0
 dm_e_nf:        db      13, 10, 'Image introuvable.', 13, 10, 0
