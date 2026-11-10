@@ -328,8 +328,12 @@ breadboard-PC/                  (racine du dépôt Git)
 │   │                            largeur min. du projet 0,12 mm ; cuivre à 0,55 mm du bord
 │   │                            Plans de masse GND sur les deux faces (zones GND_F et GND_B,
 │   │                            isolement 0,3 mm, freins thermiques 0,5 mm, îlots supprimés),
-│   │                            69 vias de couture (0,8/0,4 mm, grille 2,54 mm) ; U7.20,
-│   │                            U11.7 et IC-6.7 raccordées en plein (frein thermique incomplet)
+│   │                            vias de couture (0,8/0,4 mm, grille 2,54 mm) ; quelques broches GND
+│   │                            raccordées en plein (frein thermique incomplet).
+│   │                            Découplage : C1-C10 100 nF CMS 1206 (soudure à la main) sur la
+│   │                            face arrière, sous chaque circuit côté VCC ; C11 100 µF 16 V
+│   │                            (CMS 6,3 x 5,4) sous le Black Pill, près de J3. Entrées libres
+│   │                            de U9 (portes C et D, broches 9, 10, 12, 13) à la masse.
 │   │                            Sérigraphie aux minimums JLCPCB (texte ≥ 1 mm, trait ≥ 0,15 mm),
 │   │                            toutes les pièces identifiées, « VE2CUY.8088v1 » sur U11, types
 │   │                            de RAM et cavalier JP2 inscrits sous U8 (512K AS6C4008 : 1-2 ;
