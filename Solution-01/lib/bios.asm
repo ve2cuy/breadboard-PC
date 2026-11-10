@@ -1975,14 +1975,14 @@ bios_int10_std:
         je      .writechar
         iret                            ; 00h, 01h, 05h, ...: sans objet
 .tty:
-        call    uart_tx_byte            ; AL = caractere: BEL, BS, CR, LF passent tels quels
+        call    bios_tx_cp437           ; AL = caractere: BEL, BS, CR, LF passent tels quels; 80h-FFh en UTF-8
         iret
 .writechar:
         cmp     cx, 0
         je      .wr0
         push    cx
 .wl:
-        call    uart_tx_byte
+        call    bios_tx_cp437
         loop    .wl
         pop     cx
 .wr0:
@@ -2030,6 +2030,71 @@ bios_int10_std:
         call    uart_tx_byte
         pop     ax
         iret
+
+; bios_tx_cp437: AL = caractere de la page de codes 437 du PC (celle du DOS) -> terminal. 00h-7Fh tels
+; quels; 80h-FFh (lettres accentuees, cadres, symboles) convertis en UTF-8 (2 ou 3 octets, table
+; bios_cp437_utf): le terminal du PC (UTF-8) les affiche sans reglage de page de codes. Ne PAS regler
+; le terminal en CP437/CP850 (double conversion). Independante de DS. Preserve tout.
+bios_tx_cp437:
+        test    al, 80h
+        jnz     .ext
+        jmp     uart_tx_byte
+.ext:
+        push    ax
+        push    bx
+        push    cx
+        mov     bl, al
+        and     bx, 007Fh
+        shl     bx, 1
+        mov     bx, [cs:bios_cp437_utf + bx]    ; BX = point de code Unicode
+        cmp     bx, 0800h
+        jae     .three
+        mov     ax, bx                  ; 2 octets: 110xxxxx 10xxxxxx
+        mov     cl, 6
+        shr     ax, cl
+        or      al, 0C0h
+        call    uart_tx_byte
+        jmp     .last
+.three:
+        mov     ax, bx                  ; 3 octets: 1110xxxx 10xxxxxx 10xxxxxx
+        mov     cl, 12
+        shr     ax, cl
+        or      al, 0E0h
+        call    uart_tx_byte
+        mov     ax, bx
+        mov     cl, 6
+        shr     ax, cl
+        and     al, 3Fh
+        or      al, 80h
+        call    uart_tx_byte
+.last:
+        mov     al, bl
+        and     al, 3Fh
+        or      al, 80h
+        call    uart_tx_byte
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; page de codes 437: point de code Unicode de chaque caractere 80h-FFh
+bios_cp437_utf:
+        dw      000C7h, 000FCh, 000E9h, 000E2h, 000E4h, 000E0h, 000E5h, 000E7h   ; 80h-87h
+        dw      000EAh, 000EBh, 000E8h, 000EFh, 000EEh, 000ECh, 000C4h, 000C5h   ; 88h-8Fh
+        dw      000C9h, 000E6h, 000C6h, 000F4h, 000F6h, 000F2h, 000FBh, 000F9h   ; 90h-97h
+        dw      000FFh, 000D6h, 000DCh, 000A2h, 000A3h, 000A5h, 020A7h, 00192h   ; 98h-9Fh
+        dw      000E1h, 000EDh, 000F3h, 000FAh, 000F1h, 000D1h, 000AAh, 000BAh   ; A0h-A7h
+        dw      000BFh, 02310h, 000ACh, 000BDh, 000BCh, 000A1h, 000ABh, 000BBh   ; A8h-AFh
+        dw      02591h, 02592h, 02593h, 02502h, 02524h, 02561h, 02562h, 02556h   ; B0h-B7h
+        dw      02555h, 02563h, 02551h, 02557h, 0255Dh, 0255Ch, 0255Bh, 02510h   ; B8h-BFh
+        dw      02514h, 02534h, 0252Ch, 0251Ch, 02500h, 0253Ch, 0255Eh, 0255Fh   ; C0h-C7h
+        dw      0255Ah, 02554h, 02569h, 02566h, 02560h, 02550h, 0256Ch, 02567h   ; C8h-CFh
+        dw      02568h, 02564h, 02565h, 02559h, 02558h, 02552h, 02553h, 0256Bh   ; D0h-D7h
+        dw      0256Ah, 02518h, 0250Ch, 02588h, 02584h, 0258Ch, 02590h, 02580h   ; D8h-DFh
+        dw      003B1h, 000DFh, 00393h, 003C0h, 003A3h, 003C3h, 000B5h, 003C4h   ; E0h-E7h
+        dw      003A6h, 00398h, 003A9h, 003B4h, 0221Eh, 003C6h, 003B5h, 02229h   ; E8h-EFh
+        dw      02261h, 000B1h, 02265h, 02264h, 02320h, 02321h, 000F7h, 02248h   ; F0h-F7h
+        dw      000B0h, 02219h, 000B7h, 0221Ah, 0207Fh, 000B2h, 025A0h, 000A0h   ; F8h-FFh
 
 ; ------------------------------------------------------------
 ; INTERRUPTIONS NON IMPLEMENTEES. init_ivt_not_implemented peuple les 256 entrees de l'IVT AVANT nos vecteurs

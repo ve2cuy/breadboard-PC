@@ -96,9 +96,14 @@ Décodage d'adresses (logique simple, sans décodeur dédié — un seul
 bit d'adresse suffit à distinguer ROM/RAM, la sélection des circuits
 d'E/S se faisant sur le bus d'E/S) :
 
-- **ROM** : `CS = A19`
-- **RAM** : `CS = NOT A19`
-- **8255 (PIO)** : `CS = A7 AND IO/M` (cycle d'E/S, adresse ≥ 80h —
+Deux 74LS00 font tout le décodage (schéma KiCad, `kicad/Breadboard-pc`), avec `M` = cycle mémoire
+(`IO/M` = 0, donné par une porte montée en inverseur) ; `RD#`/`WR#` vont directement aux quatre circuits.
+L'animation [medias/animation/signaux-anime.svg](../medias/animation/signaux-anime.svg) (générée par
+`medias/animation/generer_signaux.py`) montre ces signaux du RESET jusqu'à la lecture d'un secteur par le DOS.
+
+- **ROM** : `CE# = NAND(A19, M)` (IC-6)
+- **RAM** : `CE# = NAND(/A19, M)` (IC-6) — les mémoires ne sont choisies que pendant un cycle mémoire
+- **8255 (PIO)** : `CS# = NAND(IO, A7)` (U9) (cycle d'E/S, adresse ≥ 80h —
   `A0`/`A1` vont directement aux broches `A0`/`A1` du 8255 pour
   sélectionner Port A/B/C/registre de commande — voir `PORTA`/`PORTB`/
   `PORTC`/`PIO` dans `include/hardware.inc`, ports 80h-83h)
@@ -113,15 +118,15 @@ flowchart TD
     end
 
     subgraph DEC["Decodage d'adresses"]
-        A19G["A19"]
-        NOTA19["NOT A19"]
-        A7IO["A7 AND IO/M"]
+        A19G["NAND(A19, M)"]
+        NOTA19["NAND(/A19, M)"]
+        A7IO["NAND(IO, A7)"]
         PICCS["NAND(IO, A5)"]
     end
 
     subgraph MEM["Memoire"]
-        ROM["ROM 256 Ko\nC0000h-FFFFFh\nCS = A19"]
-        RAM["RAM statique 128 Ko\n00000h-1FFFFh\nCS = NOT A19"]
+        ROM["ROM 256 Ko\nC0000h-FFFFFh\nCE# = NAND(A19, M)"]
+        RAM["RAM statique 512 Ko\n00000h-7FFFFh\nCE# = NAND(/A19, M)"]
     end
 
     subgraph IOBLK["Entrees/Sorties"]
@@ -1034,7 +1039,7 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
 
 | Interruption | Rôle |
 |---|---|
-| `INT 13h` | disque dur `DL = 80h` = la **flash du pont** (secteurs de 512 octets). CHS (`AH` = 00h, 01h, 02h, 03h, 04h, 08h, 15h) **et accès étendu LBA** (41h, 42h, 43h, 44h, 48h). Géométrie 255 têtes × 63 secteurs (celle que SdFat écrit dans le BPB), 2 cylindres pour 8 Mo. **Disquette A: (`DL = 0`)** = une **image** (fichier `.IMG` de la flash) montée par `AH = F0h` (`DS:SI` = nom) ; `AH = F1h` la démonte ; géométrie d'après la taille du fichier (160, 180, 320, 360, 720 Ko, 1,2 ou 1,44 Mo) ; les écritures vont dans le fichier. `AH = 17h` (ignoré) et `AH = 18h` (type de support pour le formatage : `ES:DI` = table des paramètres pour le format de l'image, sinon `AH = 0Ch`) ; `AH = 08h` rend la table des paramètres du format monté (9, 15 ou 18 secteurs par piste). Image en **lecture seule** (attribut R du fichier) : montée quand même (pont 1.5), écritures refusées. Le compteur du BIOS `0040:006C` (aucune minuterie sur ce montage) est recalé sur l'horloge du pont par `INT 1Ah AH=00h` et toutes les 32 consultations `INT 16h AH=01h/02h` : DOS 6 y mesure sa pause F5/F8 du démarrage. Sans image, `DL = 0` donne `AH` = 80h. Erreurs : 04h (secteur introuvable ou hors disque/image), 80h (le pont ne répond pas), 0AAh (`USB ON` : le PC a le disque) ; montage : 0E2h (fichier introuvable), 0E5h (nom invalide), 0EFh (taille non reconnue). |
+| `INT 13h` | disque dur `DL = 80h` = la **flash du pont** (secteurs de 512 octets). CHS (`AH` = 00h, 01h, 02h, 03h, 04h, 08h, 15h) **et accès étendu LBA** (41h, 42h, 43h, 44h, 48h). Géométrie 255 têtes × 63 secteurs (celle que SdFat écrit dans le BPB), 2 cylindres pour 8 Mo. **Disquette A: (`DL = 0`)** = une **image** (fichier `.IMG` de la flash) montée par `AH = F0h` (`DS:SI` = nom) ; `AH = F1h` la démonte ; géométrie d'après la taille du fichier (160, 180, 320, 360, 720 Ko, 1,2 ou 1,44 Mo) ; les écritures vont dans le fichier. `AH = 17h` (ignoré) et `AH = 18h` (type de support pour le formatage : `ES:DI` = table des paramètres pour le format de l'image, sinon `AH = 0Ch`) ; `AH = 08h` rend la table des paramètres du format monté (9, 15 ou 18 secteurs par piste). **Sortie terminal d'`INT 10h`** (`AH` = 0Eh, 09h, 0Ah) : les caractères 80h–FFh de la page de codes 437 du DOS (accents, cadres) sont convertis en **UTF-8** (`bios_tx_cp437`) — le terminal du PC doit être en UTF-8, pas en CP437/CP850. Image en **lecture seule** (attribut R du fichier) : montée quand même (pont 1.5), écritures refusées. Le compteur du BIOS `0040:006C` (aucune minuterie sur ce montage) est recalé sur l'horloge du pont par `INT 1Ah AH=00h` et toutes les 32 consultations `INT 16h AH=01h/02h` : DOS 6 y mesure sa pause F5/F8 du démarrage. Sans image, `DL = 0` donne `AH` = 80h. Erreurs : 04h (secteur introuvable ou hors disque/image), 80h (le pont ne répond pas), 0AAh (`USB ON` : le PC a le disque) ; montage : 0E2h (fichier introuvable), 0E5h (nom invalide), 0EFh (taille non reconnue). |
 | `INT 19h` | **amorçage** : si une image est montée, le secteur 0 de l'**image** (disquette A:, `DL = 0`) ; sinon le secteur 0 (MBR) de la flash → partition active (sinon la première partition FAT) → son secteur d'amorce en `0000:7C00`, exécuté avec `DL = 80h`, pile `0000:7C00`. Si le secteur 0 n'a pas de table de partitions mais commence par un saut (EB/E9), c'est lui l'amorce. Ne revient qu'en cas d'échec (`CF = 1`, cause sur l'UART). Depuis le BASIC : **`BOOT`** / **`BOOT "IMAGE.IMG"`** ; depuis le menu : **sous-menu USB Disk, option 3**. |
 | `INT 16h` | clavier = **terminal UART** : `AH` = 00h/10h lire, 01h/11h consulter (sans consommer, `ZF`), 02h/12h indicateurs. Octets bruts (minuscules, ponctuation, Ctrl-lettre, DEL = retour arrière) ; séquences ESC = touches étendues (`AL` = 0 : flèches 48h/50h/4Dh/4Bh, Début/Fin, Inser/Suppr, Page haut/bas, F1-F4). Le clavier PS/2 n'est pas géré (le BASIC non plus). |
 | `INT 1Ah` | horloge = **RTC du pont** : `AH` = 00h (ticks depuis minuit, 18,2/s), 02h/04h (heure/date en BCD), 03h/05h (régler). |
@@ -1083,6 +1088,10 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
   de l'image) dès que IBF (PC5 → PA15) indique que le 8088 a lu l'octet précédent (`REPLY_GAP_US` = 20 µs, au lieu de
   l'espace de 1 ms gardé pour le clavier et l'UART) : le débit est celui de l'interruption du 8088 (~ 150-300 µs par
   octet, soit 3 à 6 Ko/s) au lieu de ~ 1 Ko/s. Sans le fil IBF (`USE_IBF 0`), les réponses gardent l'espace de 1 ms.
+  **Pont 1.6 — rafale** : une fois le premier octet d'une réponse envoyé, les suivants partent dans une boucle serrée
+  dès que le 8088 a lu le précédent (IBF = 0), sans repasser par la boucle principale (USB, LCD, clavier) ; retour à
+  la boucle si le 8088 tarde plus de 0,5 ms (`BURST_WAIT_US`) ou si une trame PS/2 commence. Amorçage d'une disquette
+  environ 50 % plus rapide (mesure de l'utilisateur, DOS 6.22).
 - **Somme de contrôle** : après chaque secteur lu (disque ou image), le 8088 demande au pont la somme des 512 octets (commande `2Bh`) et la compare à celle des octets reçus; si elles diffèrent le secteur est relu (3 essais) et un `!` s'affiche sur l'UART (`BIOS_SHOW_RETRY`, `BIOS_BADSUM` = compteur). Toujours faux : INT 13h rend AH=20h (jamais de données fausses). Demande un pont à jour (ROM et pont vont ensemble).
 - **OUT parasites de MS-DOS 3.30** : le 8255 est sélectionné par A7 seul (tout port ≥ 80h l'atteint), alors que sur un vrai PC les ports 2F2h-2F7h n'existent pas. `IO.SYS` de MS-DOS 3.30 y écrit 0FFh (`mov dx,2F2h / out dx,al / inc dx` ×6, puis idem en 2F6h): cela reprogrammait le 8255 (mot de mode 0FFh, ports A/B/C écrits), donc le pont était perdu et des interruptions parasites (INT E0h, INT CDh...) arrivaient. `bios_patch_sector` (INT 13h, lectures seulement) remplace ces `OUT` par des `NOP` dans le secteur lu (motif `BAh F2h 02h|06h EEh` puis `EEh/42h`), un `+` s'affiche sur l'UART par `OUT` neutralisé (`BIOS_SHOW_PATCH`, compteur `BIOS_NPATCH` en 1000:FBF4). Une solution matérielle serait de décoder toutes les lignes d'adresse d'E/S.
 - **Limites** : pas de clavier PS/2 (terminal UART seulement), pas de minuterie (IRQ0), pas d'écran matériel (les

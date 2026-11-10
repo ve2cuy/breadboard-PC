@@ -80,6 +80,7 @@
 // plus necessaire et les blocs de 32 octets des secteurs partent au rythme de l'interruption du 8088
 // (~ 150-300 us par octet) au lieu de 1 ms. Sans IBF (USE_IBF 0), les reponses gardent GAP_US.
 #define REPLY_GAP_US 20UL
+#define BURST_WAIT_US 500UL   // rafale des reponses: attente maximale de la lecture d'un octet par le 8088
 // Pause apres chaque retour chariot (CR) venant du PC: le 8088 traite la ligne saisie
 // (tokenisation, insertion dans le programme) avant de recevoir la suivante. 0 = aucune.
 #define LINE_DELAY_MS 15UL
@@ -109,7 +110,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 5
+#define FW_VERSION_MINOR 6
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -1142,6 +1143,26 @@ void loop() {
     rqTail = (uint8_t)((rqTail + 1) & 63);
     sendTo8088(2, v);
     markSent();
+    // RAFALE (pont 1.6): les octets suivants de la reponse (bloc de 32 octets d'un secteur, par exemple)
+    // partent des que le 8088 a lu le precedent (IBF = 0), sans repasser par la boucle principale
+    // (USB, LCD, clavier: un octet par tour, ~150-300 us). Retour a la boucle si le 8088 tarde plus de
+    // BURST_WAIT_US (il fait autre chose) ou si une trame PS/2 commence.
+    {
+      uint32_t t0 = micros();
+      while (rqHead != rqTail) {
+        if ((GPIOA->IDR >> IBF_BIT) & 1) {               // octet precedent pas encore lu
+          if ((uint32_t)(micros() - t0) > BURST_WAIT_US) break;
+          continue;
+        }
+        if ((uint32_t)(micros() - lastTx) < REPLY_GAP_US) continue;
+        if (!ps2Quiet(BUS_QUIET_US)) break;
+        v = rq[rqTail];
+        rqTail = (uint8_t)((rqTail + 1) & 63);
+        sendTo8088(2, v);
+        markSent();
+        t0 = micros();
+      }
+    }
   } else
 #endif
   if (canSend()) {                         // IBF libre (si cable) et GAP_US ecoule

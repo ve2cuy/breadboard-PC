@@ -375,6 +375,12 @@ check('INT 10h AH=0Ah: caractere repete 3 fois', out.endswith(b'***'), repr(out)
 check('INT 15h AH=88h: pas de memoire etendue (AX = 0, CF = 0)', r[5].ax == 0 and not r[5].cf)
 check('INT 15h: fonction non geree -> CF = 1, AH = 86h', r[6].cf and r[6].ah == 0x86)
 check('les registres du programme survivent a INT 10h (pile, DS, BP)', all(frame_ok(x) for x in r[:5]))
+# page de codes 437 -> UTF-8 sur le terminal: e accent aigu (82h), coin de cadre (C9h), sharp s (E1h), repete (AH=0Ah)
+st = run([case(0x10, ax=0x0E82), case(0x10, ax=0x0EC9), case(0x10, ax=0x0EE1), case(0x10, ax=0x0A82, cx=2), case(0x10, ax=0x0E41)])
+out = bytes(st['uart'])
+check('INT 10h: page de codes 437 convertie en UTF-8 (82h, C9h, E1h, AH=0Ah; ASCII inchange)',
+      out == 'é╔ßééA'.encode('utf-8'), repr(out))
+check('les registres du programme survivent a la conversion UTF-8', all(frame_ok(x) for x in st['res']))
 
 # ---------------------------------------------------------------- ISR IRQ1: independante de la pile et de DS
 st = run([case(0x09, portc=0xA1, porta=0x41), case(0x09, portc=0xA0, porta=0x1C), case(0x09, portc=0xA2, porta=0x77),

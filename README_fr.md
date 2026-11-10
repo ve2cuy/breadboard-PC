@@ -2,8 +2,8 @@
 
 Un micro-ordinateur d'architecture inspirée du PC/XT, construit sur plaquette d'essai (*breadboard*)
 autour d'un **Intel 8088**. Sa ROM, dont le code source est **entièrement écrit en assembleur** 8086,
-démarre sur un menu interactif, exécute deux interpréteurs BASIC et **amorce PC-DOS 2.1 et MS-DOS 3.30**
-depuis des images de disquette.
+démarre sur un menu interactif, exécute deux interpréteurs BASIC et **amorce PC-DOS 2.1, MS-DOS 3.30,
+5.0 et 6.22** depuis des images de disquette de 160 Ko à 1,44 Mo.
 
 Projet d'Alain Boudreault (VE2CUY), 2026. *[English version](README.md)*
 
@@ -17,39 +17,58 @@ Projet d'Alain Boudreault (VE2CUY), 2026. *[English version](README.md)*
 
 | | |
 |---|---|
-| **Processeur** | Intel 8088, 4,77 MHz par défaut (réglable de 1 à 10 MHz) |
-| **Mémoire** | ROM 256 Ko (W29C020C, `C0000h`–`FFFFFh`), RAM statique 128 Ko (HM628128, `00000h`–`1FFFFh`) |
+| **Processeur** | Intel 8088, 4,77 MHz par défaut, réglable de 1 à 10 MHz (essayé jusqu'à 7,38 MHz) |
+| **Mémoire** | ROM 256 Ko (W29C020C, `C0000h`–`FFFFFh`) ; RAM statique **512 Ko** (AS6C4008, `00000h`–`7FFFFh`), dont 510 Ko pour le DOS |
 | **Entrées/sorties** | 8255A en mode 2 (bus vers le pont), 8259A (interruptions), LCD 4×20 I2C, clavier PS/2 |
-| **Pont** | Plaquette WeAct **Black Pill STM32F411** : clavier, terminal USB, LCD, horloge, disque, RESET |
-| **Logiciel** | ROM entièrement en assembleur (NASM, jeu d'instructions 8086 strict), y compris les deux BASIC : menu, BIOS pour DOS, Tiny BASIC, BASIC de type GW-BASIC |
-| **Systèmes** | PC-DOS 2.1 et MS-DOS 3.30 amorcés depuis une image de disquette |
+| **Pont** | Plaquette WeAct **Black Pill STM32F411** (firmware 1.6) : clavier, terminal USB, LCD, horloge, disque, RESET |
+| **Logiciel** | ROM entièrement en assembleur (NASM, jeu d'instructions 8086 strict) : menu, BIOS pour DOS, Tiny BASIC, BASIC de type GW-BASIC, test de la RAM avec carte mémoire |
+| **Systèmes** | PC-DOS 2.1, MS-DOS 3.30, 5.0 et 6.22, amorcés depuis une image de disquette (160 Ko à 1,44 Mo) |
 
 ## Le montage
 
-Le cœur du montage (processeur, verrous d'adresses, ROM, RAM, décodage) est câblé sur plaquette
-d'essai en logique 74HC/74HCT, sans logique programmable (ni GAL ni CPLD). Le décodage tient en quelques portes NAND :
+Le cœur du montage (processeur, verrous d'adresses, tampon de données, ROM, RAM, décodage) est câblé
+sur plaquette d'essai en logique 74LS/74HC, sans logique programmable (ni GAL ni CPLD) :
 
-- **ROM** : `A19 = 1` (fenêtre `C0000h`–`FFFFFh`) ;
-- **RAM** : `A19 = 0` ;
-- **8255** (ports `80h`–`83h`) : `A7` et cycle d'E/S ;
-- **8259** (ports `20h`–`21h`) : `NAND(IO, A5)` (une porte de 74LS00).
+- deux **74LS373** verrouillent `A0`–`A7` et `A16`–`A19` sur le front d'`ALE` ; un **74HC245** tamponne
+  `D0`–`D7` (`DEN`, `DT/R`) ;
+- deux **74LS00** font tout le décodage, avec `M` = cycle mémoire (`IO/M` = 0) :
+  - **ROM** : `CE# = NAND(A19, M)` — `C0000h`–`FFFFFh` ;
+  - **RAM** : `CE# = NAND(/A19, M)` — `00000h`–`7FFFFh` ;
+  - **8255** (ports `80h`–`83h`) : `CS# = NAND(IO, A7)` ;
+  - **8259** (ports `20h`–`21h`) : `CS# = NAND(IO, A5)` ;
+- `RD#` et `WR#` du 8088 vont directement à la ROM, à la RAM, au 8255 et au 8259.
 
 <p align="center">
-  <img src="medias/breadboard-step-02.png" alt="Schéma KiCad du cœur : 8088, verrous, ROM, RAM et décodage" width="820"><br>
-  <em>Schéma du cœur (KiCad). L'horloge, fournie ici par un Arduino UNO R4, vient aujourd'hui du pont.</em>
+  <img src="medias/schema-kicad.png" alt="Schéma KiCad du montage : 8088, verrous, tampon, ROM, RAM 512 Ko, 8255, 8259, décodage et pont" width="900"><br>
+  <em>Schéma du montage (KiCad, <a href="kicad/Breadboard-pc">kicad/Breadboard-pc</a>). L'horloge vient du pont
+  (<code>CLK_STM</code>) ou d'une entrée externe, au choix par le cavalier JP1.</em>
 </p>
+
+### Les signaux en action
+
+L'animation suit le montage du RESET jusqu'à la lecture d'un secteur par le DOS : vecteur de reset lu
+dans la ROM, écriture en RAM, programmation du 8259 et de la table des vecteurs (IVT), touche au clavier
+et interruption `IRQ1`, appel du BIOS (`INT 13h`) et réponse du pont en rafale. Pour chaque étape :
+les circuits sollicités, le niveau des signaux de commande et la zone de la mémoire visée.
+
+<p align="center">
+  <img src="medias/animation/signaux-anime.svg" alt="Animation : les signaux du montage, du RESET au DOS" width="1000">
+</p>
+
+L'animation est produite par [medias/animation/generer_signaux.py](medias/animation/generer_signaux.py).
 
 ## Le circuit électronique
 
 Le 8088 ne pilote aucun périphérique en *bit-bang*. Tous les échanges passent par **un seul 8255 en
 mode 2** : un bus de 8 bits bidirectionnel, avec poignée de main matérielle, relié au pont. Chaque octet
-reçu du pont déclenche une interruption (`IR1` du 8259).
+reçu du pont déclenche une interruption (`IR1` du 8259) ; pendant une commande au pont, `IR1` est masquée
+et le BIOS lit les réponses par scrutation.
 
 ```mermaid
 flowchart LR
     CPU["Intel 8088"] --- BUS(("Bus<br>A0-A19 / D0-D7"))
     BUS --- ROM["ROM 256 Ko<br>W29C020C"]
-    BUS --- RAM["RAM 128 Ko<br>HM628128"]
+    BUS --- RAM["RAM 512 Ko<br>AS6C4008"]
     BUS --- PIO["8255A<br>mode 2"]
     BUS --- PIC["8259A"]
     PIO -- "INTR → IR1" --> PIC
@@ -73,21 +92,23 @@ au 8088 les périphériques d'un PC :
 | Fonction | Détail |
 |---|---|
 | **Clavier PS/2** | Décodage des trames ; scan codes bruts transmis au 8088 |
-| **Terminal** | Port série USB natif vers le PC (ANSI, 80 colonnes) |
+| **Terminal** | Port série USB natif vers le PC (ANSI, 80 colonnes, UTF-8) |
 | **Affichage** | LCD HD44780 4×20 sur I2C (PCF8574) |
 | **Horloge temps réel** | RTC du STM32 (quartz 32,768 kHz) : `TIME$`, `DATE$`, `INT 1Ah` |
-| **Disque** | Flash SPI W25Q64 de 8 Mo en FAT16 : fichiers, secteurs, images de disquette montées comme A: |
+| **Disque** | Flash SPI W25Q64 de 8 Mo en FAT16 : fichiers, secteurs, images de disquette montées comme A: (y compris en lecture seule) |
+| **Débit** | Réponses envoyées **en rafale** dès que le 8088 a lu l'octet précédent (firmware 1.6) |
 | **Lecteur USB** | La flash est offerte au PC comme clé USB (`USB ON` / `USB OFF`) pour y copier des fichiers |
 | **Horloge du 8088** | Signal `CLK` généré par PWM matériel, de 1 à 10 MHz |
 | **RESET du 8088** | Maintien au démarrage du pont ; **Ctrl-Alt-Suppr** (PS/2) ou **Ctrl-\\** (terminal) |
 
 Le 8088 dialogue avec le pont par un protocole de commandes sur un canal dédié
-(voir [Solution-01/lib/bridge.asm](Solution-01/lib/bridge.asm)).
+(voir [Solution-01/lib/bridge.asm](Solution-01/lib/bridge.asm)). Le firmware se flashe par USB, carte
+en mode DFU : `platformio run -e blackpill_f411ce_usbdrive -t upload`.
 
 ## Le menu
 
 Au démarrage, la ROM affiche un menu sur le terminal et sur le LCD. On le pilote indifféremment au
-clavier PS/2 ou au terminal ; **Échap** revient au menu principal.
+clavier PS/2 ou au terminal ; **Échap** revient au menu précédent.
 
 <p align="center">
   <img src="medias/captures/menu.svg" alt="Menu principal de la ROM sur le terminal" width="680">
@@ -96,9 +117,13 @@ clavier PS/2 ou au terminal ; **Échap** revient au menu principal.
 | Menu | Options |
 |---|---|
 | **1) Basic** | Tiny BASIC ; BASIC de type GW-BASIC |
-| **2) Memory functions** | Vidage et édition de la mémoire, registres du CPU, saisie et exécution de code, table des vecteurs, test de la RAM |
+| **2) Memory functions** | Vidage et édition de la mémoire, registres du CPU, saisie et exécution de code, table des vecteurs ; **test de la RAM** : *Trace* (déroulement complet) ou *MAP* (carte mémoire et bilan seulement) |
 | **3) USB Disk** | Bascule du lecteur USB, liste des fichiers, **amorçage d'une image disque** |
-| **4) Configuration** | Vitesse d'horloge, test de vitesse du CPU, réglage de la date et de l'heure, écran d'information |
+| **4) Configuration** | Vitesse d'horloge (pas de 0,1 et 1 MHz ; 4,77, 7,2 et 8 MHz directs), test de vitesse du CPU, date et heure, écran d'information |
+
+Le **test de la RAM** vérifie les 512 Ko octet par octet (la pile du test est déplacée en bas de la
+RAM, les 2 derniers Ko sont testés à part), puis les lignes d'adresse `A0`–`A18` (capacité réelle de la
+puce). Il termine par une **carte mémoire** (un caractère par Ko) et les quantités bonnes et défectueuses.
 
 ## Le BASIC
 
@@ -123,13 +148,13 @@ programmes.
 | **Machine** | `PEEK` `POKE` `DEF SEG` `INP` `OUT` `WAIT` `CALL` `FRE` |
 | **Disque et système** | `DSKREAD` `DSKWRITE` `USB ON`/`OFF` `BOOT "image.img"` |
 
-## DOS 2.1 et DOS 3.3
+## DOS 2.1 à 6.22
 
 La ROM fournit la couche BIOS qu'attend un DOS : disque (`INT 13h`, CHS et LBA), clavier (`INT 16h`),
 horloge (`INT 1Ah`), affichage texte sur le terminal (`INT 10h`) et amorçage (`INT 19h`). Une image de
 disquette copiée sur la flash (par le lecteur USB) est montée comme lecteur **A:** puis amorcée depuis
 **USB Disk → 3) Boot disk image**, ou par `BOOT "PCDOS2_1.IMG"` au BASIC. Les écritures du DOS vont
-dans le fichier image.
+dans le fichier image ; une image en lecture seule est montée quand même, sans écriture possible.
 
 <p align="center">
   <img src="medias/captures/dos21.svg" alt="Amorçage de PC-DOS 2.1, VER et DIR /W" width="680"><br>
@@ -141,21 +166,34 @@ dans le fichier image.
   <em>MS-DOS 3.30</em>
 </p>
 
-Limites : 128 Ko de RAM (DOS 5.0 et plus récent en exigent 256 Ko), pas d'écran vidéo matériel (les
-programmes qui écrivent en mémoire vidéo ne s'affichent pas), clavier du DOS sur le terminal seulement.
+Ce qui rend possibles DOS 5.0 et 6.22 :
+
+- **512 Ko de RAM** (ces versions en exigent au moins 256 Ko) ;
+- l'**octet de modèle** `FEh` (PC/XT) en `F000:FFFE` : sans lui, DOS 5 prend le chemin du clavier AT
+  (ports `60h`/`64h`), qui tombe sur le 8259 avec ce décodage ;
+- le compteur du BIOS `0040:006C`, recalé sur l'horloge du pont (aucune minuterie sur ce montage) :
+  DOS 6 y mesure sa pause F5/F8 du démarrage ;
+- les disquettes de **1,44 Mo** (géométrie d'après la taille de l'image, `INT 13h AH=08h/18h`).
+
+Les accents et les cadres du DOS (page de codes 437) sont convertis en **UTF-8** sur le terminal : le
+terminal du PC doit être en UTF-8.
+
+Limites : pas d'écran vidéo matériel (les programmes qui écrivent en mémoire vidéo ne s'affichent pas) ;
+clavier du DOS sur le terminal seulement ; **KEYB** est incompatible (il lit le clavier par le port
+`60h`) — les disquettes d'installation qui le lancent dans `AUTOEXEC.BAT` doivent en être privées
+(voir les copies `-nokeyb` dans [PC-DOS/](PC-DOS)).
 
 ## Construire la ROM
 
 ```sh
 cd Solution-01
-make            # solution-01.bin (256 Ko, à graver dans la W29C020C)
-make check      # vérifie taille, vecteur de reset et signature
+make            # solution-01.bin (256 Ko, RAM de 512 Ko) ; make rom-128 : RAM de 128 Ko
+make check      # vérifie taille, vecteur de reset, signature et octet de modèle
 make test       # bancs d'essai sous émulateur (Unicorn)
 make test-rom   # la ROM complète simulée : DOS, BASIC, clavier PS/2
 ```
 
-Outils : NASM, GNU Make, Python 3 (+ `unicorn` pour les tests) ; PlatformIO pour le pont
-(`platformio run -e blackpill_f411ce_usbdrive -t upload`, carte en mode DFU).
+Outils : NASM, GNU Make, Python 3 (+ `unicorn` pour les tests) ; PlatformIO pour le pont.
 
 ## Organisation du dépôt
 
@@ -163,9 +201,9 @@ Outils : NASM, GNU Make, Python 3 (+ `unicorn` pour les tests) ; PlatformIO pour
 |---|---|
 | [Solution-01/](Solution-01) | ROM du 8088 (NASM) et tests ; documentation technique complète dans [Solution-01/README.md](Solution-01/README.md) |
 | [arduino/8088_bridge_stm32/](arduino/8088_bridge_stm32) | Firmware du pont Black Pill STM32F411 (PlatformIO) |
-| [kicad/](kicad) | Schémas du montage |
+| [kicad/](kicad) | Schéma du montage |
 | [PC-DOS/](PC-DOS) | Images de disquette de test |
-| [medias/](medias) | Fiches techniques, schémas et captures |
+| [medias/](medias) | Fiches techniques, schéma, animation des signaux et captures |
 
 > Les captures du terminal de cette page sont produites par la ROM réelle, exécutée dans le
 > simulateur du projet ([medias/captures/generer.py](medias/captures/generer.py)).
