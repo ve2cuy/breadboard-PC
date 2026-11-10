@@ -340,6 +340,8 @@ breadboard-PC/                  (racine du dépôt Git)
 │   │                            puces en place), « VE2CUY.8088v1 » au bas de la carte, sous U11 ; types
 │   │                            de RAM et cavalier JP2 inscrits sous U8 (512K AS6C4008 : 1-2 ;
 │   │                            128K HM628128/AS6C1008 : 2-3)
+│   ├── Breadboard-pc/fabrication/  Dossier de fabrication JLCPCB : Gerber + perçages
+│   │                            (Breadboard-pc-JLCPCB-110x110.zip) et paramètres de commande (README.md)
 │   └── 3dmodels/               Modèle 3D (STEP/VRML) du support ZIF 32 broches 3M Textool
 │                                232-1285-00-0602J et son générateur CadQuery
 ├── PC-DOS/                     Images de disquette de test (PC-DOS 2.1, MS-DOS 3.30)
