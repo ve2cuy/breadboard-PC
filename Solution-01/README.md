@@ -66,7 +66,7 @@ splash.
 | Black Pill | Signal | Côté 8088 |
 |---|---|---|
 | `PB12` `PB13` `PB14` `PB15` | bus de données | `PA0` `PA1` `PA2` `PA3` |
-| `PB6` `PB7` `PB8` `PB9` | bus de données | `PA4` `PA5` `PA6` `PA7` (quartet haut inversé sur le montage, corrigé en logiciel : `BUS_HIGH_NIBBLE_REVERSED`) |
+| `PB9` `PB8` `PB7` `PB6` | bus de données | `PA4` `PA5` `PA6` `PA7` (quartet haut inversé, sur le montage comme sur le PCB, corrigé en logiciel : `BUS_HIGH_NIBBLE_REVERSED`) |
 | `PB0` | `ACK#` (sortie drain ouvert du pont) | `PC6` |
 | `PB1` | `STB#` (sortie drain ouvert du pont) | `PC4` |
 | `PA8` | `OBF#` (entrée du pont) | `PC7` |

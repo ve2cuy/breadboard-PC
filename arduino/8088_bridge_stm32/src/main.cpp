@@ -42,9 +42,9 @@
 //   R4 de projets/Clock-8088/; PA3 servait a TAG2/PC2, jamais cablee sur ce montage - libre)
 //   PA1 <- CLK PS/2   PA2 <- DATA PS/2   PB10 = SCL, PB3 = SDA (LCD I2C2)
 //   PA11/PA12 = USB, PA13/PA14 = SWD, PC13 = LED, PA4-PA7 = flash SPI (reservees),
-//   PB2 -> RESET du 8088 (broche 21, actif HAUT; 10 kohm vers la masse sur le montage, bouton vers +5 V):
+//   PB2 -> RESET du 8088 (broche 21, actif HAUT; 4,7 kohm (R1) vers la masse sur le montage, bouton vers +5 V):
 //   poussee HAUT pour un reset (demarrage du pont, Ctrl-Alt-Suppr au PS/2, Ctrl-\ au terminal), sinon
-//   ENTREE (ne gene pas le bouton, jamais forcee BAS). PB2 = BOOT1: au repos la ligne est BASSE (10 kohm),
+//   ENTREE (ne gene pas le bouton, jamais forcee BAS). PB2 = BOOT1: au repos la ligne est BASSE (4,7 kohm),
 //   le mode DFU (BOOT0 = 1, BOOT1 = 0) reste donc utilisable.   PA0 = bouton K1 de la carte
 // Selon la fiche technique du STM32F411 (DS10314 Rev 8, tableau 8), TOUTES ces
 // broches sont tolerantes 5 V (FT) SAUF PA0 et PB5 (TC, 3,3 V): PB5 n'est donc
@@ -919,7 +919,7 @@ static bool ps2Pop(uint8_t &v) {
 
 // ============================================================================
 // RESET materiel du 8088 (PB2 -> broche 21, RESET actif HAUT)
-// Le montage tire RESET a la masse (10 kohm) et son bouton le porte a +5 V: PB2 (tolerante 5 V) n'est
+// Le montage tire RESET a la masse (4,7 kohm, R1) et son bouton le porte a +5 V: PB2 (tolerante 5 V) n'est
 // donc JAMAIS forcee BAS - soit sortie HAUTE (reset en cours), soit ENTREE sans pull (le bouton marche).
 // Demandes: demarrage du pont (setup: le 8088 reste en reset, horloge deja en marche, jusqu'a ce que le
 // pont soit pret), Ctrl-Alt-Suppr au clavier PS/2 (kbdTrack, dans ps2Isr: detecte meme si le 8088 est
@@ -939,7 +939,7 @@ static void reset8088Hold() {              // sortie HAUTE (ODR avant MODER: auc
   GPIOB->PUPDR &= ~(3UL << (RESET8088_BIT * 2));
   GPIOB->MODER = (GPIOB->MODER & ~(3UL << (RESET8088_BIT * 2))) | (1UL << (RESET8088_BIT * 2));
 }
-static void reset8088Release() {           // entree sans pull: les 10 kohm ramenent RESET a 0
+static void reset8088Release() {           // entree sans pull: les 4,7 kohm (R1) ramenent RESET a 0
   GPIOB->MODER &= ~(3UL << (RESET8088_BIT * 2));
 }
 
