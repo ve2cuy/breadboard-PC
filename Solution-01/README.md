@@ -1796,6 +1796,7 @@ make rom-fr   # ROM en français (par défaut - identique à "rom"), solution-01
 make rom-en   # ROM en anglais, solution-01-en.bin (voir "Bilinguisme" ci-dessous)
 make rom-128  # ROM pour l'ancienne RAM de 128 Ko (HM628128), solution-01-128k.bin (rom-128-en: anglais)
               # (toutes les autres ROM visent la RAM de 512 Ko: RAM=512 par defaut, voir le Makefile)
+make flash PUCE=ok  # compile rom-fr (copiee vers Z:) puis la GRAVE et la VERIFIE sur la W29C020C (FLASH_LANG=en: anglais)
 make lib      # modules individuels (lib/bin/lcd.bin, lib/bin/uart.bin, lib/utils.bin, lib/bin/lcd_i2c.bin, lib/bin/ps2.bin, lib/bin/tiny_basic.bin, lib/bin/basic.bin)
 make check    # assemble la ROM puis valide sa structure (check_rom.py)
 make check-modules  # verifie que chaque module s'assemble seul, sans erreur
@@ -1823,6 +1824,29 @@ python tests/rom_sim.py --image ../PC-DOS/pcdos2_1.img tests/scenario_dos21.txt
 ```
 
 Il ne reproduit que la logique : ni le timing ni l'électrique réels (un gel matériel n'y apparaît pas).
+
+### Graver la ROM (programmeur TL866CS, `make flash`)
+
+La ROM se grave directement depuis le projet, sans passer par le logiciel Windows du programmeur :
+
+- **Programmeur** : TL866CS (USB `04d8:e11c`). Son pilote Windows n'est pas signé (refusé par Windows 11), mais
+  il n'est pas utilisé : [usbipd-win](https://github.com/dorssel/usbipd-win) passe l'appareil USB à WSL, où
+  [minipro](https://gitlab.com/nmatt0/minipro/-/tree/t76-improvements) le pilote.
+- **Installation (une fois)** : `winget install --exact dorssel.usbipd-win` puis, en administrateur,
+  `usbipd bind --busid <BUSID>` (voir `usbipd list`) ; dans WSL : `sudo apt install pkg-config libusb-1.0-0-dev
+  usbutils`, minipro cloné et compilé dans `~/minipro` (`make`, non installé), règles `udev/60-minipro.rules` et
+  `61-minipro-plugdev.rules` copiées dans `/etc/udev/rules.d/`, usager dans le groupe `plugdev`.
+- **Gravure** : insérer la puce dans le support ZIF, puis `make flash PUCE=ok` (ROM française) ou
+  `make flash FLASH_LANG=en PUCE=ok`. Sans `PUCE=ok`, la cible compile la ROM puis s'arrête en rappelant
+  d'insérer la puce. Elle rattache le programmeur à WSL si besoin (WSL arrête sa machine virtuelle quand il est
+  inactif : `usbipd detach` puis `attach`), puis lance `minipro -p W29C020C -u -w` : effacement, désactivation de
+  la protection logicielle d'écriture, écriture puis **vérification** de toute la puce (≈ 25 s).
+- **Branchement direct au PC obligatoire** : par un hub USB, des pages de 128 octets n'étaient pas écrites (la
+  W29C020C exige que les octets d'une page arrivent à moins de 200 µs d'intervalle) et la vérification échouait à
+  des adresses variables.
+- Variables : `USB_BUSID` (`1-2` par défaut, le port direct utilisé), `FLASH_CHIP` (`W29C020C`), `MINIPRO_DIR`
+  (`~/minipro`). Identifiant attendu de la puce : `0xDA45` (`0xFFFF` : pas de puce ; un autre code : resserrer
+  le support).
 
 ### Bilinguisme (FR/EN)
 

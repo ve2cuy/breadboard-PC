@@ -14,6 +14,9 @@ Reproduire tout nouveau symptôme avec tests/rom_sim.py AVANT de modifier le cod
 - Copier chaque ROM 8088 produite dans Z:/Partage/Alain/ (noms explicites).
 - JAMAIS de firmware du pont dans Z:/Partage/Alain : tout ce qui s'y trouve
   est gravé dans l'EEPROM du 8088.
+- Graver la ROM (TL866CS, minipro sous WSL) : TOUJOURS demander à l'usager d'insérer
+  la puce et attendre sa réponse AVANT `make flash FLASH_LANG=fr|en PUCE=ok`
+  (depuis Solution-01). Programmeur branché directement au PC, jamais sur un hub.
 - Flasher le pont (carte en DFU) :
   platformio run -e blackpill_f411ce_usbdrive -t upload
 

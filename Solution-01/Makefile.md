@@ -28,6 +28,10 @@ Le montage a une RAM de 512 Ko (AS6C4008) : `RAM ?= 512` ajoute `-dRAM_512K` à 
 
 Bilinguisme (voir `README.md`, section « Bilinguisme (FR/EN) »): produisent respectivement `solution-01-fr.bin` (français - identique au comportement de `rom`, sans aucun `-d`) et `solution-01-en.bin` (anglais - `nasm -dLANG_EN=1`). `rom-en` ajoute `-w-error=label-redef-late`: la taille légèrement différente des textes anglais retarde la convergence normale de NASM (plusieurs passes) sur certains sauts éloignés du fichier - inoffensif (deux compilations successives produisent un binaire identique), `rom`/`rom-fr` n'en ont jamais eu besoin.
 
+### `flash`
+
+Grave la ROM sur la W29C020C avec le programmeur TL866CS (minipro sous WSL, appareil USB passé à WSL par usbipd-win ; voir `README.md`, « Graver la ROM »). Dépend de `rom-$(FLASH_LANG)` (`fr` par défaut, `en`), donc la ROM est aussi copiée vers `Z:`. **Sans `PUCE=ok`, rien n'est gravé** : la cible rappelle d'insérer la puce et s'arrête en erreur. Avec `PUCE=ok` : rattachement du programmeur à WSL si besoin, puis `minipro -p W29C020C -u -w` (effacement, écriture, vérification ; un échec rend un code de sortie non nul). Variables : `FLASH_LANG`, `FLASH_CHIP`, `USB_BUSID` (`1-2`), `USBIPD`, `MINIPRO_DIR`.
+
 ### `lib`
 
 Construit les modules individuels (`lcd.bin`, `uart.bin`, `utils.bin`, `lcd_i2c.bin`, `ps2.bin`, `tiny_basic.bin`, `basic.bin`), chacun avec ses propres dépendances. Le `| lib/bin` après les deux-points est un **prérequis "order-only"** : ça garantit que le dossier `lib/bin` existe avant d'écrire dedans, mais sans forcer un réassemblage si le dossier est juste "plus récent" que le `.bin`.
