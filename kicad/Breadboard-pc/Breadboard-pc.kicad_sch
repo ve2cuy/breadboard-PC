@@ -9829,7 +9829,7 @@
 		)
 		(uuid "89e9d00a-ec46-4978-b121-eec3852d1e61")
 	)
-	(text "NOTE: On the breadboard, A8 to A11 are also latched via IC-04"
+	(text "NOTE: A8 to A11 come directly from the 8088 (stable for the whole bus cycle), not latched"
 		(exclude_from_sim no)
 		(at 152.908 208.788 0)
 		(effects
