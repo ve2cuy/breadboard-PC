@@ -335,7 +335,8 @@ breadboard-PC/                  (racine du dépôt Git)
 │   │                            (CMS 6,3 x 5,4) sous le Black Pill, près de J3. Entrées libres
 │   │                            de U9 (portes C et D, broches 9, 10, 12, 13) à la masse.
 │   │                            Sérigraphie aux minimums JLCPCB (texte ≥ 1 mm, trait ≥ 0,15 mm),
-│   │                            toutes les pièces identifiées, « VE2CUY.8088v1 » sur U11, types
+│   │                            toutes les pièces identifiées (noms des puces U2, U4, U5, U7 lisibles
+│   │                            puces en place), « VE2CUY.8088v1 » au bas de la carte, sous U11 ; types
 │   │                            de RAM et cavalier JP2 inscrits sous U8 (512K AS6C4008 : 1-2 ;
 │   │                            128K HM628128/AS6C1008 : 2-3)
 │   └── 3dmodels/               Modèle 3D (STEP/VRML) du support ZIF 32 broches 3M Textool
