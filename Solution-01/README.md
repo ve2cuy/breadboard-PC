@@ -1117,8 +1117,14 @@ même brochage, **sauf deux broches** :
 | 1 | NC | **A18** |
 | 30 | `CS2` (sélection active haute, reliée au +5 V) | **A17** |
 
-- **Retirer le strap +5 V de la broche 30** : laissé en place, il force A17 à 1 — aussi pour la ROM (W29C020C, dont
-  A17 est la broche 30), qui lit alors son code dans la mauvaise moitié : rien ne démarre.
+- **Cavalier JP2** (schéma et PCB `kicad/Breadboard-pc`, barrette 1x03 entre R6 et R7, au-dessus de la RAM) : son
+  commun (broche 2, net `RAM_CS2`) va à la **broche 30 de la RAM seulement** ; **1-2 = A17** pour la 512 Ko
+  (AS6C4008), **2-3 = +5 V** (`CS2` actif) pour la 128 Ko (HM628128 ou AS6C1008). La broche 1 de la RAM reste sur
+  A18 : c'est une broche NC sur la 128 Ko. La ROM (W29C020C, A17 en broche 30) garde A17 dans les deux positions.
+- **Sur la plaquette sans JP2** : retirer le strap +5 V de la broche 30 pour la 512 Ko. S'il est relié au réseau A17,
+  il force A17 à 1, aussi pour la ROM, qui lit alors son code dans la mauvaise moitié : rien ne démarre.
+- **Avec la 128 Ko**, `CS2` sur A17 (cavalier en 1-2) ne sélectionnerait la puce que pour A17 = 1 : la table des
+  vecteurs (00000h) tomberait dans le vide. Le cavalier doit être en 2-3, avec la ROM `make rom-128`.
 - **A17 et A18 viennent du verrou d'adresses IC-03** (74LS373 : sorties Q5 et Q6, broches **15** et **16**), jamais directement du 8088 :
   ses broches 37 (A17/S4) et 36 (A18/S5) ne portent l'adresse qu'au premier temps du cycle, puis des bits d'état
   (S5 = drapeau `IF`, S4-S3 = registre de segment). La RAM verrait son adresse changer en cours d'accès.

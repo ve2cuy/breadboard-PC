@@ -20088,8 +20088,8 @@
 				)
 			)
 		)
-		(property "Description" "SRAM - 512k"
-			(at 240.538 152.4 0)
+		(property "Description" "SRAM 512k/128k"
+			(at 241.554 152.4 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -22854,16 +22854,6 @@
 		)
 		(uuid "c1794e3b-66a8-44a8-9376-d538f4c47811")
 	)
-	(label "A17"
-		(at 222.25 175.26 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "b381006f-fe23-433d-9a20-f70dd80c29d5")
-	)
 	(wire
 		(pts
 			(xy 222.25 177.8) (xy 227.33 177.8)
@@ -22883,6 +22873,237 @@
 			(justify left bottom)
 		)
 		(uuid "67d51658-5d27-4b7d-bc23-70a7d9736a9c")
+	)
+	(symbol
+		(lib_id "Jumper:Jumper_3_Open")
+		(at 210.82 180.34 180)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "05ab8005-c1b2-4760-a98a-5835588b59e0")
+		(property "Reference" "JP2"
+			(at 210.82 184.15 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "1-2: 512k  2-3: 128k"
+			(at 210.82 186.69 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical"
+			(at 210.82 180.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 210.82 180.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Selection de la RAM, broche 30 de U8: 1-2 = A17 (512k, AS6C4008), 2-3 = +5V, CS2 actif (128k, HM628128 ou AS6C1008)"
+			(at 210.82 180.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "6cec9d36-5e44-45ae-a023-dbef0ccc98ff")
+		)
+		(pin "2"
+			(uuid "bb6451f8-47e1-447d-a980-d27606c9a974")
+		)
+		(pin "3"
+			(uuid "180e1890-87b4-4b27-bde7-cd1f03e0f007")
+		)
+		(instances
+			(project "Breadboard-pc"
+				(path "/9d61a1d3-9821-4007-b279-ae2500300156"
+					(reference "JP2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_name "+5V_2")
+		(lib_id "power:+5V")
+		(at 203.2 177.8 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "5f8356aa-98a2-456e-b3df-438da76ba2b6")
+		(property "Reference" "#PWR0151"
+			(at 203.2 181.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+5V"
+			(at 203.2 172.72 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 203.2 177.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 203.2 177.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"+5V\""
+			(at 203.2 177.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "6bcdccc9-b258-4df0-8c8f-b182383b6c46")
+		)
+		(instances
+			(project "Breadboard-pc"
+				(path "/9d61a1d3-9821-4007-b279-ae2500300156"
+					(reference "#PWR0151")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 210.82 176.53) (xy 210.82 175.26)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "682975b0-7c5e-4eb4-b867-17cf768e8a99")
+	)
+	(wire
+		(pts
+			(xy 210.82 175.26) (xy 222.25 175.26)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "9c3a679d-2697-40d0-a324-611ea51abcd4")
+	)
+	(label "RAM_CS2"
+		(at 213.36 175.26 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "50046b25-83bf-42fa-bc09-bf2febeea8e0")
+	)
+	(wire
+		(pts
+			(xy 215.9 180.34) (xy 219.71 180.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a6eea8af-106d-4960-89e8-f6c86eae2088")
+	)
+	(label "A17"
+		(at 219.71 180.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "6d149bcd-050d-4123-938a-2c54d6ba09c9")
+	)
+	(wire
+		(pts
+			(xy 205.74 180.34) (xy 203.2 180.34)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "63dd4024-857a-4f11-be5a-8a105d8d40ff")
+	)
+	(wire
+		(pts
+			(xy 203.2 180.34) (xy 203.2 177.8)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "f281e0ce-bd6b-4d99-b901-eeabd2aa1052")
 	)
 	(sheet_instances
 		(path "/"
