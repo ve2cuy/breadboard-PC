@@ -320,7 +320,8 @@ breadboard-PC/                  (racine du dépôt Git)
 ├── code-examples/              Exemples : hello.asm (programme DOS, INT 10h),
 │                                sin.bas (courbe de SIN en ASCII, BASIC)
 ├── kicad/                      Schémas KiCad du montage
-│   ├── Breadboard-pc/          Projet principal : schéma et PCB 100 x 100 mm, 2 couches,
+│   ├── Breadboard-pc/          Projet principal : schéma et PCB 110 x 110 mm (4 trous de
+│   │                            fixation M3 aux coins, à 3 mm du bord), 2 couches,
 │   │                            routé par Freerouting 2.5 (0 liaison manquante, DRC sans
 │   │                            erreur ; rendu : medias/pcb-routage.png). Classe Power
 │   │                            (+5V, GND) en 0,6 mm, signaux en 0,25 mm amincis à
