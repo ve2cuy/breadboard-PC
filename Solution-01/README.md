@@ -330,6 +330,10 @@ breadboard-PC/                  (racine du dépôt Git)
 │   │                            isolement 0,3 mm, freins thermiques 0,5 mm, îlots supprimés),
 │   │                            69 vias de couture (0,8/0,4 mm, grille 2,54 mm) ; U7.20,
 │   │                            U11.7 et IC-6.7 raccordées en plein (frein thermique incomplet)
+│   │                            Sérigraphie aux minimums JLCPCB (texte ≥ 1 mm, trait ≥ 0,15 mm),
+│   │                            toutes les pièces identifiées, « VE2CUY.8088v1 » sur U11, types
+│   │                            de RAM et cavalier JP2 inscrits sous U8 (512K AS6C4008 : 1-2 ;
+│   │                            128K HM628128/AS6C1008 : 2-3)
 │   └── 3dmodels/               Modèle 3D (STEP/VRML) du support ZIF 32 broches 3M Textool
 │                                232-1285-00-0602J et son générateur CadQuery
 ├── PC-DOS/                     Images de disquette de test (PC-DOS 2.1, MS-DOS 3.30)

@@ -6588,8 +6588,8 @@
 			(uuid "3487fff3-9109-4d24-95a8-27c383ff217c")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 				(justify left)
 			)
@@ -6600,8 +6600,8 @@
 			(uuid "a87b9d25-e04c-489e-9caf-94bd210335b2")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 				(justify left)
 			)
@@ -7630,8 +7630,8 @@
 			(uuid "e129d151-8e1d-4686-bb1a-f4996217f6c2")
 			(effects
 				(font
-					(size 0.8 0.8)
-					(thickness 0.12)
+					(size 1 1)
+					(thickness 0.15)
 				)
 			)
 		)
@@ -9133,10 +9133,9 @@
 		(uuid "e7e51714-5cfa-4897-b14f-705b1755d165")
 		(at 161.38 64.97)
 		(property "Reference" "U5"
-			(at 0 -25.37 0)
+			(at 0.02 1.03 90)
 			(unlocked yes)
 			(layer "F.SilkS")
-			(hide yes)
 			(uuid "c0fc2489-d22c-4a7f-933c-e2dc1fd9efc7")
 			(effects
 				(font
@@ -11503,16 +11502,38 @@
 		(layer "Edge.Cuts")
 		(uuid "a609a845-2543-4e17-97de-b5b0b0755f40")
 	)
-	(gr_text "${COMPANY}"
-		(at 185 130 0)
+	(gr_text "512K AS6C4008 : JP2 1-2"
+		(at 168.2 104.88 0)
+		(layer "F.SilkS")
+		(uuid "7c411450-f603-4803-baab-90afe7228052")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(gr_text "128K HM628128/AS6C1008 : JP2 2-3"
+		(at 168.2 111.99 0)
+		(layer "F.SilkS")
+		(uuid "314fd809-7e88-47e0-9e00-223e1990e42c")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(gr_text "VE2CUY.8088v1"
+		(at 186.3 130 0)
 		(layer "F.SilkS")
 		(uuid "21a264f9-5840-4a40-845f-1c39582fb282")
 		(effects
 			(font
 				(size 1 1)
-				(thickness 0.1)
+				(thickness 0.15)
 			)
-			(justify left bottom)
+			(justify right bottom)
 		)
 	)
 	(segment
