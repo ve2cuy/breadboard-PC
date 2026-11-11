@@ -21,7 +21,7 @@ une **interruption matérielle** du 8259 — voir
 [Pont STM32](#pont-stm32-8255-en-mode-2). Le firmware du pont est le
 projet PlatformIO `../arduino/8088_bridge_stm32/` (dépôt Git, à côté de
 `Solution-01/`). À l'origine, le pont était un **Arduino UNO**
-(`../arduino/ve2cuy_bridge/`, conservé pour l'historique ; même protocole
+(`arduino/ve2cuy_bridge/`, retiré du dépôt le 2026-11-11, voir l'historique git ; même protocole
 côté 8088, mais sans RTC, disque, horloge ni RESET) — d'où le nom du
 dossier `arduino/` et de quelques identifiants du firmware (`arduino_send`,
 `irq1_arduino_handler`, `ARD_*`).
@@ -357,9 +357,7 @@ breadboard-PC/                  (racine du dépôt Git)
 │                                232-1285-00-0602J et son générateur CadQuery
 ├── PC-DOS/                     Images de disquette de test (PC-DOS 2.1, MS-DOS 3.30)
 ├── arduino/
-│   ├── 8088_bridge_stm32/  Firmware du pont : WeAct Black Pill V3.1 (STM32F411), PlatformIO
-│   ├── ve2cuy_bridge/      Ancien pont Arduino UNO (historique, remplacé par le précédent)
-│   └── irq_test/           Ancien test de branchement IR1/IR4 (obsolète)
+│   └── 8088_bridge_stm32/  Firmware du pont : WeAct Black Pill V3.1 (STM32F411), PlatformIO
 └── Solution-01/
     ├── solution-01.asm     Flux principal (start, menus, éditeur RAM,
     │                        registres, IVT, gestionnaires INT/IRQ) +

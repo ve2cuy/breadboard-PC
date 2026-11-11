@@ -1,6 +1,6 @@
 # Pont STM32 (WeAct Black Pill V3.1, STM32F411) ↔ 8088
 
-Portage de `../ve2cuy_bridge/ve2cuy_bridge.ino` (Arduino UNO) sur une
+Portage de l'ancien pont `ve2cuy_bridge.ino` (Arduino UNO, retiré du dépôt, voir l'historique git) sur une
 **Black Pill V3.1** (STM32F411CEU6, 100 MHz, USB natif). **Même protocole** côté
 8088 : le firmware de `Solution-01` n'est pas modifié (étape 1 du portage).
 
