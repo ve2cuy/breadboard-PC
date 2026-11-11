@@ -1,0 +1,8 @@
+# KiCad: verrous, historique local, schema vide sans nom
+~*.lck
+.history/
+/.kicad_sch
+*-backups/
+fp-info-cache
+# BIOS: fichiers produits par make
+bios/build/
