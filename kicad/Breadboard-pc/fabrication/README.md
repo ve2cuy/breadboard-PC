@@ -1,5 +1,9 @@
 # Dossier de fabrication — Breadboard-pc (JLCPCB)
 
+> **Version 1 (commandée le 2026-11-10, commit a56163d).** Le PCB du projet est maintenant la
+> v2 (120 x 124,2 mm, condensateurs traversants, J5 bus 2 x 20, JP3) : ces fichiers ne la
+> représentent pas. Régénérer le dossier (commandes ci-dessous) avant de commander la v2.
+
 Fichier à téléverser sur jlcpcb.com : **`Breadboard-pc-JLCPCB-110x110.zip`**
 
 Contenu (Gerber RS-274X sans X2, extensions Protel ; perçages Excellon, mm, décimal) :

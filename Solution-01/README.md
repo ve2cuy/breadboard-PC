@@ -320,28 +320,34 @@ breadboard-PC/                  (racine du dépôt Git)
 ├── code-examples/              Exemples : hello.asm (programme DOS, INT 10h),
 │                                sin.bas (courbe de SIN en ASCII, BASIC)
 ├── kicad/                      Schémas KiCad du montage
-│   ├── Breadboard-pc/          Projet principal : schéma et PCB 110 x 110 mm (4 trous de
-│   │                            fixation M3 aux coins, à 3 mm du bord), 2 couches,
+│   ├── Breadboard-pc/          Projet principal : schéma et PCB v2, 120 x 124,2 mm (4 trous de
+│   │                            fixation M3 aux coins, à 3,5 mm des bords), 2 couches,
 │   │                            routé par Freerouting 2.5 (0 liaison manquante, DRC sans
 │   │                            erreur ; rendu : medias/pcb-routage.png). Classe Power
-│   │                            (+5V, GND) en 0,6 mm, signaux en 0,25 mm amincis à
-│   │                            0,187 mm (7 segments à 0,125-0,15 mm) entre les pastilles :
-│   │                            largeur min. du projet 0,12 mm ; cuivre à 0,55 mm du bord
-│   │                            Plans de masse GND sur les deux faces (zones GND_F et GND_B,
-│   │                            isolement 0,3 mm, freins thermiques 0,5 mm, îlots supprimés),
-│   │                            vias de couture (0,8/0,4 mm, grille 2,54 mm) ; quelques broches GND
-│   │                            raccordées en plein (frein thermique incomplet).
-│   │                            Découplage : C1-C10 100 nF CMS 1206 (soudure à la main) sur la
-│   │                            face arrière, sous chaque circuit côté VCC ; C11 100 µF 16 V
-│   │                            (CMS 6,3 x 5,4) sous le Black Pill, près de J3. Entrées libres
-│   │                            de U9 (portes C et D, broches 9, 10, 12, 13) à la masse.
+│   │                            (+5V, GND, 5V_JACK) en 0,6 mm, signaux en 0,20 mm (isolement
+│   │                            0,18 mm ; largeur min. du projet 0,12 mm ; trou-cuivre 0,30 mm) ;
+│   │                            cuivre à 0,55 mm du bord. Plans de masse GND sur les deux faces
+│   │                            (zones GND_F et GND_B, posées APRÈS le routage : la masse est aussi
+│   │                            routée en pistes), vias de couture, pastilles GND raccordées en plein.
+│   │                            J3 (bloc 5 V) au bord droit, suivi du cavalier JP3 « ALIM J3 » :
+│   │                            fermé = carte alimentée par J3 ; ouvert = J3 isolé (alimentation par
+│   │                            l'USB du Black Pill). Black Pill (U5) dégagé de ses voisins,
+│   │                            aligné sur le support ZIF de la ROM (U4, levier compris sur la carte).
+│   │                            J5 : connecteur de bus 2 x 20 au bas de la carte (1-20 A0-A19,
+│   │                            21-28 D0-D7 côté mémoire du 74HC245, 29 RD_, 30 WR_, 31 IO/M,
+│   │                            32 ALE, 33 CLK, 34 RESET, 35 INTR, 36 INTA_, 37-38 +5V,
+│   │                            39-40 GND ; légende en sérigraphie).
+│   │                            Découplage traversant : C1-C10 100 nF céramique (pas 5 mm) près de
+│   │                            la broche VCC de chaque circuit ; C11 100 µF 16 V radial 6,3 mm
+│   │                            près de J3. Entrées libres de U9 (portes C et D) à la masse.
 │   │                            Sérigraphie aux minimums JLCPCB (texte ≥ 1 mm, trait ≥ 0,15 mm),
-│   │                            toutes les pièces identifiées (noms des puces U2, U4, U5, U7 lisibles
-│   │                            puces en place), « VE2CUY.8088v1 » au bas de la carte, sous U11 ; types
-│   │                            de RAM et cavalier JP2 inscrits sous U8 (512K AS6C4008 : 1-2 ;
-│   │                            128K HM628128/AS6C1008 : 2-3)
-│   ├── Breadboard-pc/fabrication/  Dossier de fabrication JLCPCB : Gerber + perçages
-│   │                            (Breadboard-pc-JLCPCB-110x110.zip) et paramètres de commande (README.md)
+│   │                            toutes les pièces identifiées, « VE2CUY.8088v2 » au coin inférieur
+│   │                            droit ; types de RAM et cavalier JP2 inscrits sous U8 (512K
+│   │                            AS6C4008 : 1-2 ; 128K HM628128/AS6C1008 : 2-3). La v1 (110 x 110,
+│   │                            CMS sous la carte) commandée le 2026-11-10 reste au commit a56163d.
+│   ├── Breadboard-pc/fabrication/  Dossier de fabrication JLCPCB de la v1 COMMANDÉE : Gerber + perçages
+│   │                            (Breadboard-pc-JLCPCB-110x110.zip) et paramètres de commande (README.md) ;
+│   │                            à régénérer avant de commander la v2
 │   └── 3dmodels/               Modèle 3D (STEP/VRML) du support ZIF 32 broches 3M Textool
 │                                232-1285-00-0602J et son générateur CadQuery
 ├── PC-DOS/                     Images de disquette de test (PC-DOS 2.1, MS-DOS 3.30)
@@ -1139,7 +1145,7 @@ même brochage, **sauf deux broches** :
 | 1 | NC | **A18** |
 | 30 | `CS2` (sélection active haute, reliée au +5 V) | **A17** |
 
-- **Cavalier JP2** (schéma et PCB `kicad/Breadboard-pc`, barrette 1x03 entre R6 et R7, au-dessus de la RAM) : son
+- **Cavalier JP2** (schéma et PCB `kicad/Breadboard-pc`, barrette 1x03 au-dessus de la RAM) : son
   commun (broche 2, net `RAM_CS2`) va à la **broche 30 de la RAM seulement** ; **1-2 = A17** pour la 512 Ko
   (AS6C4008), **2-3 = +5 V** (`CS2` actif) pour la 128 Ko (HM628128 ou AS6C1008). La broche 1 de la RAM reste sur
   A18 : c'est une broche NC sur la 128 Ko. La ROM (W29C020C, A17 en broche 30) garde A17 dans les deux positions.
