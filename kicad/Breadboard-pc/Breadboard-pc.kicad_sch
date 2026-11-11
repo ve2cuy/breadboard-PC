@@ -12901,16 +12901,6 @@
 		)
 		(uuid "89e9d00a-ec46-4978-b121-eec3852d1e61")
 	)
-	(text "NOTE: A8 to A11 latched by U12 (74LS373, LE = ALE) like A0-A7 and A12-A19 (bus + bargraphs)"
-		(exclude_from_sim no)
-		(at 152.908 208.788 0)
-		(effects
-			(font
-				(size 2.54 2.54)
-			)
-		)
-		(uuid "8ce35ee1-8a4a-4965-b167-4d5190ff1ba8")
-	)
 	(text "AD4"
 		(exclude_from_sim no)
 		(at 129.032 56.388 0)
@@ -22018,7 +22008,7 @@
 				)
 			)
 		)
-		(property "Value" "ALIM J3"
+		(property "Value" "5V"
 			(at 43.18 163.83 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -27061,7 +27051,7 @@
 				)
 			)
 		)
-		(property "Value" "CLK externe"
+		(property "Value" "External CLK"
 			(at 27.94 223.52 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -28281,7 +28271,7 @@
 				)
 			)
 		)
-		(property "Value" "AS6C4008"
+		(property "Value" "SRAM"
 			(at 240.284 154.94 0)
 			(show_name no)
 			(do_not_autoplace no)
