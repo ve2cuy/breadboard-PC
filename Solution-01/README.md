@@ -336,7 +336,12 @@ breadboard-PC/                  (racine du dépôt Git)
 │   │                            J5 : connecteur de bus 2 x 20 au bas de la carte (1-20 A0-A19,
 │   │                            21-28 D0-D7 côté mémoire du 74HC245, 29 RD_, 30 WR_, 31 IO/M,
 │   │                            32 ALE, 33 CLK, 34 RESET, 35 INTR, 36 INTA_, 37-38 +5V,
-│   │                            39-40 GND ; légende en sérigraphie).
+│   │                            39-40 GND ; légende en sérigraphie au verso, sous le Black Pill).
+│   │                            Bargraphes du bus d'adresses : BAR1 (HDSP-4830) = A19..A10, BAR2 =
+│   │                            A9..A0, DEL par RN1/RN2 (réseaux SIP10 390 Ω) et R9/R10 (390 Ω),
+│   │                            lisibles en pas à pas ou à l'arrêt. A8-A11 de nouveau verrouillées
+│   │                            par U12 (74LS373, LE = ALE, OE = GND) : les sorties du 8088 (IOH
+│   │                            0,4 mA) ne peuvent pas alimenter les DEL ; C12 100 nF.
 │   │                            Découplage traversant : C1-C10 100 nF céramique (pas 5 mm) près de
 │   │                            la broche VCC de chaque circuit ; C11 100 µF 16 V radial 6,3 mm
 │   │                            près de J3. Entrées libres de U9 (portes C et D) à la masse.
