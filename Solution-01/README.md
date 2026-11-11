@@ -350,9 +350,9 @@ breadboard-PC/                  (racine du dépôt Git)
 │   │                            droit ; types de RAM et cavalier JP2 inscrits sous U8 (512K
 │   │                            AS6C4008 : 1-2 ; 128K HM628128/AS6C1008 : 2-3). La v1 (110 x 110,
 │   │                            CMS sous la carte) commandée le 2026-11-10 reste au commit a56163d.
-│   ├── Breadboard-pc/fabrication/  Dossier de fabrication JLCPCB de la v1 COMMANDÉE : Gerber + perçages
-│   │                            (Breadboard-pc-JLCPCB-110x110.zip) et paramètres de commande (README.md) ;
-│   │                            à régénérer avant de commander la v2
+│   ├── Breadboard-pc/fabrication/  Dossier de fabrication JLCPCB de la v2 : Gerber + perçages
+│   │                            (Breadboard-pc-JLCPCB-v2-120x124.zip, 120 x 124,2 mm) et paramètres de
+│   │                            commande (README.md) ; zip de la v1 commandée (110 x 110) conservé à côté
 │   └── 3dmodels/               Modèle 3D (STEP/VRML) du support ZIF 32 broches 3M Textool
 │                                232-1285-00-0602J et son générateur CadQuery
 ├── PC-DOS/                     Images de disquette de test (PC-DOS 2.1, MS-DOS 3.30)
