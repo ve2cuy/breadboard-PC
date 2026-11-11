@@ -39,9 +39,17 @@ sur plaquette d'essai en logique 74LS/74HC, sans logique programmable (ni GAL ni
 - `RD#` et `WR#` du 8088 vont directement à la ROM, à la RAM, au 8255 et au 8259.
 
 <p align="center">
-  <img src="medias/schema-kicad.png" alt="Schéma KiCad du montage : 8088, verrous, tampon, ROM, RAM 512 Ko, 8255, 8259, décodage et pont" width="900"><br>
+  <img src="medias/schema-kicad.png" alt="Schéma KiCad du montage : 8088, verrous, tampon, ROM, RAM 512 Ko, 8255, 8259, décodage, pont, bargraphes d'adresses et connecteur de bus" width="900"><br>
   <em>Schéma du montage (KiCad, <a href="kicad/Breadboard-pc">kicad/Breadboard-pc</a>). L'horloge vient du pont
-  (<code>CLK_STM</code>) ou d'une entrée externe, au choix par le cavalier JP1.</em>
+  (<code>CLK_STM</code>) ou d'une entrée externe, au choix par le cavalier JP1. Sur le PCB, un troisième 74LS373
+  (U12) verrouille aussi A8-A11 : tout le bus d'adresses (A0-A19) peut ainsi alimenter deux bargraphes de 10 DEL (lisibles en pas à pas ou à l'arrêt) ; J5 sort le
+  bus sur un connecteur 2 x 20.</em>
+</p>
+
+<p align="center">
+  <img src="medias/pcb-3d.jpg" alt="Rendu 3D du PCB v2 avec ses composants et les libellés de sérigraphie" width="700"><br>
+  <em>PCB v2 (120 x 124,2 mm, 2 couches), rendu 3D de KiCad : 8088, support ZIF de la ROM, pont Black Pill (U5),
+  RAM 512 Ko, 8255, 8259, bargraphes d'adresses et connecteur de bus J5. Routé par Freerouting.</em>
 </p>
 
 ### Les signaux en action
@@ -201,9 +209,9 @@ Outils : NASM, GNU Make, Python 3 (+ `unicorn` pour les tests) ; PlatformIO pour
 |---|---|
 | [Solution-01/](Solution-01) | ROM du 8088 (NASM) et tests ; documentation technique complète dans [Solution-01/README.md](Solution-01/README.md) |
 | [arduino/8088_bridge_stm32/](arduino/8088_bridge_stm32) | Firmware du pont Black Pill STM32F411 (PlatformIO) |
-| [kicad/](kicad) | Schéma du montage |
+| [kicad/](kicad) | Schéma et PCB du montage |
 | [PC-DOS/](PC-DOS) | Images de disquette de test |
-| [medias/](medias) | Fiches techniques, schéma, animation des signaux et captures |
+| [medias/](medias) | Fiches techniques, schéma, rendu du PCB, animation des signaux et captures |
 
 > Les captures du terminal de cette page sont produites par la ROM réelle, exécutée dans le
 > simulateur du projet ([medias/captures/generer.py](medias/captures/generer.py)).

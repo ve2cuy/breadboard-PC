@@ -323,7 +323,7 @@ breadboard-PC/                  (racine du dépôt Git)
 │   ├── Breadboard-pc/          Projet principal : schéma et PCB v2, 120 x 124,2 mm (4 trous de
 │   │                            fixation M3 aux coins, à 3,5 mm des bords), 2 couches,
 │   │                            routé par Freerouting 2.5 (0 liaison manquante, DRC sans
-│   │                            erreur ; rendu : medias/pcb-routage.png). Classe Power
+│   │                            erreur ; rendus : medias/pcb-routage.png, 3D medias/pcb-3d.jpg). Classe Power
 │   │                            (+5V, GND, 5V_JACK) en 0,6 mm, signaux en 0,20 mm (isolement
 │   │                            0,18 mm ; largeur min. du projet 0,12 mm ; trou-cuivre 0,30 mm) ;
 │   │                            cuivre à 0,55 mm du bord. Plans de masse GND sur les deux faces

@@ -39,9 +39,17 @@ breadboards with 74LS/74HC logic and no programmable logic (no GAL, no CPLD):
 - the 8088's `RD#` and `WR#` go straight to the ROM, the RAM, the 8255 and the 8259.
 
 <p align="center">
-  <img src="medias/schema-kicad.png" alt="KiCad schematic of the build: 8088, latches, buffer, ROM, 512 KB RAM, 8255, 8259, decoding and bridge" width="900"><br>
+  <img src="medias/schema-kicad.png" alt="KiCad schematic of the build: 8088, latches, buffer, ROM, 512 KB RAM, 8255, 8259, decoding, bridge, address bargraphs and bus connector" width="900"><br>
   <em>Schematic of the build (KiCad, <a href="kicad/Breadboard-pc">kicad/Breadboard-pc</a>). The clock comes from the
-  bridge (<code>CLK_STM</code>) or from an external input, selected by jumper JP1.</em>
+  bridge (<code>CLK_STM</code>) or from an external input, selected by jumper JP1. On the PCB, a third 74LS373 (U12)
+  also latches A8-A11, so the whole address bus (A0-A19) can drive two 10-LED bargraphs (readable when single-stepping or halted); J5 brings the bus
+  out on a 2 x 20 header.</em>
+</p>
+
+<p align="center">
+  <img src="medias/pcb-3d.jpg" alt="3D render of the PCB v2 with its components and silkscreen labels" width="700"><br>
+  <em>PCB v2 (120 x 124.2 mm, 2 layers), KiCad 3D render: 8088, ZIF socket for the ROM, Black Pill bridge (U5),
+  512 KB RAM, 8255, 8259, address bargraphs and J5 bus connector. Routed with Freerouting.</em>
 </p>
 
 ### The signals in action
@@ -200,9 +208,9 @@ Tools: NASM, GNU Make, Python 3 (+ `unicorn` for the tests); PlatformIO for the 
 |---|---|
 | [Solution-01/](Solution-01) | 8088 ROM (NASM) and tests; full technical documentation (in French) in [Solution-01/README.md](Solution-01/README.md) |
 | [arduino/8088_bridge_stm32/](arduino/8088_bridge_stm32) | Firmware of the Black Pill STM32F411 bridge (PlatformIO) |
-| [kicad/](kicad) | Schematic of the build |
+| [kicad/](kicad) | Schematic and PCB of the build |
 | [PC-DOS/](PC-DOS) | Test floppy disk images |
-| [medias/](medias) | Datasheets, schematic, signal animation and screenshots |
+| [medias/](medias) | Datasheets, schematic, PCB render, signal animation and screenshots |
 
 > The terminal screenshots on this page are produced by the actual (English) ROM, running in the
 > project's simulator ([medias/captures/generer.py](medias/captures/generer.py)).
