@@ -73,37 +73,54 @@ bloc de 16 ports :
 - L'impulsion E dure environ 2 cycles (≈ 375 ns à 5,33 MHz) : suffisant pour
   un HD44780U (230 ns minimum), à surveiller avec un contrôleur plus lent.
 
-## BIOS 0.1
+## BIOS 0.2
 
-Source : [bios/bios.asm](bios/bios.asm). Le code **n'utilise pas la RAM**
-(ni pile ni variables, tout passe par des macros) : il fonctionne même sans
-RAM câblée.
+Source : [bios/bios.asm](bios/bios.asm). Déroulement :
 
-Affichage :
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.2`,
+   `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
+2. **Test complet de la RAM**, fait **sans pile ni variables** (macros
+   seulement), donc fiable même si la RAM est défectueuse :
+   - **motifs** : chaque bloc de 1 Ko est rempli puis relu avec 55AAh, AA55h,
+     0000h et FFFFh, de sorte que chaque octet voit AAh, 55h, 00h et FFh
+     (mêmes motifs que Solution-01). Environ 7 s pour 512 Ko ;
+   - **lignes d'adresse A0–A18** (méthode de Solution-01) : 5Ah à l'adresse
+     de base 35555h, puis k+1 à 35555h xor 2ᵏ, et relecture. Une ligne
+     coupée ou en court-circuit fait tomber deux adresses sur la même case ;
+     une puce de 128 ou 256 Ko vendue pour 512 Ko échoue sur A17/A18.
+3. **RAM bonne** : effacement à 0, puis **pile en 7000:0000** (premier PUSH
+   en 7FFFEh, haut de la RAM), vérifiée par PUSH/POP. La boucle finale utilise
+   des sous-programmes (CALL/RET), ce qui prouve que la pile fonctionne.
 
-| Ligne | Contenu |
-|---|---|
-| 1 | `SOLUTION-02 BIOS 0.1` |
-| 2 | `CPU 8088/V20 5.33MHz` |
-| 3 | test de la RAM : `RAM 512 Ko : OK` ou `RAM ERR aaaaa ee/ll` |
-| 4 | `VE2CUY-2026 CPT nnnn` (compteur hexadécimal : le processeur tourne) |
+Écran du test :
 
-Le test de la RAM écrit 55h, AAh, 00h et FFh dans le premier et le dernier
-octet de chaque bloc de 1 Ko, puis vérifie les lignes A0–A18 (une valeur
-distincte à l'adresse 0 et à chaque adresse 2ⁿ). En cas d'erreur, la ligne 3
-donne l'adresse physique (aaaaa), la valeur attendue (ee) et la valeur lue
-(ll) :
+| Ligne | Pendant le test | RAM bonne | RAM défectueuse |
+|---|---|---|---|
+| 1 | `TEST MEMOIRE 512 Ko` | `MEMOIRE 512 Ko : OK` | `RAM DEFAUT  CPT nnnn` |
+| 2 | `Ko: nnn  Defauts nnn` (Ko testés, Ko défectueux) | idem | idem |
+| 3 | — | `Adresses A0-A18: OK` | `Adresses: ERR Ann` ou `Adresses: ERR base` |
+| 4 | premier défaut : `ERR aaaaa ee/ll` | `PILE OK     CPT nnnn` | premier défaut |
 
-- adresse égale à une puissance de 2 (ex. 00400h = A10) → ligne d'adresse
-  coupée ou en court-circuit ;
-- ee et ll qui diffèrent d'un seul bit → ligne de données correspondante ;
-- RAM absente → erreur dès l'adresse 00000h.
+Le compteur hexadécimal (CPT) montre que le processeur tourne. Lecture des
+erreurs :
+
+- `ERR aaaaa ee/ll` : premier octet fautif, à l'adresse physique aaaaa ;
+  ee = valeur attendue, ll = valeur lue. Si ee et ll diffèrent d'un seul bit,
+  vérifier la ligne de données correspondante ;
+- `Adresses: ERR Ann` : ligne d'adresse Ann coupée, collée ou en
+  court-circuit ;
+- `Adresses: ERR base` : la case de base ne retient rien (RAM absente ou
+  non sélectionnée).
+
+Le simulateur (`make test`) vérifie 5 scénarios : RAM saine (et pile en
+7000h), cellule 7B3FFh défectueuse, RAM absente, ligne A15 coupée, puce de
+128 Ko (A17 ignorée).
 
 Commandes (depuis `bios/`) :
 
 ```sh
 make            # build/solution-02-bios.bin (image de 256 Ko)
-make test       # simulateur tests/sim.py (unicorn, modèle du HD44780)
+make test       # simulateur tests/sim.py (unicorn, modèle du HD44780, 5 scénarios)
 make flash PUCE=ok   # graver la W29C020C (TL866CS, minipro sous WSL) — insérer la puce d'abord
 ```
 
@@ -125,9 +142,9 @@ ROM, A14 est à la broche 29 et A15 à la broche 3.
 
 ## État
 
+- 2026-11-13 : RAM câblée, `RAM 512 Ko : OK` avec le BIOS 0.1. BIOS 0.2 (test complet + pile) prêt.
 - 2026-11-13 : montage fonctionnel avec un **8088 NMOS** et les **74HC573
   sans résistances de tirage** (cause des premiers échecs : A8–A10 non
   reliées). Les 4 lignes s'affichent et le compteur s'incrémente.
-- RAM pas encore câblée (ligne 3 : `RAM ERR`, normal).
 - À ajouter au schéma : condensateurs de découplage (100 nF par circuit
   intégré) et connecteur d'alimentation.

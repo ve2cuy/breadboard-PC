@@ -68,7 +68,13 @@ class LCD:
         return ["".join(chr(c) for c in self.ddram[a:a + 20]) for a in ADR_LIGNES]
 
 
-def lancer(image, defaut=None, compteur_fin="0003", max_instr=8_000_000):
+def fini(lcd):
+    """Le BIOS a termine : un compteur "CPT 0003" s'affiche (ligne 4 si la RAM est bonne,
+    ligne 1 si elle est defectueuse)."""
+    return any(l.endswith("CPT 0003") for l in lcd.lignes())
+
+
+def lancer(image, defaut=None, max_instr=30_000_000):
     rom = open(image, "rb").read()
     assert len(rom) == ROM_LEN, "image de %d octets (256 Ko attendus)" % len(rom)
     uc = Uc(UC_ARCH_X86, UC_MODE_16)
@@ -94,15 +100,18 @@ def lancer(image, defaut=None, compteur_fin="0003", max_instr=8_000_000):
             etat["fin"] = "ecriture en ROM a %05Xh" % adr
             uc.emu_stop()
             return True
-        if defaut and defaut(adr):
-            etat["restaurer"].append((adr, uc.mem_read(adr, 1)[0]))
+        if defaut:
+            for i in range(taille):          # ecritures de mots (REP STOSW) : chaque octet
+                if defaut(adr + i):
+                    etat["restaurer"].append((adr + i, uc.mem_read(adr + i, 1)[0]))
         return True
 
     def sortie(uc, port, taille, val, ud):
         if port in (0, 1):
             lcd.ecrire(port, val & 0xFF, etat["n"])
-            if lcd.lignes()[3].endswith(compteur_fin):
+            if fini(lcd):
                 etat["fin"] = "ok"
+                etat["ss_sp"] = (uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_SP))
                 uc.emu_stop()
         else:
             lcd.erreurs.append("OUT vers le port %02Xh" % port)
@@ -133,18 +142,20 @@ def main():
     image = sys.argv[1] if len(sys.argv) > 1 else "build/solution-02-bios.bin"
     echecs = 0
     cas = [
-        ("RAM saine", None,
-         ["SOLUTION-02 BIOS 0.1", "CPU 8088/V20 5.33MHz", "RAM 512 Ko : OK     ", "VE2CUY-2026 CPT 0003"]),
-        ("cellule 7B3FFh qui ne retient rien", lambda a: a == 0x7B3FF,
-         [None, None, "RAM ERR 7B3FF 55/00 ", None]),
-        ("RAM absente", lambda a: a < RAM,
-         [None, None, "RAM ERR 00000 55/00 ", "VE2CUY-2026 CPT 0003"]),
-        ("ligne A15 coupee (8000h repond comme 0)",
-         None, [None, None, "RAM ERR 00000 00/10 ", None]),
+        ("RAM saine", None, None,
+         ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK     CPT 0003"]),
+        ("cellule 7B3FFh qui ne retient rien", lambda a: a == 0x7B3FF, None,
+         ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 001", "Adresses A0-A18: OK ", "ERR 7B3FF 55/00     "]),
+        ("RAM absente", lambda a: a < RAM, None,
+         ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 512", "Adresses: ERR base  ", "ERR 00000 AA/00     "]),
+        ("ligne A15 coupee (8000h repond comme 0)", None, 15,
+         ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 000", "Adresses: ERR A15   ", "                    "]),
+        ("puce de 128 Ko (A17 ignoree)", None, 17,
+         ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 000", "Adresses: ERR A17   ", "                    "]),
     ]
-    for titre, defaut, attendu in cas:
-        if titre.startswith("ligne A15"):
-            lcd, etat = lancer_alias(image, 1 << 15)
+    for titre, defaut, bit, attendu in cas:
+        if bit is not None:
+            lcd, etat = lancer_alias(image, 1 << bit)
         else:
             lcd, etat = lancer(image, defaut)
         afficher(titre, lcd, etat)
@@ -153,6 +164,12 @@ def main():
             if a is not None and l != a:
                 ok = False
                 print("    attendu: |%s|" % a)
+        if titre == "RAM saine":
+            print("    pile SS:SP = %04X:%04X" % etat.get("ss_sp", (0, 0)))
+            ss, sp = etat.get("ss_sp", (0, 1))
+            if ss != 0x7000 or not (sp == 0 or sp >= 0xFF00):   # SP = FFFEh dans lcd_car (adresse de retour)
+                ok = False
+                print("    attendu: pile 7000:0000 (au sommet ou presque)")
         print("    =>", "OK" if ok else "ECHEC")
         echecs += not ok
     print("\n%d scenario(s) en echec" % echecs)
@@ -176,7 +193,7 @@ def lancer_alias(image, bit):
             uc.mem_write(a, bytes([v]))
         etat["copie"] = []
         etat["n"] += 1
-        if etat["n"] > 8_000_000:
+        if etat["n"] > 30_000_000:
             etat["fin"] = "limite d'instructions atteinte"
             uc.emu_stop()
 
@@ -188,8 +205,9 @@ def lancer_alias(image, bit):
 
     def sortie(uc, port, taille, val, ud):
         lcd.ecrire(port, val & 0xFF, etat["n"])
-        if lcd.lignes()[3].endswith("0003"):
+        if fini(lcd):
             etat["fin"] = "ok"
+            etat["ss_sp"] = (uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_SP))
             uc.emu_stop()
 
     uc.hook_add(UC_HOOK_CODE, code)
