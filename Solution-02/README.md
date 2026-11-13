@@ -194,7 +194,7 @@ ROM, A14 est à la broche 29 et A15 à la broche 3.
 ## État
 
 - 2026-11-13 : BIOS 0.2 essayé sur le montage : test complet de la RAM, lignes d'adresse et pile OK.
-- 2026-11-13 : 8255 (U7) ajouté au schéma en 10h–13h, avec J1–J3 pour les DEL ; BIOS 0.3 (animations) prêt.
+- 2026-11-13 : 8255 (U7) ajouté au schéma en 10h–13h, avec J1–J3 pour les DEL ; BIOS 0.3 (animations) gravé.
 - 2026-11-13 : RAM câblée, `RAM 512 Ko : OK` avec le BIOS 0.1. BIOS 0.2 (test complet + pile) gravé.
 - 2026-11-13 : montage fonctionnel avec un **8088 NMOS** et les **74HC573
   sans résistances de tirage** (cause des premiers échecs : A8–A10 non
