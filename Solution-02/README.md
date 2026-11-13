@@ -103,11 +103,11 @@ Au RESET, le 8255 met ses 3 ports en entrée (sorties flottantes). Le BIOS
 envoie le mot de contrôle **80h** (mode 0, PA, PB et PC en sortie) et éteint
 les DEL dès le démarrage, juste après l'initialisation du LCD.
 
-## BIOS 0.3
+## BIOS 0.4
 
 Source : [bios/bios.asm](bios/bios.asm). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.3`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.4`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Test complet de la RAM**, fait **sans pile ni variables** (macros
    seulement), donc fiable même si la RAM est défectueuse :
@@ -123,22 +123,23 @@ Source : [bios/bios.asm](bios/bios.asm). Déroulement :
    affiché ~3 s ; la suite utilise des sous-programmes (CALL/RET), ce qui
    prouve que la pile fonctionne.
 4. **Animations des DEL** (RAM bonne seulement) : 9 animations en boucle sur
-   les 24 sorties, vues comme une seule rangée PA0 … PA7, PB0 … PB7,
-   PC0 … PC7. Un cycle complet dure ~30 s.
+   les 24 sorties, vues comme une seule rangée disposée ainsi sur le montage,
+   de gauche à droite : **PC7 … PC0, PA7 … PA0, PB7 … PB0**. Un cycle
+   complet dure ~35 s.
 
 | Animation | Effet |
 |---|---|
-| Chenillard | une DEL parcourt les 24 sorties (2 tours) |
-| Balayage | 3 DEL font l'aller-retour d'un bout à l'autre (3 fois) |
-| Remplissage | la rangée se remplit depuis PA0, puis se vide (2 fois) |
+| Chenillard | une DEL parcourt la rangée de gauche à droite (2 tours) |
+| Balayage | 3 DEL font l'aller-retour, de gauche à droite puis retour (3 fois) |
+| Remplissage | la rangée se remplit de gauche à droite, puis se vide (2 fois) |
 | Explosion | 2 DEL partent du centre vers les bouts, puis reviennent (2 fois) |
 | Alternance | damier qui s'inverse (10 pas lents) |
-| Compteur/Gray | PA = compteur binaire, PB = son code de Gray, PC = compteur / 8 |
-| Ports PA PB PC | chaque port allumé à tour de rôle, puis tout clignote |
+| Compteur/Gray | PB (droite) = compteur binaire, PA (centre) = son code de Gray, PC (gauche) = compteur / 8 |
+| Ports C A B | PC, PA puis PB allumés à tour de rôle (de gauche à droite), puis tout clignote |
 | Etincelles | DEL allumées au hasard (~1 sur 4) |
-| Vu-metre | chaque port affiche une barre de hauteur aléatoire |
+| Vu-metre | une barre partie de la gauche (0 à 24 DEL) monte et descend vers des niveaux aléatoires |
 
-Écran pendant les animations : `SOLUTION-02 BIOS 0.3`,
+Écran pendant les animations : `SOLUTION-02 BIOS 0.4`,
 `RAM 512 Ko  PILE OK`, `DEL : 8255 en 10h`, puis le nom de l'animation et le
 nombre de cycles complets (hexadécimal).
 
@@ -193,6 +194,7 @@ ROM, A14 est à la broche 29 et A15 à la broche 3.
 
 ## État
 
+- 2026-11-13 : 8255 fonctionnel (D0–D7 avaient été inversés au câblage). BIOS 0.4 : animations adaptées à la disposition des DEL (C7…C0, A7…A0, B7…B0).
 - 2026-11-13 : BIOS 0.2 essayé sur le montage : test complet de la RAM, lignes d'adresse et pile OK.
 - 2026-11-13 : 8255 (U7) ajouté au schéma en 10h–13h, avec J1–J3 pour les DEL ; BIOS 0.3 (animations) gravé.
 - 2026-11-13 : RAM câblée, `RAM 512 Ko : OK` avec le BIOS 0.1. BIOS 0.2 (test complet + pile) gravé.

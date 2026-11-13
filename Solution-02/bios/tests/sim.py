@@ -181,7 +181,7 @@ def main():
     echecs = 0
     cas = [
         ("RAM saine", None, None,
-         ["SOLUTION-02 BIOS 0.3", "RAM 512 Ko  PILE OK ", "DEL : 8255 en 10h   ", "Chenillard      0001"]),
+         ["SOLUTION-02 BIOS 0.4", "RAM 512 Ko  PILE OK ", "DEL : 8255 en 10h   ", "Chenillard      0001"]),
         ("cellule 7B3FFh qui ne retient rien", lambda a: a == 0x7B3FF, None,
          ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 001", "Adresses A0-A18: OK ", "ERR 7B3FF 55/00     "]),
         ("RAM absente", lambda a: a < RAM, None,

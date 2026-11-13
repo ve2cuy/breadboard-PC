@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 0.3 (VE2CUY, 2026)
+; Solution-02 - BIOS 0.4 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -31,8 +31,9 @@
 ;      de la RAM), verifiee par PUSH/POP ; la boucle finale utilise CALL/RET
 ;      (ligne 4 : "PILE 7000:0000  OK").
 ;      RAM defectueuse : pas de pile, ligne 1 "RAM DEFAUT  CPT nnnn".
-;   4) RAM bonne : 9 animations en boucle sur les 24 DEL du 8255 (PA0 = premiere
-;      DEL, PC7 = derniere) ; ligne 4 = nom de l'animation + nombre de cycles.
+;   4) RAM bonne : 9 animations en boucle sur les 24 DEL du 8255, disposees de
+;      gauche a droite PC7..PC0, PA7..PA0, PB7..PB0 ; ligne 4 = nom de
+;      l'animation + nombre de cycles.
 ;
 ; Construire : nasm -f bin -o build/solution-02-bios.bin bios.asm  (image 256 Ko)
 ; =============================================================================
@@ -537,24 +538,27 @@ lcd_texte:
         ret
 
 ; =============================================================================
-; Animations des 24 DEL : BL = PA, BH = PB, DL = PC, vus comme une rangee de 24
-; DEL (bit 0 de BL = PA0 = premiere, bit 7 de DL = PC7 = derniere).
+; Animations des 24 DEL. Disposition du montage, de gauche a droite :
+;   PC7 ... PC0   PA7 ... PA0   PB7 ... PB0
+; Rangee logique de 24 bits DL:BH:BL, bit 23 = DEL la plus a GAUCHE (PC7), bit 0 =
+; DEL la plus a DROITE (PB0) : DL = PC, BH = PA, BL = PB. Decaler vers la droite =
+; SHR DL / RCR BH / RCR BL.
 ; DI = duree d'un pas. Chaque animation peut detruire AX, BX, CX, DX, SI, DI,
 ; mais PAS BP (compteur de cycles).
 ; =============================================================================
-; del_aff : sort BL, BH, DL sur PA, PB, PC, puis attend DI iterations. Detruit AL, CX.
+; del_aff : sort DL sur PC, BH sur PA, BL sur PB, puis attend DI iterations. Detruit AL, CX.
 del_aff:
-        mov     al, bl
-        out     PPI_PA, al
-        mov     al, bh
-        out     PPI_PB, al
         mov     al, dl
         out     PPI_PC, al
+        mov     al, bh
+        out     PPI_PA, al
+        mov     al, bl
+        out     PPI_PB, al
         mov     cx, di
 .w:     loop    .w
         ret
 
-; bit24 : allume la DEL numero CL (0-23) dans BL:BH:DL. Detruit AL, CL.
+; bit24 : allume la DEL numero CL (0 = PB0 a droite ... 23 = PC7 a gauche). Detruit AL, CL.
 bit24:
         mov     al, 1
         cmp     cl, 8
@@ -586,62 +590,49 @@ alea:
         pop     cx
         ret
 
-; barre : AL (aleatoire) -> barre de 0 a 8 DEL allumees depuis le bit 0. Preserve BX.
-barre:
-        and     al, 0Fh
-        cmp     al, 8
-        jbe     .ok
-        sub     al, 7                   ; 9-15 -> 2-8
-.ok:    push    bx
-        mov     bx, barres
-        xlat                            ; AL = [DS:BX + AL] (DS = CS)
-        pop     bx
-        ret
-
-; 1) chenillard : une DEL parcourt les 24 sorties (2 tours)
+; 1) chenillard : une DEL parcourt la rangee de gauche a droite (2 tours)
 anim_chenillard:
         mov     di, VIT_RAPIDE
         mov     ah, 2
 .tour:  xor     bx, bx
-        xor     dl, dl
-        mov     bl, 1
+        mov     dl, 80h                 ; PC7, a gauche
         mov     si, 24
 .pas:   call    del_aff
-        shl     bl, 1
-        rcl     bh, 1
-        rcl     dl, 1
+        shr     dl, 1
+        rcr     bh, 1
+        rcr     bl, 1
         dec     si
         jnz     .pas
         dec     ah
         jnz     .tour
         ret
 
-; 2) balayage : 3 DEL font l'aller-retour d'un bout a l'autre (3 fois)
+; 2) balayage : 3 DEL font l'aller-retour, de gauche a droite puis retour (3 fois)
 anim_balayage:
         mov     di, VIT_RAPIDE
         mov     ah, 3
-.tour:  mov     bx, 0007h
-        xor     dl, dl
+.tour:  xor     bx, bx
+        mov     dl, 0E0h                ; PC7-PC5, a gauche
         mov     si, 21
 .aller: call    del_aff
-        shl     bl, 1
-        rcl     bh, 1
-        rcl     dl, 1
+        shr     dl, 1
+        rcr     bh, 1
+        rcr     bl, 1
         dec     si
         jnz     .aller
         mov     si, 21
 .retour:
         call    del_aff
-        shr     dl, 1
-        rcr     bh, 1
-        rcr     bl, 1
+        shl     bl, 1
+        rcl     bh, 1
+        rcl     dl, 1
         dec     si
         jnz     .retour
         dec     ah
         jnz     .tour
         ret
 
-; 3) remplissage : la rangee se remplit depuis PA0, puis se vide dans le meme sens (2 fois)
+; 3) remplissage : la rangee se remplit de gauche a droite, puis se vide dans le meme sens (2 fois)
 anim_remplissage:
         mov     di, VIT_NORMAL
         mov     ah, 2
@@ -650,17 +641,17 @@ anim_remplissage:
         mov     si, 24
 .remplit:
         stc
-        rcl     bl, 1
-        rcl     bh, 1
-        rcl     dl, 1
+        rcr     dl, 1
+        rcr     bh, 1
+        rcr     bl, 1
         call    del_aff
         dec     si
         jnz     .remplit
         mov     si, 24
 .vide:  clc
-        rcl     bl, 1
-        rcl     bh, 1
-        rcl     dl, 1
+        rcr     dl, 1
+        rcr     bh, 1
+        rcr     bl, 1
         call    del_aff
         dec     si
         jnz     .vide
@@ -709,7 +700,8 @@ anim_alternance:
         jnz     .pas
         ret
 
-; 6) compteur : PA = binaire, PB = code de Gray du meme nombre, PC = binaire / 8
+; 6) compteur : PB (a droite) = binaire, PA (au centre) = code de Gray du meme
+;    nombre, PC (a gauche) = binaire / 8 ; bit de poids faible a droite de chaque port
 anim_compteur:
         mov     di, VIT_RAPIDE
         xor     si, si
@@ -727,17 +719,18 @@ anim_compteur:
         jb      .pas
         ret
 
-; 7) ports : PA, PB puis PC allumes a tour de role (3 fois), puis tout clignote (4 fois)
+; 7) ports : PC, PA puis PB (de gauche a droite) allumes a tour de role (3 fois),
+;    puis tout clignote (4 fois)
 anim_ports:
         mov     di, VIT_LENTE
         mov     ah, 3
-.tour:  mov     bx, 00FFh
+.tour:  xor     bx, bx
+        mov     dl, 0FFh                ; PC (gauche)
+        call    del_aff
+        mov     bx, 0FF00h              ; PA (centre)
         xor     dl, dl
         call    del_aff
-        mov     bx, 0FF00h
-        call    del_aff
-        xor     bx, bx
-        mov     dl, 0FFh
+        mov     bx, 00FFh               ; PB (droite)
         call    del_aff
         dec     ah
         jnz     .tour
@@ -770,24 +763,44 @@ anim_etincelles:
         jnz     .pas
         ret
 
-; 9) vu-metre : chaque port affiche une barre de hauteur aleatoire, 40 pas
+; 9) vu-metre : une barre partie de la gauche (0 a 24 DEL) monte ou descend d'une
+;    DEL par pas vers un niveau cible aleatoire, puis vise un nouveau niveau (120 pas)
+;    CL = niveau, CH = cible, AH = pas restants, SI = LFSR.
 anim_vumetre:
-        mov     di, VIT_NORMAL
+        mov     di, VIT_RAPIDE
         mov     si, 1234h               ; graine du LFSR
-        mov     dh, 40
-.pas:   call    alea
-        call    barre
-        mov     cl, al                  ; (CL, CH : intacts jusqu'a del_aff)
+        mov     ah, 120
+        xor     cx, cx
+.pas:   cmp     cl, ch
+        jne     .bouge
+        push    ax                      ; cible atteinte : nouvelle cible 0-24
         call    alea
-        call    barre
-        mov     ch, al
-        call    alea
-        call    barre
-        mov     dl, al
-        mov     bl, cl
-        mov     bh, ch
+        xor     ah, ah
+        mov     bl, 25
+        div     bl
+        mov     ch, ah
+        pop     ax
+        jmp     .pas
+.bouge: jb      .monte
+        dec     cl
+        jmp     .dessine
+.monte: inc     cl
+.dessine:
+        xor     bx, bx                  ; barre de CL DEL depuis la gauche
+        xor     dl, dl
+        mov     al, cl
+        or      al, al
+        jz      .aff
+.b:     stc
+        rcr     dl, 1
+        rcr     bh, 1
+        rcr     bl, 1
+        dec     al
+        jnz     .b
+.aff:   push    cx
         call    del_aff
-        dec     dh
+        pop     cx
+        dec     ah
         jnz     .pas
         ret
 
@@ -795,7 +808,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 0.3'
+txt_ouv1:   db  'SOLUTION-02 BIOS 0.4'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -808,7 +821,7 @@ txt_ram_ok: db  'MEMOIRE 512 Ko : OK '
 txt_echec:  db  'RAM DEFAUT  CPT 0000'
 txt_pile_ok:db  'PILE 7000:0000  OK  '
 txt_pile_err:db 'PILE ERR            '
-txt_del1:   db  'SOLUTION-02 BIOS 0.3'
+txt_del1:   db  'SOLUTION-02 BIOS 0.4'
 txt_del2:   db  'RAM 512 Ko  PILE OK '
 txt_del3:   db  'DEL : 8255 en 10h   '
 %ifdef DIAG_8255
@@ -836,11 +849,9 @@ txt_a3:     db  'Remplissage     '
 txt_a4:     db  'Explosion       '
 txt_a5:     db  'Alternance      '
 txt_a6:     db  'Compteur/Gray   '
-txt_a7:     db  'Ports PA PB PC  '
+txt_a7:     db  'Ports C A B     '
 txt_a8:     db  'Etincelles      '
 txt_a9:     db  'Vu-metre        '
-
-barres:     db  00h, 01h, 03h, 07h, 0Fh, 1Fh, 3Fh, 7Fh, 0FFh
 
 motifs:     dw  55AAh, 0AA55h, 0000h, 0FFFFh
 
