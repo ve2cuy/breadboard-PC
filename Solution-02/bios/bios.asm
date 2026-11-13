@@ -202,6 +202,50 @@ debut:
         out     PPI_PB, al
         out     PPI_PC, al
 
+%ifdef DIAG_8255
+; ---- ROM de diagnostic du 8255 (make diag) : ecritures en RAFALE continue -------
+; CS# (U7 broche 6 = U8 broche 14) et WR# (U7 broche 36) pulsent sans arret (des
+; centaines de kHz), faciles a voir a l'oscilloscope ou a la sonde logique. Le motif
+; s'inverse ~ toutes les 0,3 s (DEL qui clignotent) : PA = n, PB = NOT n, PC = n.
+; Le mot de controle est renvoye a chaque inversion. Sans RAM ni pile.
+        LCD_LIGNE LIGNE1, txt_diag1
+        LCD_LIGNE LIGNE2, txt_diag2
+        LCD_LIGNE LIGNE3, txt_diag3
+        mov     bl, 55h
+diag_motif:
+        mov     bh, bl
+        not     bh
+        LCD_COMMANDE (80h | LIGNE4)     ; "PA=55 PB=AA PC=55"
+        LCD_CHR 'P'
+        LCD_CHR 'A'
+        LCD_CHR '='
+        LCD_HEX8 bl
+        LCD_CHR ' '
+        LCD_CHR 'P'
+        LCD_CHR 'B'
+        LCD_CHR '='
+        LCD_HEX8 bh
+        LCD_CHR ' '
+        LCD_CHR 'P'
+        LCD_CHR 'C'
+        LCD_CHR '='
+        LCD_HEX8 bl
+        mov     al, PPI_MODE0_SORTIES
+        out     PPI_CTRL, al
+        mov     dx, 20000
+diag_rafale:
+        mov     al, bl
+        out     PPI_PA, al
+        mov     al, bh
+        out     PPI_PB, al
+        mov     al, bl
+        out     PPI_PC, al
+        dec     dx
+        jnz     diag_rafale
+        not     bl
+        jmp     diag_motif
+%endif
+
 ; ---- 1) ecran d'ouverture ------------------------------------------------------
         LCD_LIGNE LIGNE1, txt_ouv1
         LCD_LIGNE LIGNE2, txt_ouv2
@@ -767,6 +811,11 @@ txt_pile_err:db 'PILE ERR            '
 txt_del1:   db  'SOLUTION-02 BIOS 0.3'
 txt_del2:   db  'RAM 512 Ko  PILE OK '
 txt_del3:   db  'DEL : 8255 en 10h   '
+%ifdef DIAG_8255
+txt_diag1:  db  'DIAG 8255  10h-13h  '
+txt_diag2:  db  'Rafale: CS# et WR#  '
+txt_diag3:  db  'U7 br. 6 et 36      '
+%endif
 
 ; animations : (nom de 16 caracteres, routine)
 anim_table:
