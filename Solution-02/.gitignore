@@ -6,3 +6,4 @@
 fp-info-cache
 # BIOS: fichiers produits par make
 bios/build/
+__pycache__/
