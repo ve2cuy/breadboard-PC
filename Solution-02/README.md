@@ -9,6 +9,7 @@ le processeur pilote directement son LCD et sa mémoire.
 - Verrous d'adresses : 2 × 74HC573 (U2 : A0–A7, U3 : A16–A19)
 - Décodage : 74LS00 (U5), 74LS138 (U8), 74LS02 (U9)
 - Afficheur : LCD 20×4 (HD44780 / ST7066U), bus 8 bits, en écriture seule
+- E/S parallèles : 8255 (U7, µPD71055C) en 10h–13h, 24 DEL sur J1–J3
 
 Schéma : [Solution02.kicad_sch](Solution02.kicad_sch).
 Journal des étapes : [Directives.md](Directives.md).
@@ -35,7 +36,7 @@ bloc de 16 ports :
 | Sortie | Broche U8 | Ports | Usage |
 |---|---|---|---|
 | O0 | 15 | 00h–0Fh | **LCD (occupé)** : 00h = commande, 01h = donnée (RS = A0) |
-| O1 | 14 | 10h–1Fh | libre |
+| O1 | 14 | 10h–1Fh | **8255 (U7, occupé)** : 10h = PA, 11h = PB, 12h = PC, 13h = contrôle (A0–A1) |
 | O2 | 13 | 20h–2Fh | libre (8259 dans un PC) |
 | O3 | 12 | 30h–3Fh | libre |
 | O4 | 11 | 40h–4Fh | libre (8253 dans un PC) |
@@ -73,11 +74,40 @@ bloc de 16 ports :
 - L'impulsion E dure environ 2 cycles (≈ 375 ns à 5,33 MHz) : suffisant pour
   un HD44780U (230 ns minimum), à surveiller avec un contrôleur plus lent.
 
-## BIOS 0.2
+## 8255 (U7) et DEL
+
+8255 CMOS (µPD71055C) sélectionné par **O1** du 74LS138 : ports **10h–13h**
+(répétés jusqu'à 1Fh, car seules A0–A1 vont au 8255).
+
+| Broche 8255 | Signal | Vient de |
+|---|---|---|
+| 34, 33, 32, 31, 30, 29, 28, 27 | D0–D7 | AD0–AD7 du 8088 |
+| 9, 8 | A0, A1 | U2 (74HC573) Q0, Q1 |
+| 6 | CS# | U8 (74LS138) broche 14 (O1) |
+| 5 | RD# | RD# (8088 broche 32) |
+| 36 | WR# | WR# (8088 broche 29) |
+| 35 | RESET | RESET du 82C84 (U11 broche 10, 8088 broche 21) |
+| 26 / 7 | VCC / GND | +5 V / GND (+ 100 nF) |
+| 4, 3, 2, 1, 40, 39, 38, 37 | PA0–PA7 | J1 broches 1–8 |
+| 18–25 | PB0–PB7 | J2 broches 1–8 |
+| 14, 15, 16, 17, 13, 12, 11, 10 | PC0–PC7 | J3 broches 1–8 |
+
+J1, J2 et J3 (1×10) : broches 1–8 = PA/PB/PC 0–7, broche 9 = +5 V,
+broche 10 = GND.
+
+DEL : une sortie à 1 allume la DEL si elle est câblée **sortie → 1 kΩ →
+anode, cathode → GND** (broche 10). Le 82C55 ne fournit que ~2,5 mA par
+sortie : pour des DEL plus brillantes, passer par un ULN2803 ou un 74HC245.
+
+Au RESET, le 8255 met ses 3 ports en entrée (sorties flottantes). Le BIOS
+envoie le mot de contrôle **80h** (mode 0, PA, PB et PC en sortie) et éteint
+les DEL dès le démarrage, juste après l'initialisation du LCD.
+
+## BIOS 0.3
 
 Source : [bios/bios.asm](bios/bios.asm). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.2`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.3`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Test complet de la RAM**, fait **sans pile ni variables** (macros
    seulement), donc fiable même si la RAM est défectueuse :
@@ -89,8 +119,28 @@ Source : [bios/bios.asm](bios/bios.asm). Déroulement :
      coupée ou en court-circuit fait tomber deux adresses sur la même case ;
      une puce de 128 ou 256 Ko vendue pour 512 Ko échoue sur A17/A18.
 3. **RAM bonne** : effacement à 0, puis **pile en 7000:0000** (premier PUSH
-   en 7FFFEh, haut de la RAM), vérifiée par PUSH/POP. La boucle finale utilise
-   des sous-programmes (CALL/RET), ce qui prouve que la pile fonctionne.
+   en 7FFFEh, haut de la RAM), vérifiée par PUSH/POP. Le résultat reste
+   affiché ~3 s ; la suite utilise des sous-programmes (CALL/RET), ce qui
+   prouve que la pile fonctionne.
+4. **Animations des DEL** (RAM bonne seulement) : 9 animations en boucle sur
+   les 24 sorties, vues comme une seule rangée PA0 … PA7, PB0 … PB7,
+   PC0 … PC7. Un cycle complet dure ~30 s.
+
+| Animation | Effet |
+|---|---|
+| Chenillard | une DEL parcourt les 24 sorties (2 tours) |
+| Balayage | 3 DEL font l'aller-retour d'un bout à l'autre (3 fois) |
+| Remplissage | la rangée se remplit depuis PA0, puis se vide (2 fois) |
+| Explosion | 2 DEL partent du centre vers les bouts, puis reviennent (2 fois) |
+| Alternance | damier qui s'inverse (10 pas lents) |
+| Compteur/Gray | PA = compteur binaire, PB = son code de Gray, PC = compteur / 8 |
+| Ports PA PB PC | chaque port allumé à tour de rôle, puis tout clignote |
+| Etincelles | DEL allumées au hasard (~1 sur 4) |
+| Vu-metre | chaque port affiche une barre de hauteur aléatoire |
+
+Écran pendant les animations : `SOLUTION-02 BIOS 0.3`,
+`RAM 512 Ko  PILE OK`, `DEL : 8255 en 10h`, puis le nom de l'animation et le
+nombre de cycles complets (hexadécimal).
 
 Écran du test :
 
@@ -99,9 +149,9 @@ Source : [bios/bios.asm](bios/bios.asm). Déroulement :
 | 1 | `TEST MEMOIRE 512 Ko` | `MEMOIRE 512 Ko : OK` | `RAM DEFAUT  CPT nnnn` |
 | 2 | `Ko: nnn  Defauts nnn` (Ko testés, Ko défectueux) | idem | idem |
 | 3 | — | `Adresses A0-A18: OK` | `Adresses: ERR Ann` ou `Adresses: ERR base` |
-| 4 | premier défaut : `ERR aaaaa ee/ll` | `PILE OK     CPT nnnn` | premier défaut |
+| 4 | premier défaut : `ERR aaaaa ee/ll` | `PILE 7000:0000  OK` | premier défaut |
 
-Le compteur hexadécimal (CPT) montre que le processeur tourne. Lecture des
+Le compteur hexadécimal (CPT) montre que le processeur tourne malgré le défaut. Lecture des
 erreurs :
 
 - `ERR aaaaa ee/ll` : premier octet fautif, à l'adresse physique aaaaa ;
@@ -112,9 +162,10 @@ erreurs :
 - `Adresses: ERR base` : la case de base ne retient rien (RAM absente ou
   non sélectionnée).
 
-Le simulateur (`make test`) vérifie 5 scénarios : RAM saine (et pile en
-7000h), cellule 7B3FFh défectueuse, RAM absente, ligne A15 coupée, puce de
-128 Ko (A17 ignorée).
+Le simulateur (`make test`) vérifie 5 scénarios : RAM saine (pile en 7000h,
+puis un cycle complet d'animations : mot de contrôle 80h avant toute sortie,
+chacune des 24 DEL vue allumée et éteinte), cellule 7B3FFh défectueuse, RAM
+absente, ligne A15 coupée, puce de 128 Ko (A17 ignorée).
 
 Commandes (depuis `bios/`) :
 
@@ -142,7 +193,8 @@ ROM, A14 est à la broche 29 et A15 à la broche 3.
 
 ## État
 
-- 2026-11-13 : RAM câblée, `RAM 512 Ko : OK` avec le BIOS 0.1. BIOS 0.2 (test complet + pile) prêt.
+- 2026-11-13 : 8255 (U7) ajouté au schéma en 10h–13h, avec J1–J3 pour les DEL ; BIOS 0.3 (animations) prêt.
+- 2026-11-13 : RAM câblée, `RAM 512 Ko : OK` avec le BIOS 0.1. BIOS 0.2 (test complet + pile) gravé.
 - 2026-11-13 : montage fonctionnel avec un **8088 NMOS** et les **74HC573
   sans résistances de tirage** (cause des premiers échecs : A8–A10 non
   reliées). Les 4 lignes s'affichent et le compteur s'incrémente.

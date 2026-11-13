@@ -68,10 +68,49 @@ class LCD:
         return ["".join(chr(c) for c in self.ddram[a:a + 20]) for a in ADR_LIGNES]
 
 
+class PPI:
+    """8255 (U7) en 10h-13h : verifie le mot de controle (mode 0, sorties) avant toute sortie
+    et note, pour chacune des 24 DEL, si elle a ete vue allumee et eteinte."""
+    def __init__(self):
+        self.ctrl = None
+        self.ports = [0, 0, 0]
+        self.allumees = [0, 0, 0]
+        self.eteintes = [0, 0, 0]
+        self.sorties = 0
+        self.erreurs = []
+
+    def ecrire(self, port, val):
+        if port == 0x13:
+            self.ctrl = val
+            if val != 0x80:
+                self.erreurs.append("mot de controle %02Xh (80h attendu)" % val)
+            return
+        if self.ctrl != 0x80:
+            self.erreurs.append("sortie en %02Xh avant le mot de controle" % port)
+        i = port - 0x10
+        self.ports[i] = val
+        self.allumees[i] |= val
+        self.eteintes[i] |= ~val & 0xFF
+        self.sorties += 1
+
+    def toutes_vues(self):
+        return self.allumees == [0xFF] * 3 and self.eteintes == [0xFF] * 3
+
+
+def sortie_port(lcd, ppi, port, val, n):
+    if port in (0, 1):
+        lcd.ecrire(port, val, n)
+    elif 0x10 <= port <= 0x13:
+        ppi.ecrire(port, val)
+    else:
+        lcd.erreurs.append("OUT vers le port %02Xh" % port)
+
+
 def fini(lcd):
-    """Le BIOS a termine : un compteur "CPT 0003" s'affiche (ligne 4 si la RAM est bonne,
-    ligne 1 si elle est defectueuse)."""
-    return any(l.endswith("CPT 0003") for l in lcd.lignes())
+    """Le BIOS a termine : RAM defectueuse -> compteur "CPT 0003" en ligne 1 ;
+    RAM bonne -> un cycle complet d'animations (compteur 0001 en fin de ligne 4)."""
+    l = lcd.lignes()
+    return l[0].endswith("CPT 0003") or (l[2].startswith("DEL") and l[3].endswith("0001"))
 
 
 def lancer(image, defaut=None, max_instr=30_000_000):
@@ -84,7 +123,8 @@ def lancer(image, defaut=None, max_instr=30_000_000):
     uc.mem_write(ROM_BASE, rom)              # 80000h-BFFFFh
     uc.mem_write(ROM_BASE + ROM_LEN, rom)    # C0000h-FFFFFh
     lcd = LCD()
-    etat = {"n": 0, "restaurer": [], "fin": None}
+    ppi = PPI()
+    etat = {"n": 0, "restaurer": [], "fin": None, "ppi": ppi}
 
     def code(uc, adr, taille, ud):
         for a, v in etat["restaurer"]:       # cellule defectueuse : l'ecriture n'a pas pris
@@ -107,14 +147,12 @@ def lancer(image, defaut=None, max_instr=30_000_000):
         return True
 
     def sortie(uc, port, taille, val, ud):
-        if port in (0, 1):
-            lcd.ecrire(port, val & 0xFF, etat["n"])
-            if fini(lcd):
-                etat["fin"] = "ok"
-                etat["ss_sp"] = (uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_SP))
-                uc.emu_stop()
-        else:
-            lcd.erreurs.append("OUT vers le port %02Xh" % port)
+        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"])
+        if "pile" not in etat and lcd.lignes()[3].startswith("PILE"):
+            etat["pile"] = (uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_SP))
+        if fini(lcd):
+            etat["fin"] = "ok"
+            uc.emu_stop()
 
     uc.hook_add(UC_HOOK_CODE, code)
     uc.hook_add(UC_HOOK_MEM_WRITE, ecriture)
@@ -143,7 +181,7 @@ def main():
     echecs = 0
     cas = [
         ("RAM saine", None, None,
-         ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK     CPT 0003"]),
+         ["SOLUTION-02 BIOS 0.3", "RAM 512 Ko  PILE OK ", "DEL : 8255 en 10h   ", "Chenillard      0001"]),
         ("cellule 7B3FFh qui ne retient rien", lambda a: a == 0x7B3FF, None,
          ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 001", "Adresses A0-A18: OK ", "ERR 7B3FF 55/00     "]),
         ("RAM absente", lambda a: a < RAM, None,
@@ -164,12 +202,21 @@ def main():
             if a is not None and l != a:
                 ok = False
                 print("    attendu: |%s|" % a)
+        ppi = etat["ppi"]
+        for e in ppi.erreurs[:5]:
+            ok = False
+            print("    ERREUR 8255:", e)
         if titre == "RAM saine":
-            print("    pile SS:SP = %04X:%04X" % etat.get("ss_sp", (0, 0)))
-            ss, sp = etat.get("ss_sp", (0, 1))
+            ss, sp = etat.get("pile", (0, 1))
+            print("    pile SS:SP = %04X:%04X" % (ss, sp))
             if ss != 0x7000 or not (sp == 0 or sp >= 0xFF00):   # SP = FFFEh dans lcd_car (adresse de retour)
                 ok = False
                 print("    attendu: pile 7000:0000 (au sommet ou presque)")
+            print("    8255 : %d sorties, DEL vues allumees %s, eteintes %s" % (
+                ppi.sorties, ["%02X" % v for v in ppi.allumees], ["%02X" % v for v in ppi.eteintes]))
+            if not ppi.toutes_vues():
+                ok = False
+                print("    attendu: chacune des 24 DEL allumee et eteinte au moins une fois")
         print("    =>", "OK" if ok else "ECHEC")
         echecs += not ok
     print("\n%d scenario(s) en echec" % echecs)
@@ -186,7 +233,8 @@ def lancer_alias(image, bit):
     uc.mem_write(ROM_BASE, rom)
     uc.mem_write(ROM_BASE + ROM_LEN, rom)
     lcd = LCD()
-    etat = {"n": 0, "fin": None, "copie": []}
+    ppi = PPI()
+    etat = {"n": 0, "fin": None, "copie": [], "ppi": ppi}
 
     def code(uc, adr, taille, ud):
         for a, v in etat["copie"]:
@@ -204,10 +252,9 @@ def lancer_alias(image, bit):
         return True
 
     def sortie(uc, port, taille, val, ud):
-        lcd.ecrire(port, val & 0xFF, etat["n"])
+        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"])
         if fini(lcd):
             etat["fin"] = "ok"
-            etat["ss_sp"] = (uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_SP))
             uc.emu_stop()
 
     uc.hook_add(UC_HOOK_CODE, code)
