@@ -120,14 +120,14 @@ entrée. Mêmes bits que Solution-01 pour le clavier.
 | 5 / 36 | RD# / WR# | 8088 broches 32 / 29 |
 | 35 | RESET | RESET du 82C84 (U11 broche 10) |
 | 26 / 7 | VCC / GND | +5 V / GND (+ 100 nF) |
-| 18 | PB0 = KBD_CLK | J4 D− (horloge PS/2), tirage R2 10 kΩ au +5 V |
-| 19 | PB1 = KBD_DATA | J4 D+ (données PS/2), tirage R3 10 kΩ au +5 V |
+| 18 | PB0 = KBD_CLK | J4 D+ (horloge PS/2), tirage R2 10 kΩ au +5 V |
+| 19 | PB1 = KBD_DATA | J4 D− (données PS/2), tirage R3 10 kΩ au +5 V |
 | 20 | PB2 = UART_RX | J5 broche 2, tirage R4 10 kΩ au +5 V |
 | 37 | PA7 = UART_TX | J5 broche 1 |
 
 - **J4, prise USB-A femelle** : pour un clavier USB **à repli PS/2** (la
-  plupart des claviers USB ordinaires). VBUS = +5 V, D− = horloge,
-  D+ = données, GND et blindage à la masse. Les tirages R2/R3 sont
+  plupart des claviers USB ordinaires). VBUS = +5 V, **D+ = horloge,
+  D− = données** (comme Solution-01), GND et blindage à la masse. Les tirages R2/R3 sont
   indispensables : c'est en voyant D+ et D− tirés au +5 V que le clavier
   choisit le mode PS/2. Un clavier PS/2 natif se branche sur les mêmes
   signaux (horloge, données, +5 V, GND).
