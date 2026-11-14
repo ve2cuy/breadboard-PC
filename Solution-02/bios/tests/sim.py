@@ -28,6 +28,7 @@ class LCD:
         self.ac = 0
         self.allume = False
         self.ecritures = 0
+        self.donnees = 0             # caracteres ecrits (port 1)
         self.dernier = None          # (n instr, delai exige)
         self.erreurs = []
         self.fonction = 0            # nombre de "function set" recus
@@ -57,6 +58,7 @@ class LCD:
             elif val & 0x08:
                 self.allume = bool(val & 0x04)
         elif port == 1:
+            self.donnees += 1
             self.ddram[self.ac] = val
             self.ac += 1
             if self.ac == 0x28:
@@ -251,7 +253,8 @@ def sortie_port(lcd, ppi, port, val, n, ppi2=None):
 
 # ---- clavier PS/2 (jeu 2) ----------------------------------------------------------------
 CODES = {'1': 0x16, '2': 0x1E, '3': 0x26, '4': 0x25, 'a': 0x1C, 'b': 0x32, 'd': 0x23, 'e': 0x24,
-         'i': 0x43, 'r': 0x2D, 'v': 0x2A, ' ': 0x29, '\r': 0x5A, '\x1b': 0x76, '\b': 0x66}
+         'i': 0x43, 'm': 0x3A, '0': 0x45, '5': 0x2E, '6': 0x36, '7': 0x3D, '8': 0x3E, '9': 0x46,
+         'r': 0x2D, 'v': 0x2A, ' ': 0x29, '\r': 0x5A, '\x1b': 0x76, '\b': 0x66}
 MAJ, CTRL, ALT = 0x12, 0x14, 0x11
 FLECHES = {'haut': 0x75, 'bas': 0x72, 'gauche': 0x6B, 'droite': 0x74}
 
@@ -266,11 +269,13 @@ def texte(t):
     return [c for ch in t for c in appui(CODES[ch])]
 
 
-def maj_fleche(nom):
-    """Maj + fleche, comme un vrai clavier (Verr Num inactif pour lui) : Maj, puis la fleche
-    precedee d'un relachement FACTICE de Maj (E0 F0 12) et suivie d'un appui factice (E0 12)."""
+def maj_fleche(nom, maj=0x12, appui_perdu=False):
+    """Maj + fleche, comme un vrai clavier (Verr Num inactif pour lui) : Maj (12h gauche,
+    59h droite), puis la fleche precedee d'un relachement FACTICE de cette Maj (E0 F0 xx)
+    et suivie d'un appui factice (E0 xx). `appui_perdu` : l'appui reel de Maj manque
+    (trame perdue sur le montage sans diode)."""
     c = FLECHES[nom]
-    return [MAJ, 0xE0, 0xF0, 0x12, 0xE0, c, 0xE0, 0xF0, c, 0xE0, 0x12, 0xF0, MAJ]
+    return ([] if appui_perdu else [maj]) + [0xE0, 0xF0, maj, 0xE0, c, 0xE0, 0xF0, c, 0xE0, maj, 0xF0, maj]
 
 
 def programmer_codes(ppi2, n, codes):
@@ -440,7 +445,7 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 0.6 - VE2CUY 2026\r\n"
+BANNIERE = (b"\r\nSolution-02 BIOS 0.7 - VE2CUY 2026\r\n"
             b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) SysInfo\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
 echec_ram = lambda ctx: ctx["lcd"].lignes()[0].endswith("CPT 0003")
@@ -533,12 +538,12 @@ def scenario_sysinfo(image):
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 0.6" and l[3].startswith("A:"):
+        if l[0] == "SOLUTION-02 BIOS 0.7" and l[3].startswith("A:"):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
     pas = Etapes([(au_menu, texte('4')), (lambda c: c["lcd"].lignes()[3].startswith("A:"), texte(' '))])
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas)
-    attendu = ["SOLUTION-02 BIOS 0.6", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", "A: PC-DOS 2.1  180Ko"]
+    attendu = ["SOLUTION-02 BIOS 0.7", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", "A: PC-DOS 2.1  180Ko"]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
@@ -557,6 +562,7 @@ def scenario_dos(image):
         n = ecran(c).count("A>")
         if n and "accueil" not in vu:
             vu["accueil"] = ecran(c)                     # avant DIR (qui fera defiler)
+            vu["car_avant_dir"] = c["lcd"].donnees
         return n
 
     def fenetre(c):
@@ -564,6 +570,7 @@ def scenario_dos(image):
         e = ecran(c)
         if "bytes free" in e and e.rstrip().endswith("A>"):
             vu.setdefault("apres_dir", c["lcd"].lignes())
+            vu.setdefault("car_dir", c["lcd"].donnees - vu["car_avant_dir"])
             return True
         return False
 
@@ -580,14 +587,22 @@ def scenario_dos(image):
             return True
         return False
 
+    def suivi(c):
+        """Commande tapee plus longue que 20 colonnes : la fenetre suit la saisie."""
+        if c["lcd"].lignes()[3] == SAISIE_VUE:
+            vu.setdefault("saisie", (c["lcd"].lignes(), bytes(c["uc"].mem_read(0x7F786, 2))))
+            return True
+        return False
+
     pas = Etapes([
         (au_menu, texte('1')),
         (lambda c: "Enter new date" in ecran(c), texte('\r')),
         (lambda c: "Enter new time" in ecran(c), texte('\r')),
         (lambda c: invites(c) >= 1, texte('dir\r')),
-        (fenetre, maj_fleche('haut') + maj_fleche('haut') + maj_fleche('haut')),
-        (deplacee, maj_fleche('droite')),
-        (droite, [CTRL, ALT] + appui(0x71, True) + [0xF0, ALT, 0xF0, CTRL]),
+        (fenetre, maj_fleche('haut') + maj_fleche('haut', 0x59) + maj_fleche('haut', appui_perdu=True)),
+        (deplacee, maj_fleche('droite', 0x59)),
+        (droite, texte(SAISIE)),
+        (suivi, [CTRL, ALT] + appui(0x71, True) + [0xF0, ALT, 0xF0, CTRL]),
     ])
 
     def fini(c):
@@ -598,10 +613,18 @@ def scenario_dos(image):
     for l in lignes:
         if l.strip():
             print("    |%s|" % l.rstrip())
+    print("    caracteres envoyes au LCD pendant DIR : %s" % vu.get("car_dir"))
+    if vu.get("car_dir") is None or vu["car_dir"] > CAR_DIR_MAX:
+        ok_lcd = False
+        print("    attendu : au plus %d (seules les 20 colonnes de la fenetre vont au LCD)" % CAR_DIR_MAX)
+    else:
+        ok_lcd = True
     for cle in ("apres_dir", "haut"):
         print("    LCD %-9s: %s" % (cle, vu.get(cle)))
     if "droite" in vu:
         print("    LCD droite   : %s (fenetre col,ligne = %d,%d)" % (vu["droite"][0], vu["droite"][1][0], vu["droite"][1][1]))
+    if "saisie" in vu:
+        print("    LCD saisie   : %s (fenetre col,ligne = %d,%d)" % (vu["saisie"][0], vu["saisie"][1][0], vu["saisie"][1][1]))
     ints = etat["ints"]
     print("    INT appelees : %s" % " ".join("%02Xh x%d" % (k, v) for k, v in sorted(ints.items())))
     non_geres = {k: v for k, v in etat["int_iret"].items() if k < 0x20}
@@ -612,7 +635,7 @@ def scenario_dos(image):
     p2 = etat["ppi2"]
     print("    clavier : %d trame(s) perdue(s), %d interrompue(s) puis renvoyee(s)" % (p2.perdues, p2.interrompues))
     texte_ecran = "\n".join(lignes)
-    ok = not p2.perdues
+    ok = ok_lcd and not p2.perdues
     if p2.perdues:
         print("    attendu : aucune trame perdue")
     print("    accueil du DOS : %r" % [l.strip() for l in vu.get("accueil", "").splitlines() if l.strip()][-4:])
@@ -628,16 +651,24 @@ def scenario_dos(image):
         print("    attendu : apres DIR, l'invite A> en derniere ligne du LCD")
     if vu.get("haut") is None or vu["haut"][3] != vu["apres_dir"][0]:
         ok = False
-        print("    attendu : Maj + haut x3 -> la 1re ligne d'avant descend en ligne 4")
+        print("    attendu : Maj + haut x3 (gauche, droite, gauche sans son appui) -> la 1re ligne"
+              " d'avant descend en ligne 4")
     if vu.get("droite") is None or vu["droite"][1][0] != NAV_C:
         ok = False
         print("    attendu : Maj + droite -> fenetre en colonne %d" % NAV_C)
+    if vu.get("saisie") is None or vu["saisie"][1][0] != 20:
+        ok = False
+        print("    attendu : 'A>%s' tape -> fenetre en colonne 20, ligne 4 du LCD = %r" % (SAISIE, SAISIE_VUE))
     if non_geres or etat["out_dos"]:
         ok = False
     return verifier("menu 1) Load DOS : PC-DOS 2.1 en ROM, DIR, Maj + fleches, Ctrl+Alt+Suppr", lcd, etat, MENU, ok)
 
 
 NAV_C = 10
+SAISIE = "rem 0123456789012345678901234"     # curseur en colonne 31 apres "A>"
+SAISIE_VUE = "45678901234         "           # colonnes 20 a 39
+CAR_DIR_MAX = 6000      # DIR : ~30 lignes x (20 car. + 80 de redessin) ; la fenetre qui suivrait
+                        # le curseur jusqu'en colonne 39 en enverrait des dizaines de milliers
 
 
 def main():

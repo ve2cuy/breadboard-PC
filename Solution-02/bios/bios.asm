@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 0.6 (VE2CUY, 2026)
+; Solution-02 - BIOS 0.7 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -83,6 +83,9 @@ V_FILE_T        equ     78Ah            ; file du clavier : tete
 V_FILE_Q        equ     78Bh            ;                   queue
 V_DSTAT         equ     78Ch            ; INT 13h : etat de la derniere operation
 V_SORTIE        equ     78Dh            ; 1 = INT 10h appele depuis le dernier INT 16h AH=01h
+V_SUIT          equ     78Eh            ; 1 = INT 10h appele : la fenetre doit montrer le curseur
+                                        ;     a la prochaine attente du clavier
+V_INACTIF       equ     78Fh            ; INT 16h AH=01h de suite sans affichage entre eux
 V_FILE          equ     790h            ; file : FILE_N mots
 FILE_N          equ     16
 
@@ -99,6 +102,9 @@ EQUIPEMENT      equ     0021h           ; 1 lecteur de disquette, video 80x25
 LCD_D           equ     40              ; delai apres une ecriture au LCD (ecran du DOS)
 KBD_FENETRE     equ     150             ; INT 16h AH=01h : ~1 ms d'ecoute du clavier
 KBD_FENETRE_L   equ     1000            ; ~8 ms si rien n'a ete affiche depuis l'appel precedent
+; INACTIF_N : appels INT 16h AH=01h de suite sans affichage (~10 ms chacun) avant de
+; considerer que le DOS attend une touche (pendant DIR, il en fait 2 par caractere)
+INACTIF_N       equ     10
 NAV_C           equ     10              ; Maj + gauche/droite : pas de la fenetre
 
 TA_BASE         equ     35555h          ; base du test des lignes d'adresse
@@ -136,10 +142,13 @@ PS2_DELAI       equ     150             ; attentes PS/2 : ~1 ms (boucle de ~36 c
 
 CLV_RELACHE     equ     01h             ; F0 recu
 CLV_ETENDU      equ     02h             ; E0 recu
-CLV_MAJ         equ     04h
+CLV_MAJ         equ     04h             ; Maj gauche
 CLV_CTRL        equ     08h
 CLV_VERR_MAJ    equ     10h
 CLV_ALT         equ     20h
+CLV_MAJ_D       equ     40h             ; Maj droite
+CLV_FAUX        equ     80h             ; E0 F0 12/59 recu : Maj tenue avec une fleche
+CLV_MAJS        equ     CLV_MAJ | CLV_MAJ_D
 
 ; vitesse des animations : tours de la boucle de scrutation de del_aff par pas
 ; (~45 cycles = ~8,4 us chacun sur un 8088 a 5,33 MHz)
@@ -697,6 +706,8 @@ vars_init:
         xor     ax, ax
         mov     [es:V_CLAVIER], al
         mov     [es:V_DOS], al
+        mov     [es:V_SUIT], al
+        mov     [es:V_INACTIF], al
         mov     [es:V_FILE_T], ax       ; tete et queue
         ret
 
@@ -1011,16 +1022,22 @@ clavier_decode:
 .pas_e0:
         mov     bh, bl                  ; BH = prefixes de cet octet
         and     bl, ~(CLV_RELACHE | CLV_ETENDU)
-        test    bh, CLV_ETENDU          ; Maj "factices" (E0 12, E0 F0 12, E0 59...)
-        jz      .modifs                 ; envoyees autour des fleches : ignorees
-        cmp     al, 12h
-        je      .rien
+        test    bh, CLV_ETENDU          ; Maj "factices" (E0 F0 12 avant une fleche,
+        jz      .modifs                 ; E0 12 apres, ou 59h pour Maj droite) : le
+        cmp     al, 12h                 ; relachement factice prouve que Maj est tenue
+        je      .faux                   ; (utile si son appui a ete perdu)
         cmp     al, 59h
-        je      .rien
+        jne     .modifs
+.faux:  and     bl, ~CLV_FAUX
+        test    bh, CLV_RELACHE
+        jz      .rien
+        or      bl, CLV_FAUX
+        jmp     .rien
 .modifs:
         mov     ah, CLV_MAJ
         cmp     al, 12h                 ; Maj gauche
         je      .modif
+        mov     ah, CLV_MAJ_D
         cmp     al, 59h                 ; Maj droite
         je      .modif
         mov     ah, CLV_CTRL
@@ -1037,7 +1054,10 @@ clavier_decode:
         jmp     .rien
 .modif: test    bh, CLV_RELACHE
         jz      .modif_on
-        not     ah
+        test    ah, CLV_MAJS            ; Maj relachee : plus de Maj factice
+        jz      .m1
+        and     bl, ~CLV_FAUX
+.m1:    not     ah
         and     bl, ah
         jmp     .rien
 .modif_on:
@@ -1058,6 +1078,7 @@ clavier_decode:
         mov     al, [si + 2]
         jmp     .alt
 .normale:
+        and     bl, ~CLV_FAUX           ; touche ordinaire : sequence de fleche finie
         cmp     al, CLAVIER_NB_CODES
         jae     .n_rien
         xor     ah, ah
@@ -1066,7 +1087,7 @@ clavier_decode:
         or      ah, ah
         jz      .n_rien
         mov     al, [si + clavier_normal]
-        test    bl, CLV_MAJ
+        test    bl, CLV_MAJS
         jz      .lettre
         mov     al, [si + clavier_maj]
 .lettre:
@@ -1507,7 +1528,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 0.6'
+txt_ouv1:   db  'SOLUTION-02 BIOS 0.7'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -1528,14 +1549,14 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 0.6'
+txt_sys:    db  'SOLUTION-02 BIOS 0.7'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  'A: PC-DOS 2.1  180Ko'
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 0.6 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 0.7 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) SysInfo', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
 fleches_ansi:

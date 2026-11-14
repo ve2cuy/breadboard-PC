@@ -164,6 +164,7 @@ dos_charger:
 int10h:
         BIOS_ENTREE
         mov     byte [es:V_SORTIE], 1
+        mov     byte [es:V_SUIT], 1
         cmp     ah, 0Eh
         je      .tty
         cmp     ah, 02h
@@ -454,8 +455,10 @@ ligne_vide:
         pop     ax
         ret
 
-; ecran_fin : la fenetre suit le curseur (deplacement minimal pour le rendre visible),
-; redessine le LCD si la fenetre a bouge ou si le tampon a change en bloc, puis place
+; ecran_fin : la fenetre suit le curseur VERTICALEMENT (deplacement minimal : les
+; dernieres lignes ecrites restent visibles) ; horizontalement, elle ne bouge pas
+; pendant l'ecriture (seules ses 20 colonnes vont au LCD, voir ecran_suit_h).
+; Redessine le LCD si la fenetre a bouge ou si le tampon a change en bloc, puis place
 ; le curseur du LCD. Detruit AX, BX, DX.
 ecran_fin:
         mov     dx, [es:V_CUR]
@@ -470,17 +473,7 @@ ecran_fin:
         jbe     .v2
         mov     bh, dh
         sub     bh, 3
-.v2:    cmp     dl, bl                  ; horizontal
-        jae     .h1
-        mov     bl, dl
-        jmp     .h2
-.h1:    mov     al, bl
-        add     al, LCD_COLS - 1
-        cmp     dl, al
-        jbe     .h2
-        mov     bl, dl
-        sub     bl, LCD_COLS - 1
-.h2:    cmp     bx, [es:V_VUE]
+.v2:    cmp     bx, [es:V_VUE]
         je      .meme
         mov     [es:V_VUE], bx
         jmp     .redess
@@ -490,6 +483,46 @@ ecran_fin:
         mov     byte [es:V_REDESS], 0
         call    ecran_redessine
         ; (suite : lcd_curseur)
+
+; ecran_suit_h : appele quand le DOS attend une touche, s'il a affiche quelque chose
+; depuis (V_SUIT) : si le curseur est hors des colonnes de la fenetre, elle se place
+; par pas de NAV_C colonnes pour le montrer (gauche = (colonne / NAV_C - 1) x NAV_C,
+; entre 0 et COLS - 20). Un deplacement par Maj + fleches reste donc en place tant
+; que rien n'est affiche. Preserve tout.
+ecran_suit_h:
+        cmp     byte [es:V_SUIT], 0
+        je      .r
+        mov     byte [es:V_SUIT], 0
+        push    ax
+        push    bx
+        push    dx
+        mov     dx, [es:V_CUR]
+        mov     bx, [es:V_VUE]
+        cmp     dl, bl
+        jb      .place
+        mov     al, bl
+        add     al, LCD_COLS - 1
+        cmp     dl, al
+        jbe     .fin
+.place: mov     al, dl
+        xor     ah, ah
+        mov     dl, NAV_C
+        div     dl                      ; AL = colonne / NAV_C
+        mul     dl                      ; AX = AL x NAV_C
+        sub     al, NAV_C
+        jae     .p1
+        xor     al, al
+.p1:    cmp     al, COLS - LCD_COLS
+        jbe     .p2
+        mov     al, COLS - LCD_COLS
+.p2:    mov     bl, al
+        mov     [es:V_VUE], bx
+        call    ecran_redessine
+        call    lcd_curseur
+.fin:   pop     dx
+        pop     bx
+        pop     ax
+.r:     ret
 
 ; lcd_curseur : curseur du LCD sur la case du curseur si elle est visible, cache sinon.
 ; Detruit AX, BX, DX.
@@ -839,10 +872,20 @@ int16h:
         cmp     ah, 05h
         je      .pousse
         jmp     bios_sortie
-.lire:  call    kbd_attend
+.lire:  call    ecran_suit_h            ; curseur montre avant d'attendre
+        call    kbd_attend
         mov     [bp + R_AX], ax
         jmp     .bloque
-.etat:  call    file_regarde
+.etat:  cmp     byte [es:V_SORTIE], 0   ; le DOS attend vraiment une touche (pendant DIR,
+        je      .e0                     ; il appelle aussi AH=01h pour Ctrl+C) quand
+        mov     byte [es:V_INACTIF], 0  ; INACTIF_N appels se suivent sans affichage :
+        jmp     .e1                     ; la fenetre montre alors le curseur
+.e0:    cmp     byte [es:V_INACTIF], INACTIF_N
+        jae     .e2
+        inc     byte [es:V_INACTIF]
+        jmp     .e1
+.e2:    call    ecran_suit_h
+.e1:    call    file_regarde
         jnc     .attend
         call    kbd_libere
         mov     cx, KBD_FENETRE         ; DOS affiche : ecoute courte ; DOS attend
@@ -866,8 +909,11 @@ int16h:
         mov     bl, [es:V_CLAVIER]
         xor     al, al
         test    bl, CLV_MAJ
-        jz      .d1
+        jz      .d0
         or      al, 02h                 ; Maj gauche
+.d0:    test    bl, CLV_MAJ_D
+        jz      .d1
+        or      al, 01h                 ; Maj droite
 .d1:    test    bl, CLV_CTRL
         jz      .d2
         or      al, 04h
@@ -952,7 +998,7 @@ kbd_octet:
         jnz     .file
         cmp     byte [es:V_DOS], 0
         je      .file
-        test    byte [es:V_CLAVIER], CLV_MAJ
+        test    byte [es:V_CLAVIER], CLV_MAJS | CLV_FAUX
         jz      .file
         push    ax
         call    kbd_bloque              ; clavier bloque pendant le dessin du LCD

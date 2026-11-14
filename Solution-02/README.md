@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 0.6 :
+Contenu de la ROM et de la RAM avec le BIOS 0.7 :
 
 | Adresses | Contenu |
 |---|---|
@@ -162,7 +162,7 @@ Sous DOS, le BIOS n'écoute le clavier que pendant les appels de INT 16h ; à
 l'invite, PC-DOS 2.1 boucle sur INT 16h AH=01h puis INT 28h. Une trame qui
 commence entre deux appels serait perdue (une touche qui manque, ou un code de
 relâchement perdu qui fait répéter la touche). Comme le contrôleur de clavier
-du PC/AT, le BIOS 0.6 **bloque l'horloge du clavier** quand il n'écoute pas :
+du PC/AT, le BIOS (depuis la version 0.6) **bloque l'horloge du clavier** quand il n'écoute pas :
 PC0 = 0 tire KBD_CLK à la masse par la diode ; le clavier garde alors ses
 touches en mémoire et les envoie dès que l'horloge est relâchée (une trame
 interrompue avant son 10e bit est renvoyée). PC0 est commandé par les mots de
@@ -170,7 +170,9 @@ mise à 0/1 d'un bit du 8255 (BSR) : PA7 (TX de l'UART) n'est pas touché.
 
 Sans la diode, rien ne change (PC0 n'est relié à rien) : le BIOS compense en
 écoutant plus longtemps (~8 ms) quand DOS attend sans rien afficher, mais une
-touche peut encore se perdre de temps en temps.
+touche peut encore se perdre de temps en temps. **Décision (2026-11-14) : la
+diode ne sera pas posée** ; un 8259 sera ajouté pour lire le clavier et l'UART
+par interruptions.
 
 ### Calibration de l'UART
 
@@ -189,13 +191,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 0.6
+## BIOS 0.7
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.6`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.7`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -230,21 +232,30 @@ pas d'horloge), puis affiche `A>`.
 
 **Écran** : le DOS écrit dans un tampon de **24 lignes × 80 colonnes** (en
 7F000h), en mode télétype (retour à la ligne en colonne 80, défilement en bas).
-Le LCD montre une **fenêtre de 20 × 4** de ce tampon, qui suit le curseur : ce
-sont les dernières lignes écrites par le programme. Le curseur du LCD (souligné)
-marque la position du curseur quand elle est dans la fenêtre.
+Le LCD montre une **fenêtre de 20 × 4** de ce tampon. Verticalement, elle suit
+le curseur : ce sont les dernières lignes écrites par le programme.
+Horizontalement, elle ne bouge pas pendant l'affichage : seuls les caractères
+de ses 20 colonnes sont envoyés au LCD (les autres ne vont que dans le tampon).
+Quand le DOS attend une touche (lecture INT 16h AH=00h, ou 10 appels AH=01h de
+suite sans affichage), la fenêtre se place, par pas de 10 colonnes, pour
+montrer le curseur s'il est hors champ (par exemple en tapant une commande de
+plus de 20 caractères). Le curseur du LCD (souligné) marque la position du
+curseur quand elle est dans la fenêtre.
 
 **Navigation** (sous DOS, pendant que le clavier est lu, par exemple à l'invite
 `A>`) :
 
 | Touches | Effet |
 |---|---|
-| Maj + ↑ / Maj + ↓ | fenêtre d'une ligne vers le haut / le bas |
-| Maj + ← / Maj + → | fenêtre de 10 colonnes vers la gauche / la droite |
+| Maj (gauche ou droite) + ↑ / ↓ | fenêtre d'une ligne vers le haut / le bas |
+| Maj (gauche ou droite) + ← / → | fenêtre de 10 colonnes vers la gauche / la droite |
 | Ctrl + Alt + Suppr | redémarrage du BIOS (écran d'ouverture, menu) |
 
-Le prochain caractère affiché ramène la fenêtre sur le curseur, s'il en est
-sorti.
+Le prochain affichage ramène la fenêtre sur la ligne du curseur ; la colonne
+choisie reste jusqu'à la prochaine attente du clavier qui suit un affichage.
+La Maj est aussi reconnue par le « relâchement factice » (E0 F0 12h ou
+E0 F0 59h) que le clavier envoie juste avant la flèche : la navigation marche
+même si l'appui de Maj a été perdu (montage sans diode).
 
 Limites : pas de minuterie (heure figée, pas de `INT 08h`), pas de mémoire
 vidéo (un programme qui écrit directement en B800h n'affiche rien), disque en
@@ -378,6 +389,7 @@ ROM, A14 est à la broche 29 et A15 à la broche 3.
 
 ## État
 
+- 2026-11-14 : BIOS 0.7 : sous DOS, seules les 20 colonnes de la fenêtre vont au LCD (la fenêtre ne suit plus le curseur horizontalement pendant l'affichage) ; Maj gauche reconnue pour la navigation (Maj gauche/droite suivies séparément, Maj factice). Pas de diode : 8259 à venir.
 - 2026-11-14 : BIOS 0.6 : menu, PC-DOS 2.1 en ROM (Load DOS), services INT 10h/13h/16h…, écran 24 × 80 vu par le LCD (Maj + flèches), Test memory, LED Show, SysInfo. Diode de blocage du clavier (PC0) à ajouter.
 - 2026-11-14 : clavier PS/2 et UART validés sur le montage (BIOS 0.5) après correction de J4 (D+ = horloge) et pose de R4.
 - 2026-11-14 : 2e 8255 (U12) au schéma avec J4 (clavier USB/PS/2) et J5 (UART) ; BIOS 0.5 (clavier + UART) prêt, `UART_N` à calibrer.
