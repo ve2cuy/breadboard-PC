@@ -58,7 +58,7 @@ bloc de 16 ports :
 |---|---|---|---|
 | O0 | 15 | 00h–0Fh | **LCD (occupé)** : 00h = commande, 01h = donnée (RS = A0) |
 | O1 | 14 | 10h–1Fh | **8255 (U7, occupé)** : 10h = PA, 11h = PB, 12h = PC, 13h = contrôle (A0–A1) |
-| O2 | 13 | 20h–2Fh | libre (8259 dans un PC) |
+| O2 | 13 | 20h–2Fh | **8259A (U13)** : 20h = ICW1/OCW2/OCW3 (A0 = 0), 21h = ICW2-4/OCW1 (masque) — comme le PC |
 | O3 | 12 | 30h–3Fh | **2e 8255 (U12, occupé)** : 30h = PA, 31h = PB, 32h = PC, 33h = contrôle |
 | O4 | 11 | 40h–4Fh | libre (8253 dans un PC) |
 | O5 | 10 | 50h–5Fh | libre |
@@ -127,7 +127,7 @@ les DEL dès le démarrage, juste après l'initialisation du LCD.
 ## 2e 8255 (U12) : clavier PS/2 et UART
 
 8255 CMOS (µPD71055C) sélectionné par **O3** du 74LS138 : ports **30h–33h**
-(20h, 40h et 60h restent libres pour un futur 8259, 8253 ou 8255 aux
+(20h = 8259, U13 ; 40h et 60h restent libres pour un futur 8253 ou 8255 aux
 adresses d'un PC/XT). Mot de contrôle **82h** : PA et PC en sortie, PB en
 entrée. Mêmes bits que Solution-01 pour le clavier.
 
@@ -140,7 +140,7 @@ entrée. Mêmes bits que Solution-01 pour le clavier.
 | 35 | RESET | RESET du 82C84 (U11 broche 10) |
 | 26 / 7 | VCC / GND | +5 V / GND (+ 100 nF) |
 | 18 | PB0 = KBD_CLK | J4 D+ (horloge PS/2), tirage R2 10 kΩ au +5 V |
-| 14 | PC0 = blocage du clavier | **diode Schottky** (1N5817, BAT43…) : anode sur KBD_CLK, cathode sur PC0 — **à ajouter** (voir ci-dessous) |
+| 14 | PC0 = blocage du clavier | diode Schottky prévue en 0.6, **non posée** (voir ci-dessous) ; PC0 libre |
 | 19 | PB1 = KBD_DATA | J4 D− (données PS/2), tirage R3 10 kΩ au +5 V |
 | 20 | PB2 = UART_RX | J5 broche 2, tirage R4 10 kΩ au +5 V |
 | 37 | PA7 = UART_TX | J5 broche 1 |
@@ -156,7 +156,7 @@ entrée. Mêmes bits que Solution-01 pour le clavier.
   l'adaptateur sur J5-2**, GND sur J5-3. Terminal : 9600 bauds, 8N1, sans
   contrôle de flux.
 
-### Blocage du clavier (diode sur PC0) — à ajouter au montage
+### Blocage du clavier (diode sur PC0) — abandonné
 
 Sous DOS, le BIOS n'écoute le clavier que pendant les appels de INT 16h ; à
 l'invite, PC-DOS 2.1 boucle sur INT 16h AH=01h puis INT 28h. Une trame qui
@@ -171,8 +171,47 @@ mise à 0/1 d'un bit du 8255 (BSR) : PA7 (TX de l'UART) n'est pas touché.
 Sans la diode, rien ne change (PC0 n'est relié à rien) : le BIOS compense en
 écoutant plus longtemps (~8 ms) quand DOS attend sans rien afficher, mais une
 touche peut encore se perdre de temps en temps. **Décision (2026-11-14) : la
-diode ne sera pas posée** ; un 8259 sera ajouté pour lire le clavier et l'UART
-par interruptions.
+diode ne sera pas posée** ; le 8259 (U13, ci-dessous) signale le début de
+chaque trame du clavier et de chaque octet de l'UART par une interruption.
+
+## 8259A (U13) : interruptions du clavier et de l'UART
+
+8259A sélectionné par **O2** du 74LS138 : ports **20h–21h**, comme dans un
+PC (A0 du bus = A0 du 8259). Contrôleur unique (maître) : SP/EN au +5 V,
+CAS0–CAS2 libres. Le 8088 n'avait aucune interruption matérielle : **INTR
+(broche 18) est détachée de la masse** et reçoit INT du 8259 ; INTA (broche
+24, mode minimum) va au 8259. NMI, TEST et HOLD restent à la masse.
+
+| Broche 8259 | Signal | Vient de / va à |
+|---|---|---|
+| 11, 10, 9, 8, 7, 6, 5, 4 | D0–D7 | AD0–AD7 du 8088 (**dans l'ordre**) |
+| 27 | A0 | U2 (74HC573) Q0 |
+| 1 | CS# | U8 (74LS138) broche **13** (O2) |
+| 3 / 2 | RD# / WR# | 8088 broches 32 / 29 |
+| 17 | INT | 8088 broche **18** (INTR) |
+| 26 | INTA# | 8088 broche **24** (INTA#) |
+| 16 | SP#/EN# | +5 V (maître unique) |
+| 12, 13, 15 | CAS0–CAS2 | libres |
+| 19 | IR1 = IRQ1 | U14 (74HC14) broche 2 = KBD_CLK inversée |
+| 22 | IR4 = IRQ4 | U14 broche 4 = UART_RX inversée |
+| 18, 20, 21, 23–25 | IR0, IR2, IR3, IR5–IR7 | libres (masquées par le BIOS) |
+| 28 / 14 | VCC / GND | +5 V / GND (+ 100 nF) |
+
+Le 8259 réagit au **front montant** (mode front, comme le PC) ; or une trame
+PS/2 commence par un front **descendant** de l'horloge et un octet série par un
+front descendant de RX (bit de départ). **U14 (74HC14, trigger de Schmitt)
+inverse donc KBD_CLK** (broche 1 → 2, vers IR1) **et UART_RX** (broche 3 → 4,
+vers IR4) ; les portes 3 à 6 sont inutilisées, entrées à la masse (VCC
+broche 14, GND broche 7). Les bits eux-mêmes restent lus par U12 (PB0, PB1,
+PB2) : la routine d'interruption lit la trame ou l'octet entier par
+scrutation, comme le BIOS 0.7, mais elle démarre dès le premier front, même
+quand le DOS ne demande rien. Numéros comme le PC : IRQ1 = INT 09h (clavier),
+IRQ4 = INT 0Ch (COM1).
+
+À retenir pour le logiciel : le 8259 doit servir l'interruption pendant que
+l'entrée est encore haute (horloge du clavier basse, ~40 µs ; bit de départ,
+104 µs) ; sinon il produit une interruption « IRQ7 » parasite. Le BIOS doit
+donc éviter les longues sections sans interruptions (CLI).
 
 ### Calibration de l'UART
 
@@ -389,6 +428,7 @@ ROM, A14 est à la broche 29 et A15 à la broche 3.
 
 ## État
 
+- 2026-11-14 : schéma : 8259A (U13) sur O2 (20h–21h), INT → INTR, INTA ; 74HC14 (U14) : IRQ1 = KBD_CLK inversée, IRQ4 = UART_RX inversée. Pas encore câblé ; BIOS 0.8 à venir.
 - 2026-11-14 : BIOS 0.7 : sous DOS, seules les 20 colonnes de la fenêtre vont au LCD (la fenêtre ne suit plus le curseur horizontalement pendant l'affichage) ; Maj gauche reconnue pour la navigation (Maj gauche/droite suivies séparément, Maj factice). Pas de diode : 8259 à venir.
 - 2026-11-14 : BIOS 0.6 : menu, PC-DOS 2.1 en ROM (Load DOS), services INT 10h/13h/16h…, écran 24 × 80 vu par le LCD (Maj + flèches), Test memory, LED Show, SysInfo. Diode de blocage du clavier (PC0) à ajouter.
 - 2026-11-14 : clavier PS/2 et UART validés sur le montage (BIOS 0.5) après correction de J4 (D+ = horloge) et pose de R4.
