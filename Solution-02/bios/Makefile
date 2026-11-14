@@ -1,20 +1,22 @@
 # Solution-02 - BIOS (nasm dans le PATH)
 NASM  ?= nasm
 IMAGE  = build/solution-02-bios.bin
+# calibration de l'UART logiciel : make UART_N=28 (voir README) ; refaire "make clean" avant
+NASM_DEF = $(if $(UART_N),-DUART_N=$(UART_N))
 
 all: $(IMAGE)
 
-$(IMAGE): bios.asm
+$(IMAGE): bios.asm clavier_us.inc
 	@mkdir -p build
-	$(NASM) -f bin -l build/bios.lst -o $@ bios.asm
+	$(NASM) -f bin $(NASM_DEF) -l build/bios.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
 
 # ROM de diagnostic du 8255 : ecritures en rafale continue en 10h-13h (CS#/WR# visibles)
 DIAG = build/solution-02-diag-8255.bin
 diag: $(DIAG)
-$(DIAG): bios.asm
+$(DIAG): bios.asm clavier_us.inc
 	@mkdir -p build
-	$(NASM) -f bin -DDIAG_8255 -l build/diag-8255.lst -o $@ bios.asm
+	$(NASM) -f bin $(NASM_DEF) -DDIAG_8255 -l build/diag-8255.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
 
 test: $(IMAGE)

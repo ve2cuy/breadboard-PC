@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 0.4 (VE2CUY, 2026)
+; Solution-02 - BIOS 0.5 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -16,6 +16,9 @@
 ;        est suivie d'un delai.
 ;   O1 : 10h-13h = 8255 (U7, uPD71055C) : 10h = PA, 11h = PB, 12h = PC, 13h = controle.
 ;        Mode 0, les 3 ports en sortie (mot de controle 80h) : 24 DEL sur J1-J3.
+;   O3 : 30h-33h = 2e 8255 (U12) : mot 82h (PA, PC en sortie, PB en entree).
+;        Clavier PS/2 (J4, prise USB-A) : PB0 = horloge, PB1 = donnees.
+;        UART logiciel 9600 8N1 (J5) : PA7 = TX, PB2 = RX.
 ;
 ; Deroulement :
 ;   1) ecran d'ouverture (~2 s) ;
@@ -32,8 +35,10 @@
 ;      (ligne 4 : "PILE 7000:0000  OK").
 ;      RAM defectueuse : pas de pile, ligne 1 "RAM DEFAUT  CPT nnnn".
 ;   4) RAM bonne : 9 animations en boucle sur les 24 DEL du 8255, disposees de
-;      gauche a droite PC7..PC0, PA7..PA0, PB7..PB0 ; ligne 4 = nom de
+;      gauche a droite PC7..PC0, PA7..PA0, PB7..PB0 ; ligne 2 = nom de
 ;      l'animation + nombre de cycles.
+;   5) Pendant les attentes des animations, scrutation du clavier PS/2 et de l'UART :
+;      touche -> LCD ligne 3 + UART ; octet recu de l'UART -> LCD ligne 4 + echo.
 ;
 ; Construire : nasm -f bin -o build/solution-02-bios.bin bios.asm  (image 256 Ko)
 ; =============================================================================
@@ -61,10 +66,46 @@ PPI_PC          equ     12h
 PPI_CTRL        equ     13h
 PPI_MODE0_SORTIES equ   80h             ; mode 0, PA, PB et PC en sortie
 
-; vitesse des animations : iterations de LOOP par pas (~3,2 us chacune, 8088 a 5,33 MHz)
-VIT_RAPIDE      equ     12000           ; ~40 ms
-VIT_NORMAL      equ     20000           ; ~65 ms
-VIT_LENTE       equ     50000           ; ~160 ms
+; 2e 8255 (U12) sur O3 du 74LS138 : clavier PS/2 et UART logiciel (bit-bang)
+PPI2_PA         equ     30h             ; PA7 = UART TX (sortie)
+PPI2_PB         equ     31h             ; PB0 = horloge clavier, PB1 = donnees, PB2 = UART RX
+PPI2_PC         equ     32h
+PPI2_CTRL       equ     33h
+PPI2_MODE       equ     82h             ; mode 0 : PA et PC en sortie, PB en entree
+KBD_CLK         equ     01h             ; PB0
+KBD_DATA        equ     02h             ; PB1
+UART_RX         equ     04h             ; PB2
+UART_TX         equ     80h             ; PA7
+
+; UART 9600 8N1 : iterations de LOOP par bit, A CALIBRER a l'oscilloscope (bit = 104,2 us).
+; Estimation pour un 8088 a 5,33 MHz : ~70 cycles fixes + 17 par iteration = 555 cycles.
+; Bit trop long -> diminuer ; trop court -> augmenter (1 unite = 3,2 us = 3 % d'un bit).
+%ifndef UART_N
+UART_N          equ     29
+%endif
+PS2_DELAI       equ     150             ; attentes PS/2 : ~1 ms (boucle de ~36 cycles)
+
+; codes produits par les fleches (hors ASCII, ne pas confondre avec Ctrl+lettre)
+TOUCHE_HAUT     equ     80h             ; ordre = ESC [ A, B, C, D
+TOUCHE_BAS      equ     81h
+TOUCHE_DROITE   equ     82h
+TOUCHE_GAUCHE   equ     83h
+
+; variables en RAM, au bas du segment de pile (SS = 7000h ; la pile descend de 7000:FFFE)
+V_CLAVIER       equ     0               ; etat du clavier (CLV_*)
+V_COL3          equ     1               ; colonne de la ligne 3 (clavier)
+V_COL4          equ     2               ; colonne de la ligne 4 (UART)
+CLV_RELACHE     equ     01h             ; F0 recu
+CLV_ETENDU      equ     02h             ; E0 recu
+CLV_MAJ         equ     04h
+CLV_CTRL        equ     08h
+CLV_VERR_MAJ    equ     10h
+
+; vitesse des animations : tours de la boucle de scrutation de del_aff par pas
+; (~45 cycles = ~8,4 us chacun sur un 8088 a 5,33 MHz)
+VIT_RAPIDE      equ     4600            ; ~40 ms
+VIT_NORMAL      equ     7700            ; ~65 ms
+VIT_LENTE       equ     19000           ; ~160 ms
 
 ; -----------------------------------------------------------------------------
 ; DELAY n : boucle de n iterations de LOOP (n = 0 -> 65536). Une iteration dure
@@ -179,6 +220,12 @@ debut:
         cld
         mov     ax, cs
         mov     ds, ax                  ; textes en ROM (DS = CS = F000h)
+
+; ---- 2e 8255 (U12) en premier : TX de l'UART au repos (1) le plus tot possible ----
+        mov     al, PPI2_MODE           ; PA et PC en sortie, PB en entree
+        out     PPI2_CTRL, al
+        mov     al, UART_TX             ; PA7 = 1 (repos)
+        out     PPI2_PA, al
 
 ; ---- initialisation du LCD (mode 8 bits, sequence "par instructions") -------
         DELAY   0                       ; > 40 ms apres la mise sous tension
@@ -438,9 +485,12 @@ efface:
         call    lcd_cmd
         mov     si, txt_pile_ok
         call    lcd_texte20
+        mov     si, txt_uart_banniere   ; banniere sur l'UART (9600 8N1)
+        call    uart_texte
         PAUSE   15                      ; resultat du test visible ~3 s
 
-; ---- 4) animations des DEL (8255) -----------------------------------------------
+; ---- 4) animations des DEL (8255 U7) + terminal clavier / UART (8255 U12) ---------
+; Le clavier et l'UART sont scrutes pendant les attentes des animations (del_aff).
         mov     al, 01h                 ; effacer
         call    lcd_cmd
         DELAY   3000
@@ -448,20 +498,22 @@ efface:
         call    lcd_cmd
         mov     si, txt_del1
         call    lcd_texte20
-        mov     al, 80h | LIGNE2
-        call    lcd_cmd
-        mov     si, txt_del2
-        call    lcd_texte20
         mov     al, 80h | LIGNE3
         call    lcd_cmd
-        mov     si, txt_del3
+        mov     si, txt_term3
         call    lcd_texte20
+        mov     al, 80h | LIGNE4
+        call    lcd_cmd
+        mov     si, txt_term4
+        call    lcd_texte20
+        mov     byte [ss:V_COL3], LCD_COLS   ; le premier caractere efface l'invite
+        mov     byte [ss:V_COL4], LCD_COLS
         xor     bp, bp                  ; BP = cycles complets (aucune animation n'y touche)
 anim_cycle:
         mov     si, anim_table
 anim_suivante:
         push    si
-        mov     al, 80h | LIGNE4        ; "<nom de l'animation>  nnnn"
+        mov     al, 80h | LIGNE2        ; "<nom de l'animation>  nnnn"
         call    lcd_cmd
         mov     si, [si]
         mov     bx, 16
@@ -554,8 +606,410 @@ del_aff:
         out     PPI_PA, al
         mov     al, bl
         out     PPI_PB, al
-        mov     cx, di
-.w:     loop    .w
+        mov     cx, di                  ; attente en scrutant le clavier et l'UART
+.w:     in      al, PPI2_PB
+        test    al, KBD_CLK
+        jz      .clavier                ; CLK bas : debut d'une trame PS/2
+        test    al, UART_RX
+        jz      .uart                   ; RX bas : bit de depart
+.suite: loop    .w
+        ret
+.clavier:
+        call    clavier_entree
+        jmp     .suite
+.uart:  call    uart_entree
+        jmp     .suite
+
+; =============================================================================
+; UART logiciel 9600 8N1 sur le 2e 8255 (U12) : TX = PA7, RX = PB2 (tirage R4).
+; Duree d'un bit = 7 + 17 x UART_N cycles environ par tour de boucle (voir
+; uart_tx) : a regler a l'oscilloscope (bit = 104,2 us a 9600 bauds ; 1 unite de
+; UART_N = 17 cycles = 3,2 us a 5,33 MHz). Interruptions masquees pendant l'octet.
+; =============================================================================
+; uart_tx : envoie AL. Preserve tous les registres.
+uart_tx:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        pushf
+        cli
+        xor     ah, ah
+        shl     ax, 1                   ; bit 0 = depart (0)
+        or      ah, 2                   ; bit 9 = arret (1)
+        mov     dx, ax
+        mov     bl, 10
+.bit:   shr     dx, 1                   ; CF = bit suivant
+        sbb     al, al                  ; AL = FFh si 1, 00h si 0
+        and     al, UART_TX
+        out     PPI2_PA, al
+        mov     cx, UART_N
+.d:     loop    .d
+        dec     bl
+        jnz     .bit
+        popf
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; uart_texte : envoie la chaine DS:SI terminee par 0. Detruit SI, AL.
+uart_texte:
+        lodsb
+        or      al, al
+        jz      .fin
+        call    uart_tx
+        jmp     uart_texte
+.fin:   ret
+
+; uart_rx : RX vient d'etre vu bas (bit de depart). Lit l'octet.
+; Sortie : AL = octet, CF = 1 si trame invalide. Preserve les autres registres.
+uart_rx:
+        push    bx
+        push    cx
+        mov     cx, UART_N / 2          ; au milieu du bit de depart
+.d0:    loop    .d0
+        in      al, PPI2_PB
+        test    al, UART_RX
+        jnz     .err                    ; parasite : plus de bit de depart
+        mov     bl, 8
+.bit:   mov     cx, UART_N              ; (meme duree par bit que uart_tx)
+.d:     loop    .d
+        in      al, PPI2_PB
+        shr     al, 1
+        shr     al, 1
+        shr     al, 1                   ; CF = PB2
+        rcr     ah, 1
+        dec     bl
+        jnz     .bit
+        mov     cx, UART_N
+.d1:    loop    .d1
+        in      al, PPI2_PB             ; bit d'arret (doit etre 1)
+        test    al, UART_RX
+        jz      .err
+        mov     al, ah
+        clc
+        jmp     .fin
+.err:   mov     cx, UART_N * 10         ; laisse passer le reste de la trame
+.r:     loop    .r
+        stc
+.fin:   pop     cx
+        pop     bx
+        ret
+
+; =============================================================================
+; Clavier PS/2 (bit-bang, comme Solution-01) sur le 2e 8255 : PB0 = horloge,
+; PB1 = donnees (tirages R2/R3). Le clavier fournit l'horloge (10-16,7 kHz) ;
+; une donnee est valide pendant que l'horloge est basse. Trame : depart (0),
+; 8 donnees (bit 0 d'abord), parite impaire, arret (1).
+; =============================================================================
+; ps2_trame : CLK vient d'etre vu bas. Sortie : AL = octet, CF = 1 si trame
+; invalide (et la ligne est resynchronisee). Preserve les autres registres.
+ps2_trame:
+        push    bx
+        push    cx
+        push    dx
+        xor     dx, dx
+        mov     bl, 11
+.bit:   in      al, PPI2_PB             ; CLK bas : echantillonne DATA
+        shr     al, 1
+        shr     al, 1                   ; CF = PB1 (DATA)
+        rcr     dx, 1
+        dec     bl
+        jz      .fin
+        mov     cx, PS2_DELAI           ; attend CLK haut
+.h:     in      al, PPI2_PB
+        test    al, KBD_CLK
+        jnz     .haut
+        loop    .h
+        jmp     .err
+.haut:  mov     cx, PS2_DELAI           ; attend CLK bas (bit suivant)
+.b:     in      al, PPI2_PB
+        test    al, KBD_CLK
+        jz      .bit
+        loop    .b
+        jmp     .err
+.fin:   ; DX : bit 15 = arret, 14 = parite, 13-6 = donnees, 5 = depart
+        test    dx, 0020h
+        jnz     .err                    ; depart != 0
+        test    dx, 8000h
+        jz      .err                    ; arret != 1
+        mov     cl, 6
+        shr     dx, cl                  ; DL = donnees, DH bit 0 = parite
+        mov     al, dl
+        or      al, al                  ; PF = 1 si nombre PAIR de 1
+        jpe     .pair
+        test    dh, 1                   ; impair : parite attendue = 0
+        jnz     .err
+        jmp     .ok
+.pair:  test    dh, 1                   ; pair : parite attendue = 1
+        jz      .err
+.ok:    mov     cx, PS2_DELAI           ; fin du bit d'arret : attend CLK haut
+.fin_h: in      al, PPI2_PB             ; (sans plus : l'octet suivant d'un "F0 xx"
+        test    al, KBD_CLK             ;  peut suivre de pres)
+        jnz     .fin_ok
+        loop    .fin_h
+.fin_ok:
+        mov     al, dl
+        clc
+        jmp     .sortie
+.err:   call    ps2_attend_repos
+        stc
+.sortie:
+        pop     dx
+        pop     cx
+        pop     bx
+        ret
+
+; ps2_attend_repos : apres une trame invalide, attend que CLK reste haut ~1 ms
+; (resynchronisation sur le debut d'une trame). Detruit AL, CX.
+ps2_attend_repos:
+        mov     cx, PS2_DELAI
+.r:     in      al, PPI2_PB
+        test    al, KBD_CLK
+        jz      ps2_attend_repos        ; encore bas : recommence l'attente
+        loop    .r
+        ret
+
+; clavier_decode : AL = code de touche (jeu 2). Sortie : CF = 0 et AL = caractere
+; (ASCII, ou TOUCHE_HAUT..TOUCHE_GAUCHE pour les fleches), CF = 1 si rien a produire
+; (prefixe, relachement, Maj/Ctrl/Verr Maj). Etat dans [ss:V_CLAVIER]. Preserve BX.
+clavier_decode:
+        push    bx
+        mov     bl, [ss:V_CLAVIER]
+        cmp     al, 0F0h
+        jne     .pas_f0
+        or      bl, CLV_RELACHE
+        jmp     .rien
+.pas_f0:
+        cmp     al, 0E0h
+        jne     .pas_e0
+        or      bl, CLV_ETENDU
+        jmp     .rien
+.pas_e0:
+        test    bl, CLV_RELACHE
+        jz      .appui
+        ; relachement : seuls Maj et Ctrl nous interessent
+        and     bl, ~(CLV_RELACHE | CLV_ETENDU)
+        cmp     al, 12h                 ; Maj gauche
+        je      .maj_off
+        cmp     al, 59h                 ; Maj droite
+        je      .maj_off
+        cmp     al, 14h                 ; Ctrl (gauche ou droite, E0 14)
+        jne     .rien
+        and     bl, ~CLV_CTRL
+        jmp     .rien
+.maj_off:
+        and     bl, ~CLV_MAJ
+        jmp     .rien
+.appui: test    bl, CLV_ETENDU
+        jz      .normal
+        and     bl, ~CLV_ETENDU         ; touches etendues (E0 xx)
+        cmp     al, 14h
+        je      .ctrl_on
+        mov     ah, TOUCHE_HAUT
+        cmp     al, 75h
+        je      .car
+        mov     ah, TOUCHE_BAS
+        cmp     al, 72h
+        je      .car
+        mov     ah, TOUCHE_DROITE
+        cmp     al, 74h
+        je      .car
+        mov     ah, TOUCHE_GAUCHE
+        cmp     al, 6Bh
+        je      .car
+        mov     ah, 13
+        cmp     al, 5Ah                 ; Entree du pave
+        je      .car
+        mov     ah, '/'
+        cmp     al, 4Ah                 ; / du pave
+        je      .car
+        jmp     .rien
+.normal:
+        cmp     al, 12h
+        je      .maj_on
+        cmp     al, 59h
+        je      .maj_on
+        cmp     al, 14h
+        je      .ctrl_on
+        cmp     al, 58h                 ; Verr Maj : bascule
+        jne     .table
+        xor     bl, CLV_VERR_MAJ
+        jmp     .rien
+.maj_on:
+        or      bl, CLV_MAJ
+        jmp     .rien
+.ctrl_on:
+        or      bl, CLV_CTRL
+        jmp     .rien
+.table: cmp     al, CLAVIER_NB_CODES
+        jae     .rien
+        mov     [ss:V_CLAVIER], bl
+        push    bx
+        mov     bx, clavier_normal
+        test    byte [ss:V_CLAVIER], CLV_MAJ
+        jz      .lit
+        mov     bx, clavier_maj
+.lit:   xlat                            ; AL = [DS:BX + AL] (DS = CS)
+        pop     bx
+        or      al, al
+        jz      .rien
+        mov     ah, al                  ; lettres : Verr Maj inverse la casse,
+        or      ah, 20h                 ;           Ctrl donne 01h-1Ah
+        cmp     ah, 'a'
+        jb      .pas_lettre
+        cmp     ah, 'z'
+        ja      .pas_lettre
+        test    bl, CLV_CTRL
+        jz      .verr
+        and     al, 1Fh
+        jmp     .produit
+.verr:  test    bl, CLV_VERR_MAJ
+        jz      .produit
+        xor     al, 20h
+.pas_lettre:
+.produit:
+        mov     [ss:V_CLAVIER], bl
+        pop     bx
+        clc
+        ret
+.car:   mov     al, ah
+        jmp     .produit
+.rien:  mov     [ss:V_CLAVIER], bl
+        pop     bx
+        stc
+        ret
+
+; =============================================================================
+; Terminal : clavier -> LCD ligne 3 + UART ; UART -> LCD ligne 4 + echo sur l'UART.
+; Appeles depuis del_aff (pendant les animations) : preservent tous les registres
+; sauf AL.
+; =============================================================================
+clavier_entree:
+        push    ax                      ; (AH sert de compteur aux animations)
+        push    cx
+        call    ps2_trame
+        jc      .fin
+        call    clavier_decode
+        jc      .fin
+        cmp     al, TOUCHE_HAUT         ; fleches : sequence ANSI ESC [ A..D sur l'UART
+        jb      .car
+        cmp     al, TOUCHE_GAUCHE
+        ja      .car
+        push    ax
+        mov     al, 27
+        call    uart_tx
+        mov     al, '['
+        call    uart_tx
+        pop     ax
+        add     al, 'A' - TOUCHE_HAUT
+        call    uart_tx
+        jmp     .fin
+.car:   call    uart_envoie_car         ; vers le PC
+        push    bx
+        mov     bx, V_COL3
+        mov     ah, LIGNE3
+        call    ecran_car               ; et sur le LCD
+        pop     bx
+.fin:   pop     cx
+        pop     ax
+        ret
+
+uart_entree:
+        push    ax
+        push    cx
+        call    uart_rx
+        jc      .fin
+        call    uart_envoie_car         ; echo
+        push    bx
+        mov     bx, V_COL4
+        mov     ah, LIGNE4
+        call    ecran_car
+        pop     bx
+.fin:   pop     cx
+        pop     ax
+        ret
+
+; uart_envoie_car : AL vers l'UART ; CR -> CR LF, retour arriere -> BS espace BS.
+; Preserve tout.
+uart_envoie_car:
+        call    uart_tx
+        cmp     al, 13
+        jne     .bs
+        push    ax
+        mov     al, 10
+        call    uart_tx
+        pop     ax
+        ret
+.bs:    cmp     al, 8
+        jne     .fin
+        push    ax
+        mov     al, ' '
+        call    uart_tx
+        mov     al, 8
+        call    uart_tx
+        pop     ax
+.fin:   ret
+
+; ecran_car : affiche AL sur la ligne de debut DDRAM AH, colonne dans [ss:BX].
+; Imprimable : ecrit (ligne effacee quand elle est pleine) ; CR : efface la ligne ;
+; retour arriere : recule d'une colonne. Autres codes ignores. Preserve tout sauf AL.
+ecran_car:
+        push    ax
+        push    cx
+        push    dx
+        mov     dx, ax                  ; DL = caractere, DH = debut de ligne
+        cmp     dl, 13
+        je      .efface
+        cmp     dl, 8
+        je      .recule
+        cmp     dl, ' '
+        jb      .fin
+        cmp     dl, 7Eh
+        ja      .fin
+        cmp     byte [ss:bx], LCD_COLS
+        jb      .ecrit
+        call    .vide                   ; ligne pleine : on repart a gauche
+.ecrit: mov     al, [ss:bx]
+        add     al, dh
+        or      al, 80h
+        call    lcd_cmd
+        mov     al, dl
+        call    lcd_car
+        inc     byte [ss:bx]
+        jmp     .fin
+.recule:
+        cmp     byte [ss:bx], 0
+        je      .fin
+        cmp     byte [ss:bx], LCD_COLS
+        ja      .fin
+        dec     byte [ss:bx]
+        mov     al, [ss:bx]
+        add     al, dh
+        or      al, 80h
+        call    lcd_cmd
+        mov     al, ' '
+        call    lcd_car
+        jmp     .fin
+.efface:
+        call    .vide
+.fin:   pop     dx
+        pop     cx
+        pop     ax
+        ret
+.vide:  push    dx                      ; 20 espaces, puis colonne 0
+        mov     al, dh
+        or      al, 80h
+        call    lcd_cmd
+        mov     dl, LCD_COLS
+.v:     mov     al, ' '
+        call    lcd_car
+        dec     dl
+        jnz     .v
+        mov     byte [ss:bx], 0
+        pop     dx
         ret
 
 ; bit24 : allume la DEL numero CL (0 = PB0 a droite ... 23 = PC7 a gauche). Detruit AL, CL.
@@ -808,7 +1262,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 0.4'
+txt_ouv1:   db  'SOLUTION-02 BIOS 0.5'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -821,9 +1275,13 @@ txt_ram_ok: db  'MEMOIRE 512 Ko : OK '
 txt_echec:  db  'RAM DEFAUT  CPT 0000'
 txt_pile_ok:db  'PILE 7000:0000  OK  '
 txt_pile_err:db 'PILE ERR            '
-txt_del1:   db  'SOLUTION-02 BIOS 0.4'
-txt_del2:   db  'RAM 512 Ko  PILE OK '
-txt_del3:   db  'DEL : 8255 en 10h   '
+txt_del1:   db  'SOLUTION-02 BIOS 0.5'
+txt_term3:  db  'Clavier PS/2 >      '
+txt_term4:  db  'UART 9600 8N1 >     '
+txt_uart_banniere:
+            db  13, 10, 'Solution-02 BIOS 0.5 - VE2CUY 2026', 13, 10
+            db  'RAM 512 Ko : OK, pile 7000:0000', 13, 10
+            db  'Clavier PS/2 (LCD ligne 3) et UART 9600 8N1 (LCD ligne 4, echo)', 13, 10, 0
 %ifdef DIAG_8255
 txt_diag1:  db  'DIAG 8255  10h-13h  '
 txt_diag2:  db  'Rafale: CS# et WR#  '
@@ -852,6 +1310,8 @@ txt_a6:     db  'Compteur/Gray   '
 txt_a7:     db  'Ports C A B     '
 txt_a8:     db  'Etincelles      '
 txt_a9:     db  'Vu-metre        '
+
+%include "clavier_us.inc"
 
 motifs:     dw  55AAh, 0AA55h, 0000h, 0FFFFh
 

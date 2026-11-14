@@ -97,23 +97,113 @@ class PPI:
         return self.allumees == [0xFF] * 3 and self.eteintes == [0xFF] * 3
 
 
-def sortie_port(lcd, ppi, port, val, n):
+class PPI2:
+    """2e 8255 (U12) en 30h-33h : clavier PS/2 sur PB0 (horloge) / PB1 (donnees), UART logiciel
+    TX = PA7 / RX = PB2.
+    - Sortie : chaque ecriture de PA est un bit de la trame serie (depart, 8 donnees, arret) ;
+      les octets emis sont decodes dans self.tx, la duree d'un bit (en instructions) est mesuree.
+    - Entree : des trames PS/2 et des octets serie programmes sont presentes sur PB. Une trame
+      demarre a la premiere lecture de PB qui suit son heure (le clavier n'attend pas, mais le
+      simulateur se place quand le BIOS ecoute, pour un resultat deterministe)."""
+    P_PS2 = 30                                # demi-periode de l'horloge PS/2 (instructions)
+
+    def __init__(self):
+        self.ctrl = None
+        self.erreurs = []
+        self.tx = bytearray()
+        self.etat_tx = None                   # None = repos ; sinon liste des bits recus
+        self.dernier_tx = None
+        self.periodes = []
+        self.attente = []                     # (heure, 'ps2'|'uart', octet)
+        self.trame = None                     # (debut, 'ps2'|'uart', bits)
+        self.lectures = 0
+
+    def bit_uart(self):
+        p = sorted(self.periodes)
+        return p[len(p) // 2] if p else None
+
+    def ecrire(self, port, val, n):
+        if port == 0x33:
+            self.ctrl = val
+            if val != 0x82:
+                self.erreurs.append("mot de controle de U12 %02Xh (82h attendu)" % val)
+            return
+        if self.ctrl != 0x82:
+            self.erreurs.append("sortie en %02Xh avant le mot de controle de U12" % port)
+        if port != 0x30:
+            return
+        b = val >> 7
+        if self.dernier_tx is not None and self.etat_tx is not None:
+            self.periodes.append(n - self.dernier_tx)
+        self.dernier_tx = n
+        if self.etat_tx is None:
+            if b == 0:
+                self.etat_tx = []              # bit de depart
+        elif len(self.etat_tx) < 8:
+            self.etat_tx.append(b)
+        else:
+            if b != 1:
+                self.erreurs.append("UART TX : bit d'arret a 0")
+            self.tx.append(sum(v << i for i, v in enumerate(self.etat_tx)))
+            self.etat_tx = None
+
+    def programmer(self, heure, genre, octet):
+        self.attente.append((heure, genre, octet))
+        self.attente.sort()
+
+    def lire(self, port, n):
+        if port != 0x31:
+            return 0xFF
+        self.lectures += 1
+        if self.trame is None and self.attente and self.attente[0][0] <= n:
+            heure, genre, octet = self.attente.pop(0)
+            if genre == 'ps2':
+                bits = [0] + [(octet >> i) & 1 for i in range(8)]
+                bits += [1 - (sum(bits) & 1), 1]           # parite impaire, arret
+            else:
+                bits = [0] + [(octet >> i) & 1 for i in range(8)] + [1]
+            self.trame = (n, genre, bits)
+        clk = data = rx = 1
+        if self.trame:
+            debut, genre, bits = self.trame
+            t = n - debut
+            if genre == 'ps2':
+                i, phase = divmod(t, 2 * self.P_PS2)
+                if i >= len(bits):
+                    self.trame = None
+                else:
+                    data = bits[i]
+                    clk = 1 if phase < self.P_PS2 else 0
+            else:
+                b = self.bit_uart() or 36
+                i = t // b
+                if i >= len(bits):
+                    self.trame = None
+                else:
+                    rx = bits[i]
+        return 0xF8 | (rx << 2) | (data << 1) | clk
+
+
+def sortie_port(lcd, ppi, port, val, n, ppi2=None):
     if port in (0, 1):
         lcd.ecrire(port, val, n)
     elif 0x10 <= port <= 0x13:
         ppi.ecrire(port, val)
+    elif 0x30 <= port <= 0x33 and ppi2 is not None:
+        ppi2.ecrire(port, val, n)
     else:
         lcd.erreurs.append("OUT vers le port %02Xh" % port)
 
 
 def fini(lcd):
     """Le BIOS a termine : RAM defectueuse -> compteur "CPT 0003" en ligne 1 ;
-    RAM bonne -> un cycle complet d'animations (compteur 0001 en fin de ligne 4)."""
+    RAM bonne -> un cycle complet d'animations (compteur 0001 en fin de ligne 2)."""
     l = lcd.lignes()
-    return l[0].endswith("CPT 0003") or (l[2].startswith("DEL") and l[3].endswith("0001"))
+    return l[0].endswith("CPT 0003") or (l[0].startswith("SOLUTION") and l[1].endswith("0001"))
 
 
-def lancer(image, defaut=None, max_instr=30_000_000):
+def lancer(image, defaut=None, max_instr=80_000_000, fini=fini, entrees=None):
+    """entrees(ppi2, n) : appelee a chaque lecture de PB de U12, pour programmer des trames."""
     rom = open(image, "rb").read()
     assert len(rom) == ROM_LEN, "image de %d octets (256 Ko attendus)" % len(rom)
     uc = Uc(UC_ARCH_X86, UC_MODE_16)
@@ -124,7 +214,8 @@ def lancer(image, defaut=None, max_instr=30_000_000):
     uc.mem_write(ROM_BASE + ROM_LEN, rom)    # C0000h-FFFFFh
     lcd = LCD()
     ppi = PPI()
-    etat = {"n": 0, "restaurer": [], "fin": None, "ppi": ppi}
+    ppi2 = PPI2()
+    etat = {"n": 0, "restaurer": [], "fin": None, "ppi": ppi, "ppi2": ppi2}
 
     def code(uc, adr, taille, ud):
         for a, v in etat["restaurer"]:       # cellule defectueuse : l'ecriture n'a pas pris
@@ -147,16 +238,22 @@ def lancer(image, defaut=None, max_instr=30_000_000):
         return True
 
     def sortie(uc, port, taille, val, ud):
-        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"])
+        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"], ppi2)
         if "pile" not in etat and lcd.lignes()[3].startswith("PILE"):
             etat["pile"] = (uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_SP))
-        if fini(lcd):
+        if fini(lcd) if fini.__code__.co_argcount == 1 else fini(lcd, ppi2):
             etat["fin"] = "ok"
             uc.emu_stop()
+
+    def entree(uc, port, taille, ud):
+        if entrees:
+            entrees(ppi2, etat["n"])
+        return ppi2.lire(port, etat["n"]) if 0x30 <= port <= 0x33 else 0xFF
 
     uc.hook_add(UC_HOOK_CODE, code)
     uc.hook_add(UC_HOOK_MEM_WRITE, ecriture)
     uc.hook_add(UC_HOOK_INSN, sortie, None, 1, 0, UC_X86_INS_OUT)
+    uc.hook_add(UC_HOOK_INSN, entree, None, 1, 0, UC_X86_INS_IN)
     uc.reg_write(UC_X86_REG_CS, 0xFFFF)      # etat du 8088 apres RESET
     uc.reg_write(UC_X86_REG_IP, 0x0000)
     try:
@@ -181,7 +278,7 @@ def main():
     echecs = 0
     cas = [
         ("RAM saine", None, None,
-         ["SOLUTION-02 BIOS 0.4", "RAM 512 Ko  PILE OK ", "DEL : 8255 en 10h   ", "Chenillard      0001"]),
+         ["SOLUTION-02 BIOS 0.5", "Chenillard      0001", "Clavier PS/2 >      ", "UART 9600 8N1 >     "]),
         ("cellule 7B3FFh qui ne retient rien", lambda a: a == 0x7B3FF, None,
          ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 001", "Adresses A0-A18: OK ", "ERR 7B3FF 55/00     "]),
         ("RAM absente", lambda a: a < RAM, None,
@@ -203,7 +300,7 @@ def main():
                 ok = False
                 print("    attendu: |%s|" % a)
         ppi = etat["ppi"]
-        for e in ppi.erreurs[:5]:
+        for e in (ppi.erreurs + etat["ppi2"].erreurs)[:5]:
             ok = False
             print("    ERREUR 8255:", e)
         if titre == "RAM saine":
@@ -217,10 +314,65 @@ def main():
             if not ppi.toutes_vues():
                 ok = False
                 print("    attendu: chacune des 24 DEL allumee et eteinte au moins une fois")
+            p2 = etat["ppi2"]
+            print("    UART TX : bit = %s instructions, %d octets : %r" % (p2.bit_uart(), len(p2.tx), bytes(p2.tx)[:60]))
+            if bytes(p2.tx) != BANNIERE:
+                ok = False
+                print("    attendu: %r" % BANNIERE)
         print("    =>", "OK" if ok else "ECHEC")
         echecs += not ok
+    echecs += not scenario_terminal(image)
     print("\n%d scenario(s) en echec" % echecs)
     sys.exit(1 if echecs else 0)
+
+
+BANNIERE = (b"\r\nSolution-02 BIOS 0.5 - VE2CUY 2026\r\nRAM 512 Ko : OK, pile 7000:0000\r\n"
+            b"Clavier PS/2 (LCD ligne 3) et UART 9600 8N1 (LCD ligne 4, echo)\r\n")
+
+# touches : Maj+a, b, 1, retour arriere, fleche haut (codes de touche PS/2, jeu 2)
+CLAVIER = [0x12, 0x1C, 0xF0, 0x1C, 0xF0, 0x12, 0x32, 0xF0, 0x32, 0x16, 0xF0, 0x16,
+           0x66, 0xF0, 0x66, 0xE0, 0x75, 0xE0, 0xF0, 0x75]
+UART_RECU = b"Hi"
+TX_ATTENDU = b"Ab1\x08 \x08\x1b[AHi"
+
+
+def scenario_terminal(image):
+    """RAM saine, puis frappe au clavier PS/2 et reception sur l'UART pendant les animations."""
+    prog = {"fait": False}
+
+    def entrees(ppi2, n):
+        if not prog["fait"] and ppi2.lectures > 2000:      # les animations ont commence
+            prog["fait"] = True
+            t = n
+            for i, code in enumerate(CLAVIER):
+                suite = code in (0xF0, 0xE0) or (i and CLAVIER[i - 1] in (0xF0, 0xE0))
+                t += 3000 if suite else 30000
+                ppi2.programmer(t, 'ps2', code)
+            for c in UART_RECU:
+                t += 30000
+                ppi2.programmer(t, 'uart', c)
+
+    def termine(lcd, ppi2):              # l'echo part sur l'UART AVANT l'affichage au LCD
+        return bytes(ppi2.tx).endswith(TX_ATTENDU) and lcd.lignes()[3].startswith("Hi")
+
+    lcd, etat = lancer(image, fini=termine, entrees=entrees)
+    afficher("terminal : clavier PS/2 et UART", lcd, etat)
+    p2 = etat["ppi2"]
+    recu = bytes(p2.tx)[len(BANNIERE):]
+    print("    UART TX apres la banniere : %r" % recu)
+    ok = etat["fin"] == "ok" and not lcd.erreurs and not p2.erreurs
+    for e in p2.erreurs[:5]:
+        print("    ERREUR 8255:", e)
+    attendu = ["SOLUTION-02 BIOS 0.5", None, "Ab                  ", "Hi                  "]
+    for l, a in zip(lcd.lignes(), attendu):
+        if a is not None and l != a:
+            ok = False
+            print("    attendu: |%s|" % a)
+    if recu != TX_ATTENDU:
+        ok = False
+        print("    attendu: %r" % TX_ATTENDU)
+    print("    =>", "OK" if ok else "ECHEC")
+    return ok
 
 
 def lancer_alias(image, bit):
@@ -234,7 +386,8 @@ def lancer_alias(image, bit):
     uc.mem_write(ROM_BASE + ROM_LEN, rom)
     lcd = LCD()
     ppi = PPI()
-    etat = {"n": 0, "fin": None, "copie": [], "ppi": ppi}
+    ppi2 = PPI2()
+    etat = {"n": 0, "fin": None, "copie": [], "ppi": ppi, "ppi2": ppi2}
 
     def code(uc, adr, taille, ud):
         for a, v in etat["copie"]:
@@ -252,7 +405,7 @@ def lancer_alias(image, bit):
         return True
 
     def sortie(uc, port, taille, val, ud):
-        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"])
+        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"], ppi2)
         if fini(lcd):
             etat["fin"] = "ok"
             uc.emu_stop()
