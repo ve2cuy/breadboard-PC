@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 0.7 :
+Contenu de la ROM et de la RAM avec le BIOS 0.8 :
 
 | Adresses | Contenu |
 |---|---|
@@ -205,7 +205,7 @@ vers IR4) ; les portes 3 à 6 sont inutilisées, entrées à la masse (VCC
 broche 14, GND broche 7). Les bits eux-mêmes restent lus par U12 (PB0, PB1,
 PB2) : la routine d'interruption lit la trame ou l'octet entier par
 scrutation, comme le BIOS 0.7, mais elle démarre dès le premier front, même
-quand le DOS ne demande rien. Numéros comme le PC : IRQ1 = INT 09h (clavier),
+quand le DOS ne demande rien (BIOS 0.8). Numéros comme le PC : IRQ1 = INT 09h (clavier),
 IRQ4 = INT 0Ch (COM1).
 
 À retenir pour le logiciel : le 8259 doit servir l'interruption pendant que
@@ -230,17 +230,27 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 0.7
+## BIOS 0.8
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.7`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.8`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
-3. **Menu**, au clavier PS/2 (touches 1 à 4) :
+3. **Menu**, au clavier PS/2 (touches 1 à 4). En entrant au menu, le BIOS
+   installe les vecteurs, réinitialise le 8259 et le **détecte** en relisant
+   son registre de masque (A5h puis 5Ah) :
+   - **8259 présent** : le clavier (IRQ1, INT 09h) et la réception de l'UART
+     (IRQ4, INT 0Ch) passent par les **interruptions**. La routine lit la trame
+     ou l'octet par scrutation de U12 dès le premier front, le décode et le met
+     dans une file (16 touches, 32 octets). Rien n'est perdu pendant que le
+     programme fait autre chose (affichage, `DIR`…). IRQ7 (INT 0Fh) compte les
+     interruptions parasites (demande retombée avant INTA) ;
+   - **8259 absent** (pas encore câblé) : scrutation pendant les attentes,
+     comme le BIOS 0.7.
 
 ```
 1) Load DOS
@@ -253,8 +263,9 @@ type IBM PC). Déroulement :
 
 Le BIOS remplit la table des vecteurs (256 vecteurs vers un `IRET`, puis les
 siens), la zone de données (BDA : 1 lecteur de disquette, vidéo 80 colonnes,
-508 Ko), vide l'écran, bloque le clavier et amorce A: (INT 19h : secteur 0 en
-0000:7C00). PC-DOS 2.1 demande la date et l'heure (Entrée, Entrée ; il n'y a
+508 Ko), vide l'écran et amorce A: (INT 19h : secteur 0 en 0000:7C00). Les
+services du BIOS rétablissent les interruptions (STI) : IRQ1 et IRQ4 sont
+servies même pendant l'affichage. PC-DOS 2.1 demande la date et l'heure (Entrée, Entrée ; il n'y a
 pas d'horloge), puis affiche `A>`.
 
 | INT | Service |
@@ -262,8 +273,9 @@ pas d'horloge), puis affiche `A>`.
 | 10h | écran : AH = 00h, 02h, 03h, 06h, 07h, 08h, 09h, 0Ah, **0Eh (télétype)**, 0Fh |
 | 11h / 12h | équipement (0021h) / mémoire (508 Ko) |
 | 13h | disquette A: **en ROM**, lecture seule : AH = 00h, 01h, 02h, 04h, 08h, 15h, 16h ; écriture/formatage → erreur 03h (protégée) ; autre lecteur → erreur |
-| 14h | AH = 01h : envoi sur l'UART logiciel (réception : pas encore) |
-| 16h | clavier : AH = 00h, 01h, 02h, 05h (et 10h–12h) ; AH = code XT, AL = ASCII, comme un PC |
+| 09h / 0Ch / 0Fh | IRQ1 clavier / IRQ4 UART / IRQ7 parasite (8259) |
+| 14h | AH = 01h : envoi sur l'UART logiciel ; AH = 02h : octet reçu par IRQ4 (attente ~0,5 s, sinon AH = 80h) ; AH = 03h : état (AH bit 0 = octet en attente) — réception seulement avec le 8259 |
+| 16h | clavier : AH = 00h, 01h, 02h, 05h (et 10h–12h) ; AH = code XT, AL = ASCII, comme un PC ; file remplie par IRQ1 |
 | 15h, 17h | sans objet (pas de services AT, pas d'imprimante) |
 | 18h | retour au menu |
 | 19h | amorçage de A: |
@@ -347,15 +359,20 @@ Pendant les animations, terminal clavier / UART :
 complets, puis `Clavier PS/2 >` et `UART 9600 8N1 >`, remplacés par le texte
 au premier caractère.
 
-Limites (scrutation sans interruption) : une touche frappée pendant qu'un
-caractère part sur l'UART (~1 ms) ou pendant le changement d'animation peut
-être perdue ; des octets reçus collés les uns aux autres aussi.
+Avec le 8259, les touches et les octets reçus arrivent par IRQ1/IRQ4 et sont
+traités pendant les attentes des animations. Limites : l'envoi d'un caractère
+sur l'UART masque les interruptions (~1 ms) : une trame du clavier ou un octet
+qui commence à ce moment peut être perdu (ou donner une IRQ7 parasite), de même
+qu'un octet reçu pendant la lecture d'une trame du clavier (et inversement).
+Sans 8259 : scrutation, une touche frappée pendant l'envoi d'un caractère ou le
+changement d'animation peut être perdue.
 
 ### 4) SysInfo
 
 Version du BIOS, processeur (**8088** ou **NEC V20**, reconnu par
-l'instruction AAD : le V20 ignore son opérande), mémoire, ROM et disque A:.
-Une touche ramène au menu.
+l'instruction AAD : le V20 ignore son opérande), mémoire et ROM, et le 8259 :
+`8259 OK   IRQ7 nnnn` (nombre d'IRQ7 parasites, en hexadécimal, depuis le
+démarrage) ou `8259 absent (scrut.)`. Une touche ramène au menu.
 
 ### Clavier
 
@@ -388,23 +405,32 @@ erreurs :
   non sélectionnée).
 
 Le simulateur (`make test`, [bios/tests/sim.py](bios/tests/sim.py)) modélise le
-LCD, les deux 8255, un **vrai clavier PS/2** (la trame part à son heure, que le
-BIOS écoute ou non ; bloquée par PC0 avec la diode, interrompue puis renvoyée)
-et l'aiguillage des interruptions du mode réel. 10 scénarios : démarrage et
+LCD, les deux 8255, un **vrai clavier PS/2** et l'UART (la trame part à son
+heure, que le BIOS écoute ou non ; perdue si PB n'est pas lu pendant la trame),
+le **8259** (ICW, masque, EOI, mode front : demande mémorisée au front montant,
+valable seulement si l'entrée est encore haute ; INT levée jusqu'à INTA ; IRQ7
+parasite sinon) relié par le 74HC14 (IR1 = horloge inversée, IR4 = RX
+inversée), les interruptions matérielles servies entre deux instructions quand
+IF = 1 (pas juste après STI), et l'aiguillage des interruptions logicielles du
+mode réel. 12 scénarios : démarrage et
 menu (pile, bannière UART) ; Test memory avec RAM saine puis retour au menu ;
 cellule 7B3FFh défectueuse, RAM absente (test complet d'office), ligne A15
 coupée, puce de 128 Ko ; LED Show (24 DEL vues allumées et éteintes) ;
 terminal (Maj+a, b, 1, retour arrière, flèche haut, « Hi » reçu, Échap) ;
-SysInfo ; **Load DOS** : PC-DOS 2.1 démarre depuis la ROM, date et heure
-(Entrée), `DIR`, Maj + ↑ ×3 et Maj + →, Ctrl + Alt + Suppr, avec vérification
-qu'aucune trame du clavier n'est perdue, qu'aucun vecteur non géré n'est appelé
-et qu'aucun `OUT` du DOS n'atteint le LCD ou les 8255.
+SysInfo avec et **sans 8259** (repli sur la scrutation) ; **Load DOS** :
+PC-DOS 2.1 démarre depuis la ROM, date et heure (Entrée), `DIR`, Maj + ↑ ×3 et
+Maj + →, saisie longue, Ctrl + Alt + Suppr, avec vérification qu'aucune trame
+du clavier n'est perdue avant Ctrl + Alt + Suppr, qu'aucun vecteur non géré
+n'est appelé et qu'aucun `OUT` du DOS n'atteint le LCD ou les 8255 ; **frappe
+anticipée** : `rem abc` tapé pendant que `DIR` s'affiche apparaît à l'invite
+suivante (IRQ1). Réception UART sous DOS (INT 14h AH=02h) : pas encore de
+scénario.
 
 Commandes (depuis `bios/`) :
 
 ```sh
 make            # build/solution-02-bios.bin (image de 256 Ko)
-make test       # simulateur tests/sim.py (10 scénarios, ~40 s ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
+make test       # simulateur tests/sim.py (12 scénarios, ~4 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
 make diag       # ROM de diagnostic du 8255 U7 (écritures en rafale) ; graver : make flash PUCE=ok GRAVER=diag
 make diag2      # ROM de diagnostic de U12 (PC/PA clignotent, PB et trames PS/2 au LCD) ; GRAVER=diag2
 make flash PUCE=ok   # graver la W29C020C (TL866CS, minipro sous WSL) — insérer la puce d'abord
@@ -428,6 +454,7 @@ ROM, A14 est à la broche 29 et A15 à la broche 3.
 
 ## État
 
+- 2026-11-14 : BIOS 0.8 : clavier (IRQ1) et réception UART (IRQ4) par le 8259, détecté au menu (sinon scrutation comme le 0.7) ; INT 14h AH=02h/03h ; SysInfo : 8259 et IRQ7 parasites. Simulé (12 scénarios), pas encore gravé.
 - 2026-11-14 : schéma : 8259A (U13) sur O2 (20h–21h), INT → INTR, INTA ; 74HC14 (U14) : IRQ1 = KBD_CLK inversée, IRQ4 = UART_RX inversée. Pas encore câblé ; BIOS 0.8 à venir.
 - 2026-11-14 : BIOS 0.7 : sous DOS, seules les 20 colonnes de la fenêtre vont au LCD (la fenêtre ne suit plus le curseur horizontalement pendant l'affichage) ; Maj gauche reconnue pour la navigation (Maj gauche/droite suivies séparément, Maj factice). Pas de diode : 8259 à venir.
 - 2026-11-14 : BIOS 0.6 : menu, PC-DOS 2.1 en ROM (Load DOS), services INT 10h/13h/16h…, écran 24 × 80 vu par le LCD (Maj + flèches), Test memory, LED Show, SysInfo. Diode de blocage du clavier (PC0) à ajouter.

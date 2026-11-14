@@ -102,18 +102,21 @@ class PPI:
 
 class PPI2:
     """2e 8255 (U12) en 30h-33h : clavier PS/2 sur PB0 (horloge) / PB1 (donnees), UART logiciel
-    TX = PA7 / RX = PB2, blocage du clavier par PC0 (diode de KBD_CLK vers PC0).
+    TX = PA7 / RX = PB2, blocage du clavier par PC0 (diode de KBD_CLK vers PC0, si `diode`).
     - Sortie : chaque ecriture de PA est un bit de la trame serie (depart, 8 donnees, arret) ;
       les octets emis sont decodes dans self.tx, la duree d'un bit (en instructions) est mesuree.
-    - Clavier : comme un vrai clavier, une trame part a son heure, que le BIOS ecoute ou non
-      (une trame passee sans etre lue est perdue). Si `diode`, PC0 = 0 bloque l'horloge : le
-      clavier attend (au moins T_LIBRE apres le relachement) ; une trame bloquee avant son
-      10e bit est interrompue et renvoyee.
-    - UART : un octet programme demarre a la premiere lecture de PB qui suit son heure."""
+    - Clavier et UART : comme les vrais, une trame part a son heure (le temps avance a chaque
+      instruction), que le BIOS ecoute ou non. Une trame PS/2 pendant laquelle le BIOS n'a pas
+      lu PB est comptee perdue. Si `diode`, PC0 = 0 bloque l'horloge : le clavier attend (au
+      moins T_LIBRE apres le relachement) ; une trame bloquee avant son 10e bit est
+      interrompue et renvoyee.
+    - niveaux(n) donne les lignes vues par le 74HC14 (U14) : IR1 = KBD_CLK inversee,
+      IR4 = UART_RX inversee (bits du 8259)."""
     P_PS2 = 30                                # demi-periode de l'horloge PS/2 (instructions)
     T_LIBRE = 50                              # delai du clavier apres le relachement
+    BIT_UART = 36                             # duree d'un bit recu si TX n'a rien mesure
 
-    def __init__(self, diode=True):
+    def __init__(self, diode=False):
         self.ctrl = None
         self.erreurs = []
         self.tx = bytearray()
@@ -122,17 +125,19 @@ class PPI2:
         self.periodes = []
         self.attente = []                     # (heure, 'ps2'|'uart', octet)
         self.trame = None                     # (debut, 'ps2'|'uart', bits, octet)
+        self.lues = 0                         # lectures de PB pendant la trame en cours
         self.lectures = 0
         self.diode = diode
         self.pc0 = 1
         self.libre_depuis = 0
-        self.fin_trame = 0                    # fin de la derniere trame PS/2 (+ un bit de repos)
         self.perdues = 0                      # trames PS/2 passees sans etre lues
         self.interrompues = 0
+        self.trames = 0
+        self.fin_ps2 = 0                      # fin de la derniere trame PS/2 (une a la fois)
 
     def bit_uart(self):
         p = sorted(self.periodes)
-        return p[len(p) // 2] if p else None
+        return p[len(p) // 2] if p else self.BIT_UART
 
     def bloque(self):
         return self.diode and self.pc0 == 0
@@ -147,7 +152,6 @@ class PPI2:
             debut, genre, bits, octet = self.trame
             if (n - debut) // (2 * self.P_PS2) < 10:      # interrompue : sera renvoyee
                 self.trame = None
-                self.fin_trame = n
                 self.interrompues += 1
                 self.attente.insert(0, (n, 'ps2', octet))
 
@@ -187,34 +191,46 @@ class PPI2:
         self.attente.append((heure, genre, octet))
         self.attente.sort(key=lambda e: e[0])
 
+    def _fin_trame(self):
+        if self.trame[1] == 'ps2':
+            self.fin_ps2 = self.trame[0] + len(self.trame[2]) * 2 * self.P_PS2
+            self.trames += 1
+            if not self.lues:
+                self.perdues += 1
+        self.trame = None
+
     def _suivante(self, n):
         """Demarre la prochaine trame si son heure est venue (au besoin dans le passe)."""
         while self.trame is None and self.attente and self.attente[0][0] <= n:
             heure, genre, octet = self.attente[0]
             if genre == 'uart':
-                self.attente.pop(0)
                 bits = [0] + [(octet >> i) & 1 for i in range(8)] + [1]
-                self.trame = (n, genre, bits, octet)
-                return
-            if self.bloque():
-                return
-            debut = max(heure, self.libre_depuis + self.T_LIBRE, self.fin_trame)
-            if debut > n:
-                return
+                debut = heure
+                duree = len(bits) * self.bit_uart()
+            else:
+                if self.bloque():
+                    return
+                debut = max(heure, self.libre_depuis + self.T_LIBRE, self.fin_ps2 + self.T_LIBRE)
+                if debut > n:
+                    return
+                bits = [0] + [(octet >> i) & 1 for i in range(8)]
+                bits += [1 - (sum(bits) & 1), 1]               # parite impaire, arret
+                duree = len(bits) * 2 * self.P_PS2
             self.attente.pop(0)
-            bits = [0] + [(octet >> i) & 1 for i in range(8)]
-            bits += [1 - (sum(bits) & 1), 1]               # parite impaire, arret
-            self.fin_trame = debut + (len(bits) + 1) * 2 * self.P_PS2
-            if n - debut >= len(bits) * 2 * self.P_PS2:    # passee sans etre lue
-                self.perdues += 1
+            self.lues = 0
+            if n - debut >= duree:                         # passee sans etre lue
+                if genre == 'ps2':
+                    self.trames += 1
+                    self.perdues += 1
+                    self.fin_ps2 = debut + duree
                 continue
             self.trame = (debut, genre, bits, octet)
 
-    def lire(self, port, n):
-        if port != 0x31:
-            return 0xFF
-        self.lectures += 1
+    def _lignes(self, n):
+        """(clk, data, rx) a l'instant n."""
         clk = data = rx = 1
+        if self.trame is None and not (self.attente and self.attente[0][0] <= n):
+            return (0 if self.bloque() else 1), 1, 1
         for _ in range(2):
             self._suivante(n)
             if not self.trame:
@@ -224,29 +240,132 @@ class PPI2:
             if genre == 'ps2':
                 i, phase = divmod(t, 2 * self.P_PS2)
                 if i >= len(bits):
-                    self.trame = None          # finie : la suivante peut deja avoir commence
+                    self._fin_trame()          # finie : la suivante peut deja avoir commence
                     continue
                 data = bits[i]
                 clk = 1 if phase < self.P_PS2 else 0
             else:
-                b = self.bit_uart() or 36
-                i = t // b
+                i = t // self.bit_uart()
                 if i >= len(bits):
-                    self.trame = None
-                else:
-                    rx = bits[i]
+                    self._fin_trame()
+                    continue
+                rx = bits[i]
             break
         if self.bloque():
             clk = 0
+        return clk, data, rx
+
+    def niveaux(self, n):
+        """Bits IR du 8259 : IR1 = KBD_CLK inversee, IR4 = UART_RX inversee (U14)."""
+        clk, data, rx = self._lignes(n)
+        return ((1 - clk) << 1) | ((1 - rx) << 4)
+
+    def lire(self, port, n):
+        if port != 0x31:
+            return 0xFF
+        self.lectures += 1
+        clk, data, rx = self._lignes(n)
+        if self.trame and self.trame[1] == 'ps2':
+            self.lues += 1
         return 0xF8 | (rx << 2) | (data << 1) | clk
 
-def sortie_port(lcd, ppi, port, val, n, ppi2=None):
+
+class PIC:
+    """8259A (U13) en 20h-21h : ICW1-ICW4, masque (OCW1), EOI (OCW2), lecture de IRR / ISR
+    (OCW3). Mode front : une demande est memorisee au front montant de IR, mais n'est valable
+    que si IR est encore haute ; INT, une fois levee, reste haute jusqu'a INTA ; si plus
+    aucune demande n'est valable a INTA, le 8259 donne le vecteur de IR7 (IRQ7 parasite)."""
+    def __init__(self):
+        self.init = False
+        self.etape = 0
+        self.icw4 = False
+        self.base = 0
+        self.imr = 0xFF
+        self.isr = 0
+        self.verrou = 0
+        self.niv = 0
+        self.int_haut = False
+        self.lire_isr = False
+        self.erreurs = []
+        self.servies = {}
+        self.parasites = 0
+        self.eoi = 0
+
+    def ecrire(self, port, val):
+        if port & 1 == 0:
+            if val & 0x10:                                  # ICW1
+                self.etape, self.icw4, self.init = 1, bool(val & 1), False
+                self.imr = self.isr = self.verrou = 0
+                self.int_haut = False
+                if val & 0x08:
+                    self.erreurs.append("ICW1 %02Xh : mode niveau (front attendu)" % val)
+                if not val & 0x02:
+                    self.erreurs.append("ICW1 %02Xh : cascade (8259 unique attendu)" % val)
+            elif val & 0x08:                                # OCW3
+                if val & 0x02:
+                    self.lire_isr = bool(val & 1)
+            else:                                           # OCW2
+                self.eoi += 1
+                if val & 0xE0 == 0x20 and self.isr:         # EOI non specifique
+                    self.isr &= self.isr - 1
+                elif val & 0xE0 == 0x60:                    # EOI specifique
+                    self.isr &= ~(1 << (val & 7))
+        else:
+            if self.etape == 1:                             # ICW2
+                self.base = val & 0xF8
+                self.etape = 2 if self.icw4 else 0
+                self.init = not self.icw4
+            elif self.etape == 2:                           # ICW4
+                self.etape, self.init = 0, True
+                if not val & 1:
+                    self.erreurs.append("ICW4 %02Xh : mode 8080 (8086 attendu)" % val)
+            else:
+                self.imr = val                              # OCW1
+
+    def lire(self, port):
+        if port & 1:
+            return self.imr
+        return self.isr if self.lire_isr else (self.verrou & self.niv)
+
+    def entrees(self, niv):
+        self.verrou |= niv & ~self.niv
+        self.niv = niv
+        if self.demande() is not None:
+            self.int_haut = True
+
+    def demande(self):
+        if not self.init:
+            return None
+        req = self.verrou & self.niv & ~self.imr & 0xFF
+        if not req:
+            return None
+        irq = (req & -req).bit_length() - 1
+        if self.isr and (self.isr & -self.isr).bit_length() - 1 <= irq:
+            return None                                     # une plus prioritaire est servie
+        return irq
+
+    def inta(self):
+        self.int_haut = False
+        irq = self.demande()
+        if irq is None:
+            self.parasites += 1
+            return self.base + 7
+        self.isr |= 1 << irq
+        self.verrou &= ~(1 << irq)
+        self.servies[irq] = self.servies.get(irq, 0) + 1
+        return self.base + irq
+
+
+def sortie_port(lcd, ppi, port, val, n, ppi2=None, pic=None):
     if port in (0, 1):
         lcd.ecrire(port, val, n)
     elif 0x10 <= port <= 0x13:
         ppi.ecrire(port, val)
     elif 0x30 <= port <= 0x33 and ppi2 is not None:
         ppi2.ecrire(port, val, n)
+    elif 0x20 <= port <= 0x2F:                 # O2 : 8259 (A0), ou rien s'il est absent
+        if pic is not None:
+            pic.ecrire(port, val)
     else:
         lcd.erreurs.append("OUT vers le port %02Xh" % port)
 
@@ -254,7 +373,7 @@ def sortie_port(lcd, ppi, port, val, n, ppi2=None):
 # ---- clavier PS/2 (jeu 2) ----------------------------------------------------------------
 CODES = {'1': 0x16, '2': 0x1E, '3': 0x26, '4': 0x25, 'a': 0x1C, 'b': 0x32, 'd': 0x23, 'e': 0x24,
          'i': 0x43, 'm': 0x3A, '0': 0x45, '5': 0x2E, '6': 0x36, '7': 0x3D, '8': 0x3E, '9': 0x46,
-         'r': 0x2D, 'v': 0x2A, ' ': 0x29, '\r': 0x5A, '\x1b': 0x76, '\b': 0x66}
+         'r': 0x2D, 'v': 0x2A, 'c': 0x21, ' ': 0x29, '\r': 0x5A, '\x1b': 0x76, '\b': 0x66}
 MAJ, CTRL, ALT = 0x12, 0x14, 0x11
 FLECHES = {'haut': 0x75, 'bas': 0x72, 'gauche': 0x6B, 'droite': 0x74}
 
@@ -325,12 +444,29 @@ def ecran_dos(uc):
     return [b[i * 80:(i + 1) * 80].decode('latin1') for i in range(24)]
 
 
+def empiler_int(uc, num, ip):
+    """Entree dans le vecteur num comme le 8088 : indicateurs, CS, IP empiles ; IF = TF = 0."""
+    off, seg = struct.unpack('<HH', bytes(uc.mem_read(num * 4, 4)))
+    fl = uc.reg_read(UC_X86_REG_EFLAGS)
+    ss, sp = uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_SP)
+    for v in (fl & 0xFFFF, uc.reg_read(UC_X86_REG_CS), ip):
+        sp = (sp - 2) & 0xFFFF
+        uc.mem_write(ss * 16 + sp, struct.pack('<H', v))
+    uc.reg_write(UC_X86_REG_SP, sp)
+    uc.reg_write(UC_X86_REG_EFLAGS, fl & ~0x300)
+    uc.reg_write(UC_X86_REG_CS, seg)
+    uc.reg_write(UC_X86_REG_IP, off)
+
+
 def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entrees=None, dos=False,
-           diode=True):
+           diode=False, pic=True):
     """defaut(a) : la cellule a ne retient rien ; alias : la RAM ignore cette ligne d'adresse
     (une ecriture en a atteint aussi a ^ alias). fini(ctx) arrete la simulation ; entrees(ctx)
     est appelee a chaque lecture de PB de U12 (pour programmer des trames).
-    dos : les ecritures en ROM sont ignorees (comptees) au lieu d'arreter la simulation."""
+    dos : les ecritures en ROM sont ignorees (comptees) au lieu d'arreter la simulation.
+    pic : 8259 (U13) present ; ses demandes sont servies entre deux instructions quand IF = 1
+    (sauf juste apres STI), comme le 8088 : indicateurs, CS, IP empiles, IF = TF = 0.
+    entrees(ctx) est aussi appelee toutes les 512 instructions."""
     rom = open(image, "rb").read()
     assert len(rom) == ROM_LEN, "image de %d octets (256 Ko attendus)" % len(rom)
     uc = Uc(UC_ARCH_X86, UC_MODE_16)
@@ -342,8 +478,10 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
     lcd = LCD()
     ppi = PPI()
     ppi2 = PPI2(diode)
-    etat = {"n": 0, "restaurer": [], "fin": None, "ppi": ppi, "ppi2": ppi2, "ecritures_rom": 0,
-            "ints": {}, "int_iret": {}, "out_dos": {}, "out_libres": {}}
+    pic8259 = PIC() if pic else None
+    etat = {"n": 0, "restaurer": [], "fin": None, "ppi": ppi, "ppi2": ppi2, "pic": pic8259,
+            "ecritures_rom": 0, "ints": {}, "int_iret": {}, "out_dos": {}, "out_libres": {},
+            "irq": {}, "ombre": False}
     ctx = {"uc": uc, "lcd": lcd, "ppi2": ppi2, "etat": etat}
 
     def code(uc, adr, taille, ud):
@@ -351,9 +489,21 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
             uc.mem_write(a, bytes([v]))
         etat["restaurer"] = []
         etat["n"] += 1
-        if etat["n"] > max_instr:
+        n = etat["n"]
+        if n > max_instr:
             etat["fin"] = "limite d'instructions atteinte"
             uc.emu_stop()
+            return
+        if entrees and n & 511 == 0:
+            entrees(ctx)
+        if pic8259 is not None:
+            pic8259.entrees(ppi2.niveaux(n))
+            if pic8259.int_haut and not etat["ombre"] and uc.reg_read(UC_X86_REG_EFLAGS) & 0x200:
+                vec = pic8259.inta()                     # INTA : interruption materielle
+                etat["irq"][vec] = etat["irq"].get(vec, 0) + 1
+                empiler_int(uc, vec, uc.reg_read(UC_X86_REG_IP))
+                return
+        etat["ombre"] = uc.mem_read(adr, 1)[0] == 0xFB  # STI : pas d'interruption juste apres
 
     def ecriture(uc, acces, adr, taille, val, ud):
         if adr >= ROM_BASE:
@@ -375,13 +525,15 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
 
     def sortie(uc, port, taille, val, ud):
         cs = uc.reg_read(UC_X86_REG_CS)
-        if cs != 0xF000:                     # OUT du DOS ou d'un programme : seuls O0, O1 et O3
-            if (port & 0x80) == 0 and (port >> 4) & 7 in (0, 1, 3):   # du 138 atteignent un circuit
+        if cs != 0xF000:                     # OUT du DOS ou d'un programme : O0, O1 et O3 du 138
+            if (port & 0x80) == 0 and (port >> 4) & 7 in (0, 1, 3):   # sont interdits ; O2 = 8259
                 etat["out_dos"][port] = etat["out_dos"].get(port, 0) + 1
             else:
                 etat["out_libres"][port] = etat["out_libres"].get(port, 0) + 1
+                if pic8259 is not None and 0x20 <= port <= 0x2F:
+                    pic8259.ecrire(port, val & 0xFF)
             return
-        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"], ppi2)
+        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"], ppi2, pic8259)
         if fini and fini(ctx):
             etat["fin"] = "ok"
             uc.emu_stop()
@@ -389,6 +541,8 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
     def entree(uc, port, taille, ud):
         if entrees and port == 0x31:
             entrees(ctx)
+        if 0x20 <= port <= 0x2F:
+            return pic8259.lire(port) if pic8259 is not None else 0xFF
         return ppi2.lire(port, etat["n"]) if 0x30 <= port <= 0x33 else 0xFF
 
     def interruption(uc, num, ud):          # aiguillage du mode reel (Unicorn ne le fait pas)
@@ -396,15 +550,7 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
         etat["ints"][num] = etat["ints"].get(num, 0) + 1
         if uc.mem_read(seg * 16 + off, 1)[0] == 0xCF:   # IRET : vecteur non gere
             etat["int_iret"][num] = etat["int_iret"].get(num, 0) + 1
-        fl = uc.reg_read(UC_X86_REG_EFLAGS)
-        ss, sp = uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_SP)
-        for v in (fl & 0xFFFF, uc.reg_read(UC_X86_REG_CS), uc.reg_read(UC_X86_REG_IP)):
-            sp = (sp - 2) & 0xFFFF
-            uc.mem_write(ss * 16 + sp, struct.pack('<H', v))
-        uc.reg_write(UC_X86_REG_SP, sp)
-        uc.reg_write(UC_X86_REG_EFLAGS, fl & ~0x300)
-        uc.reg_write(UC_X86_REG_CS, seg)
-        uc.reg_write(UC_X86_REG_IP, off)
+        empiler_int(uc, num, uc.reg_read(UC_X86_REG_IP))
 
     uc.hook_add(UC_HOOK_CODE, code)
     uc.hook_add(UC_HOOK_MEM_WRITE, ecriture)
@@ -441,11 +587,19 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     for e in (etat["ppi"].erreurs + etat["ppi2"].erreurs)[:5]:
         ok = False
         print("    ERREUR 8255:", e)
+    pic = etat["pic"]
+    if pic is not None:
+        for e in pic.erreurs[:5]:
+            ok = False
+            print("    ERREUR 8259:", e)
+        if pic.servies or pic.parasites:
+            print("    8259 : IRQ servies %s, IRQ7 parasites %d, trames PS/2 %d (perdues %d)" % (
+                pic.servies, pic.parasites, etat["ppi2"].trames, etat["ppi2"].perdues))
     print("    =>", "OK" if ok else "ECHEC")
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 0.7 - VE2CUY 2026\r\n"
+BANNIERE = (b"\r\nSolution-02 BIOS 0.8 - VE2CUY 2026\r\n"
             b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) SysInfo\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
 echec_ram = lambda ctx: ctx["lcd"].lignes()[0].endswith("CPT 0003")
@@ -509,7 +663,7 @@ TX_ATTENDU = b"Ab1\x08 \x08\x1b[AHi"
 
 def scenario_terminal(image):
     vu = {"lignes": None}
-    lance = lambda c: c["lcd"].lignes()[0] == "LED SHOW  Echap=menu" and c["ppi2"].lectures > 2000
+    lance = lambda c: c["lcd"].lignes()[0] == "LED SHOW  Echap=menu" and c["etat"]["ppi"].sorties > 30
 
     def ecrit(c):
         l = c["lcd"].lignes()
@@ -533,22 +687,54 @@ def scenario_terminal(image):
     return verifier("menu 3) terminal clavier + UART, Echap = retour au menu", lcd, etat, MENU, ok)
 
 
-def scenario_sysinfo(image):
+def scenario_sysinfo(image, pic=True):
+    """SysInfo ; avec ou sans 8259 (sans : detection par le masque, clavier scrute)."""
     vu = {"l": None}
+    ligne4 = "8259 OK   IRQ7 0000" + " " if pic else "8259 absent (scrut.)"
+    pret = lambda c: c["lcd"].lignes()[3] == ligne4
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 0.7" and l[3].startswith("A:"):
+        if l[0] == "SOLUTION-02 BIOS 0.8" and pret(c):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
-    pas = Etapes([(au_menu, texte('4')), (lambda c: c["lcd"].lignes()[3].startswith("A:"), texte(' '))])
-    lcd, etat, uc = lancer(image, fini=fini, entrees=pas)
-    attendu = ["SOLUTION-02 BIOS 0.7", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", "A: PC-DOS 2.1  180Ko"]
+    pas = Etapes([(au_menu, texte('4')), (pret, texte(' '))])
+    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic)
+    attendu = ["SOLUTION-02 BIOS 0.8", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
         print("    attendu : %s" % attendu)
-    return verifier("menu 4) SysInfo puis retour au menu", lcd, etat, MENU, ok)
+    return verifier("menu 4) SysInfo puis retour au menu (%s)" % ("8259 present" if pic else "SANS 8259"),
+                    lcd, etat, MENU, ok)
+
+
+def scenario_anticipe(image):
+    """DOS : des touches frappees PENDANT l'affichage de DIR (le DOS ne lit pas le clavier)
+    doivent arriver a l'invite suivante : avec le 8259, IRQ1 les met dans la file."""
+    ecran = lambda c: "\n".join(ecran_dos(c["uc"]))
+    vu = {}
+
+    def fin_vue(c):
+        lignes = [l.rstrip() for l in ecran_dos(c["uc"]) if l.strip()]
+        if lignes and lignes[-1] == "A>rem abc" and "bytes free" in ecran(c):
+            vu["fin"] = lignes[-3:]
+            return True
+        return False
+    pas = Etapes([
+        (au_menu, texte('1')),
+        (lambda c: "Enter new date" in ecran(c), texte('\r')),
+        (lambda c: "Enter new time" in ecran(c), texte('\r')),
+        (lambda c: ecran(c).count("A>") >= 1, texte('dir\r')),
+        (lambda c: "Directory of" in ecran(c) and "bytes free" not in ecran(c), texte('rem abc')),
+    ])
+    lcd, etat, uc = lancer(image, fini=fin_vue, entrees=pas, dos=True, max_instr=200_000_000)
+    print("--- fin de l'ecran du DOS : %s" % vu.get("fin"))
+    p2 = etat["ppi2"]
+    ok = "fin" in vu and not p2.perdues
+    if not ok:
+        print("    attendu : 'A>rem abc' apres DIR, aucune trame perdue (%d perdue(s))" % p2.perdues)
+    return verifier("DOS : frappe pendant DIR (touches en file par IRQ1)", lcd, etat, None, ok)
 
 
 def scenario_dos(image):
@@ -591,7 +777,8 @@ def scenario_dos(image):
         """Commande tapee plus longue que 20 colonnes : la fenetre suit la saisie."""
         if c["lcd"].lignes()[3] == SAISIE_VUE:
             vu.setdefault("saisie", (c["lcd"].lignes(), bytes(c["uc"].mem_read(0x7F786, 2))))
-            return True
+            vu.setdefault("perdues", c["ppi2"].perdues)  # avant Ctrl+Alt+Suppr (au redemarrage,
+            return True                                   # interruptions masquees : relachements perdus)
         return False
 
     pas = Etapes([
@@ -633,11 +820,13 @@ def scenario_dos(image):
         {"%02Xh" % k: v for k, v in etat["out_dos"].items()} or "aucun",
         {"%02Xh" % k: v for k, v in etat["out_libres"].items()} or "aucun"))
     p2 = etat["ppi2"]
-    print("    clavier : %d trame(s) perdue(s), %d interrompue(s) puis renvoyee(s)" % (p2.perdues, p2.interrompues))
+    perdues = vu.get("perdues", p2.perdues)
+    print("    clavier : %d trame(s) perdue(s) avant Ctrl+Alt+Suppr (%d en tout), %d interrompue(s) puis renvoyee(s)"
+          % (perdues, p2.perdues, p2.interrompues))
     texte_ecran = "\n".join(lignes)
-    ok = ok_lcd and not p2.perdues
-    if p2.perdues:
-        print("    attendu : aucune trame perdue")
+    ok = ok_lcd and not perdues
+    if perdues:
+        print("    attendu : aucune trame perdue avant Ctrl+Alt+Suppr")
     print("    accueil du DOS : %r" % [l.strip() for l in vu.get("accueil", "").splitlines() if l.strip()][-4:])
     if "Version 2.10" not in vu.get("accueil", ""):
         ok = False
@@ -692,7 +881,9 @@ def main():
         ("led", lambda: scenario_led(image)),
         ("terminal", lambda: scenario_terminal(image)),
         ("sysinfo", lambda: scenario_sysinfo(image)),
+        ("sans8259", lambda: scenario_sysinfo(image, pic=False)),
         ("dos", lambda: scenario_dos(image)),
+        ("anticipe", lambda: scenario_anticipe(image)),
     ]
     echecs = 0
     for nom, f in scenarios:

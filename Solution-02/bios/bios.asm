@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 0.7 (VE2CUY, 2026)
+; Solution-02 - BIOS 0.8 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -20,6 +20,10 @@
 ;        est suivie d'un delai.
 ;   O1 : 10h-13h = 8255 (U7, uPD71055C) : 10h = PA, 11h = PB, 12h = PC, 13h = controle.
 ;        Mode 0, les 3 ports en sortie (mot de controle 80h) : 24 DEL sur J1-J3.
+;   O2 : 20h-21h = 8259A (U13) : IRQ1 = horloge du clavier inversee (74HC14 U14),
+;        IRQ4 = RX de l'UART inversee ; vecteurs 08h-0Fh (INT 09h clavier, 0Ch UART),
+;        mode front, EOI non specifique. INT -> INTR du 8088, INTA <- INTA.
+;        Sans 8259 (detecte au menu par relecture du masque) : scrutation comme le 0.7.
 ;   O3 : 30h-33h = 2e 8255 (U12) : mot 82h (PA, PC en sortie, PB en entree).
 ;        Clavier PS/2 (J4, prise USB-A) : PB0 = horloge, PB1 = donnees.
 ;        UART logiciel 9600 8N1 (J5) : PA7 = TX, PB2 = RX.
@@ -88,6 +92,14 @@ V_SUIT          equ     78Eh            ; 1 = INT 10h appele : la fenetre doit m
 V_INACTIF       equ     78Fh            ; INT 16h AH=01h de suite sans affichage entre eux
 V_FILE          equ     790h            ; file : FILE_N mots
 FILE_N          equ     16
+V_UFILE_T       equ     7B0h            ; file de l'UART (octets recus) : tete
+V_UFILE_Q       equ     7B1h            ;                                 queue
+V_NAV           equ     7B2h            ; Maj + fleche vue par IRQ1 (code XT), traitee par INT 16h
+V_PIC           equ     7B3h            ; 1 = 8259 present : clavier et UART par interruptions
+V_EVT           equ     7B4h            ; 1 = IRQ1/IRQ4 a mis quelque chose dans une file
+V_IRQ7          equ     7B6h            ; (mot) IRQ7 parasites comptees (SysInfo)
+V_UFILE         equ     7C0h            ; file de l'UART : UFILE_N octets
+UFILE_N         equ     32
 
 ; disquette A: en ROM (image de 180 Ko au decalage 0 de la ROM = C0000h)
 DISQUE_SEG      equ     0C000h
@@ -108,6 +120,18 @@ INACTIF_N       equ     10
 NAV_C           equ     10              ; Maj + gauche/droite : pas de la fenetre
 
 TA_BASE         equ     35555h          ; base du test des lignes d'adresse
+
+; 8259A (U13) sur O2 du 74LS138
+PIC_CMD         equ     20h             ; A0 = 0 : ICW1, OCW2, OCW3
+PIC_DATA        equ     21h             ; A0 = 1 : ICW2, ICW4, OCW1 (masque)
+PIC_ICW1        equ     13h             ; front, 8259 unique, ICW4
+PIC_ICW2        equ     08h             ; IR0-IR7 -> INT 08h-0Fh (comme le PC)
+PIC_ICW4        equ     01h             ; mode 8086, EOI normal
+PIC_MASQUE      equ     0EDh            ; seules IR1 (clavier) et IR4 (UART) ouvertes
+PIC_EOI         equ     20h             ; OCW2 : fin d'interruption non specifique
+; uart_rx depuis IRQ4 : le bit de depart a commence ~INTA + empilage plus tot
+; (~110 cycles = ~6 tours de la boucle de delai) : attente du milieu du bit raccourcie
+UART_AVANCE     equ     5
 
 PPI_PA          equ     10h             ; 8255 (U7) sur O1 du 74LS138
 PPI_PB          equ     11h
@@ -282,6 +306,16 @@ debut:
                                         ;  tant que le BIOS ne l'ecoute pas)
         mov     al, UART_TX             ; PA7 = 1 (repos)
         out     PPI2_PA, al
+
+; ---- 8259A (U13) : initialise, tout masque (sans effet s'il est absent) ----------
+        mov     al, PIC_ICW1
+        out     PIC_CMD, al
+        mov     al, PIC_ICW2
+        out     PIC_DATA, al
+        mov     al, PIC_ICW4
+        out     PIC_DATA, al
+        mov     al, 0FFh
+        out     PIC_DATA, al
 
 ; ---- initialisation du LCD (mode 8 bits, sequence "par instructions") -------
         DELAY   0                       ; > 40 ms apres la mise sous tension
@@ -642,6 +676,8 @@ efface:
         mov     si, txt_pile_ok
         call    lcd_texte20
         call    vars_init
+        call    it_init                 ; vecteurs (la RAM a ete effacee) et 8259
+        sti
         call    kbd_attend              ; une touche : retour au menu
         jmp     menu
 
@@ -658,7 +694,10 @@ menu:
         mov     ax, cs
         mov     ds, ax
         mov     byte [es:V_DOS], 0
-        call    kbd_bloque              ; clavier bloque hors des attentes
+        mov     byte [es:V_NAV], 0
+        call    kbd_bloque              ; (scrutation) clavier bloque hors des attentes
+        call    it_init                 ; vecteurs, 8259 (clavier et UART par IRQ)
+        sti
         xor     al, al                  ; DEL eteintes
         out     PPI_PA, al
         out     PPI_PB, al
@@ -699,7 +738,7 @@ lcd_ecran:
         call    lcd_cmd
         jmp     lcd_texte20
 
-; vars_init : etat du clavier et file remis a zero, mode DOS inactif. ES = DSEG.
+; vars_init : etat du clavier et files remis a zero, mode DOS inactif. ES = DSEG.
 vars_init:
         mov     ax, DSEG
         mov     es, ax
@@ -709,6 +748,11 @@ vars_init:
         mov     [es:V_SUIT], al
         mov     [es:V_INACTIF], al
         mov     [es:V_FILE_T], ax       ; tete et queue
+        mov     [es:V_UFILE_T], ax
+        mov     [es:V_NAV], al
+        mov     [es:V_PIC], al
+        mov     [es:V_EVT], al
+        mov     [es:V_IRQ7], ax
         ret
 
 ; ---- 4) SysInfo ---------------------------------------------------------------------
@@ -724,6 +768,23 @@ sysinfo:
 .cpu:   mov     al, 80h | LIGNE2
         call    lcd_cmd
         call    lcd_texte20
+        mov     al, 80h | LIGNE4        ; "8259 OK   IRQ7 nnnn" ou "8259 absent"
+        call    lcd_cmd
+        mov     si, txt_pic_absent
+        cmp     byte [es:V_PIC], 0
+        je      .pic
+        mov     si, txt_pic_ok
+        mov     bx, 15
+        call    lcd_texte
+        mov     ax, [es:V_IRQ7]
+        push    ax
+        mov     al, ah
+        call    lcd_hex8
+        pop     ax
+        call    lcd_hex8
+        jmp     .attend
+.pic:   call    lcd_texte20
+.attend:
         call    kbd_attend
         jmp     menu
 
@@ -826,6 +887,8 @@ lcd_texte:
 ; mais PAS BP (compteur de cycles).
 ; =============================================================================
 ; del_aff : sort DL sur PC, BH sur PA, BL sur PB, puis attend DI iterations. Detruit AL, CX.
+; Avec le 8259 : les touches et octets mis en file par IRQ1/IRQ4 sont traites pendant
+; l'attente (V_EVT) ; sans 8259 : le clavier et l'UART sont scrutes.
 del_aff:
         mov     al, dl
         out     PPI_PC, al
@@ -833,6 +896,32 @@ del_aff:
         out     PPI_PA, al
         mov     al, bl
         out     PPI_PB, al
+        cmp     byte [es:V_PIC], 0
+        je      .scrute
+        mov     cx, di
+.i:     cmp     byte [es:V_EVT], 0
+        jne     .evt
+.i_suite:
+        loop    .i
+        ret
+.evt:   mov     byte [es:V_EVT], 0      ; (remis a 1 si une IRQ ajoute pendant le traitement)
+        push    ax
+        push    cx
+.touches:
+        call    file_retire
+        jc      .octets
+        call    clavier_touche
+        jmp     .touches
+.octets:
+        call    ufile_retire
+        jc      .evt_fin
+        call    uart_car
+        jmp     .octets
+.evt_fin:
+        pop     cx
+        pop     ax
+        jmp     .i_suite
+.scrute:
         call    kbd_libere              ; attente en scrutant le clavier et l'UART
         mov     cx, di
 .w:     in      al, PPI2_PB
@@ -896,6 +985,12 @@ uart_texte:
 
 ; uart_rx : RX vient d'etre vu bas (bit de depart). Lit l'octet.
 ; Sortie : AL = octet, CF = 1 si trame invalide. Preserve les autres registres.
+; uart_rx_it : idem depuis IRQ4 (le bit de depart a commence avant l'interruption).
+uart_rx_it:
+        push    bx
+        push    cx
+        mov     cx, UART_N / 2 - UART_AVANCE
+        jmp     uart_rx.d0
 uart_rx:
         push    bx
         push    cx
@@ -937,6 +1032,17 @@ uart_rx:
 ; =============================================================================
 ; ps2_trame : CLK vient d'etre vu bas. Sortie : AL = octet, CF = 1 si trame
 ; invalide (et la ligne est resynchronisee). Preserve les autres registres.
+; ps2_trame_it : idem depuis IRQ1 (1er front descendant de CLK). Le bit de depart vaut
+; toujours 0 : il n'est pas lu, et l'horloge peut deja etre remontee (latence de
+; l'interruption jusqu'a ~1 periode, ~80 us) ; la lecture reprend au bit 0.
+ps2_trame_it:
+        push    bx
+        push    cx
+        push    dx
+        xor     dx, dx                  ; CF = 0
+        rcr     dx, 1                   ; depart = 0
+        mov     bl, 10
+        jmp     ps2_trame.attend_h
 ps2_trame:
         push    bx
         push    cx
@@ -949,6 +1055,7 @@ ps2_trame:
         rcr     dx, 1
         dec     bl
         jz      .fin
+.attend_h:
         mov     cx, PS2_DELAI           ; attend CLK haut
 .h:     in      al, PPI2_PB
         test    al, KBD_CLK
@@ -1150,6 +1257,14 @@ clavier_entree:
         jc      .fin
         call    clavier_decode
         jc      .fin
+        call    clavier_touche
+.fin:   pop     cx
+        pop     ax
+        ret
+
+; clavier_touche : AX = code de touche (comme INT 16h) : Echap -> menu ; fleches ->
+; ESC [ x sur l'UART ; caractere -> UART et ligne 3. Detruit AX, CX.
+clavier_touche:
         cmp     al, 27                  ; Echap : retour au menu (qui refait la pile)
         jne     .pas_echap
         jmp     menu
@@ -1179,23 +1294,26 @@ clavier_entree:
         mov     ah, LIGNE3
         call    ecran_car               ; et sur le LCD
         pop     bx
-.fin:   pop     cx
-        pop     ax
-        ret
+.fin:   ret
 
 uart_entree:
         push    ax
         push    cx
         call    uart_rx
         jc      .fin
+        call    uart_car
+.fin:   pop     cx
+        pop     ax
+        ret
+
+; uart_car : AL recu de l'UART : echo et ligne 4. Detruit AX, CX.
+uart_car:
         call    uart_envoie_car         ; echo
         push    bx
         mov     bx, V_COL4
         mov     ah, LIGNE4
         call    ecran_car
         pop     bx
-.fin:   pop     cx
-        pop     ax
         ret
 
 ; uart_envoie_car : AL vers l'UART ; CR -> CR LF, retour arriere -> BS espace BS.
@@ -1528,7 +1646,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 0.7'
+txt_ouv1:   db  'SOLUTION-02 BIOS 0.8'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -1549,14 +1667,17 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 0.7'
+txt_sys:    db  'SOLUTION-02 BIOS 0.8'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
-            db  'A: PC-DOS 2.1  180Ko'
+            db  '8259 absent         '
+txt_pic_ok: db  '8259 OK   IRQ7 '
+txt_pic_absent:
+            db  '8259 absent (scrut.)'
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 0.7 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 0.8 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) SysInfo', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
 fleches_ansi:

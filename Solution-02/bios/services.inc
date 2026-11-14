@@ -1,6 +1,7 @@
 ; =============================================================================
-; services.inc - services du BIOS de type IBM PC (interruptions LOGICIELLES : le
-; montage n'a pas de 8259, INTR et NMI du 8088 sont a la masse).
+; services.inc - services du BIOS de type IBM PC, et interruptions materielles du
+; 8259A (U13) : IRQ1 = clavier (INT 09h), IRQ4 = UART (INT 0Ch), IRQ7 parasite (0Fh).
+; Sans 8259 (V_PIC = 0) : clavier et UART scrutes pendant INT 16h, comme le BIOS 0.7.
 ;
 ;   INT 10h  ecran : tampon de 24 lignes x 80 colonnes en RAM (DSEG:ECRAN), en mode
 ;            teletype ; le LCD 20x4 montre une FENETRE de ce tampon, qui suit le
@@ -8,9 +9,9 @@
 ;            fenetre (haut/bas : 1 ligne, gauche/droite : NAV_C colonnes).
 ;   INT 11h  equipement (BDA 0040:0010) ; INT 12h memoire (BDA 0040:0013, RAM_KO Ko).
 ;   INT 13h  disquette A: = image de 180 Ko EN ROM (DISQUE_SEG), lecture seule.
-;   INT 14h  UART logiciel : envoi seulement (AH=01h).
+;   INT 14h  UART logiciel : envoi (AH=01h) ; reception (AH=02h/03h) avec le 8259.
 ;   INT 15h  non gere (CF = 1, AH = 86h).
-;   INT 16h  clavier PS/2 par scrutation + file de FILE_N touches.
+;   INT 16h  file de FILE_N touches, remplie par IRQ1 (ou par scrutation sans 8259).
 ;   INT 17h  pas d'imprimante. INT 18h retour au menu. INT 19h amorcage de A:.
 ;   INT 1Ah  compteur de tops du BDA (pas de minuterie : l'heure ne change pas).
 ;
@@ -41,6 +42,7 @@ R_FL    equ     22                      ; indicateurs empiles par INT (IP 18, CS
         push    bx
         push    ax
         mov     bp, sp
+        sti                             ; IRQ1/IRQ4 servies pendant les services
         cld
         mov     ax, cs
         mov     ds, ax
@@ -71,6 +73,12 @@ int_defaut:                             ; vecteurs non geres : retour immediat
 ; Table des vecteurs : (numero, gestionnaire ou table en F000), 0FFh = fin
 ; -----------------------------------------------------------------------------
 vecteurs:
+        db      09h
+        dw      irq_clavier             ; IRQ1
+        db      0Ch
+        dw      irq_uart                ; IRQ4
+        db      0Fh
+        dw      irq_parasite            ; IRQ7 : demande retombee avant INTA
         db      10h
         dw      int10h
         db      11h
@@ -113,28 +121,9 @@ table_nulle:
 dos_charger:
         cli
         cld
-        xor     ax, ax                  ; IVT : 256 vecteurs -> int_defaut
-        mov     es, ax
-        xor     di, di
-        mov     cx, 256
-.v:     mov     ax, int_defaut
-        stosw
-        mov     ax, cs
-        stosw
-        loop    .v
-        mov     si, vecteurs            ; puis nos gestionnaires
-.s:     lodsb
-        cmp     al, 0FFh
-        je      .bda
-        xor     ah, ah
-        shl     ax, 1
-        shl     ax, 1
-        mov     di, ax
-        movsw
-        mov     ax, cs
-        stosw
-        jmp     .s
-.bda:   mov     ax, 40h                 ; BDA (0040:0000-00FF) : remis a zero puis rempli
+        call    ivt_init
+        sti                             ; IRQ1/IRQ4 permises (la touche du menu se relache)
+        mov     ax, 40h                 ; BDA (0040:0000-00FF) : remis a zero puis rempli
         mov     es, ax
         xor     di, di
         xor     ax, ax
@@ -157,6 +146,194 @@ dos_charger:
         call    ecran_init
         call    kbd_bloque
         int     19h
+
+; ivt_init : IVT = 256 vecteurs vers int_defaut, puis ceux de la table `vecteurs`.
+; DS = CS. Preserve ES ; detruit AX, CX, SI, DI.
+ivt_init:
+        push    es
+        xor     ax, ax
+        mov     es, ax
+        xor     di, di
+        mov     cx, 256
+.v:     mov     ax, int_defaut
+        stosw
+        mov     ax, cs
+        stosw
+        loop    .v
+        mov     si, vecteurs            ; puis nos gestionnaires
+.s:     lodsb
+        cmp     al, 0FFh
+        je      .fin
+        xor     ah, ah
+        shl     ax, 1
+        shl     ax, 1
+        mov     di, ax
+        movsw
+        mov     ax, cs
+        stosw
+        jmp     .s
+.fin:   pop     es
+        ret
+
+; it_init : (interruptions masquees) vecteurs, puis 8259 : reinitialise, detecte par
+; relecture du masque (A5h puis 5Ah ; sans 8259, le bus flottant ne les rend pas) ;
+; present : IR1 et IR4 ouvertes, clavier libre (PC0 = 1), V_PIC = 1. Le STI est a
+; faire par l'appelant. DS = CS, ES = DSEG. Detruit AX, CX, SI, DI.
+it_init:
+        cli
+        call    ivt_init
+        mov     al, PIC_ICW1
+        out     PIC_CMD, al
+        mov     al, PIC_ICW2
+        out     PIC_DATA, al
+        mov     al, PIC_ICW4
+        out     PIC_DATA, al
+        mov     al, 0A5h
+        out     PIC_DATA, al
+        in      al, PIC_DATA
+        cmp     al, 0A5h
+        jne     .absent
+        mov     al, 5Ah
+        out     PIC_DATA, al
+        in      al, PIC_DATA
+        cmp     al, 5Ah
+        jne     .absent
+        mov     al, PIC_MASQUE
+        out     PIC_DATA, al
+        mov     byte [es:V_PIC], 1
+        jmp     kbd_libere
+.absent:
+        mov     byte [es:V_PIC], 0
+        ret
+
+; =============================================================================
+; IRQ1 (INT 09h) : debut d'une trame du clavier. La trame est lue par scrutation
+; (~1 ms), decodee ; la touche va dans la file d'INT 16h. Maj + fleche sous DOS :
+; notee dans V_NAV (la fenetre du LCD est deplacee par INT 16h, jamais pendant une
+; ecriture au LCD). Ctrl + Alt + Suppr : redemarrage.
+; =============================================================================
+irq_clavier:
+        push    ax
+        push    ds
+        push    es
+        mov     ax, cs
+        mov     ds, ax
+        mov     ax, DSEG
+        mov     es, ax
+        call    ps2_trame_it
+        jc      .fin
+        call    clavier_decode
+        jc      .fin
+        cmp     ah, 53h                 ; Ctrl + Alt + Suppr
+        jne     .pas_reset
+        test    byte [es:V_CLAVIER], CLV_CTRL
+        jz      .pas_reset
+        test    byte [es:V_CLAVIER], CLV_ALT
+        jz      .pas_reset
+        mov     al, PIC_EOI
+        out     PIC_CMD, al
+        jmp     0F000h:debut
+.pas_reset:
+        or      al, al                  ; Maj + fleche sous DOS : deplacement de la fenetre
+        jnz     .file
+        cmp     byte [es:V_DOS], 0
+        je      .file
+        test    byte [es:V_CLAVIER], CLV_MAJS | CLV_FAUX
+        jz      .file
+        cmp     ah, 48h
+        je      .nav
+        cmp     ah, 50h
+        je      .nav
+        cmp     ah, 4Bh
+        je      .nav
+        cmp     ah, 4Dh
+        jne     .file
+.nav:   mov     [es:V_NAV], ah
+        jmp     .fin
+.file:  call    file_ajoute
+        mov     byte [es:V_EVT], 1
+.fin:   mov     al, PIC_EOI
+        out     PIC_CMD, al
+        pop     es
+        pop     ds
+        pop     ax
+        iret
+
+; IRQ4 (INT 0Ch) : bit de depart sur RX. L'octet est lu par scrutation (~1 ms) et
+; mis dans la file de l'UART (INT 14h AH=02h, LED Show).
+irq_uart:
+        push    ax
+        push    es
+        call    uart_rx_it
+        jc      .fin
+        push    bx
+        mov     bx, DSEG
+        mov     es, bx
+        call    ufile_ajoute
+        mov     byte [es:V_EVT], 1
+        pop     bx
+.fin:   mov     al, PIC_EOI
+        out     PIC_CMD, al
+        pop     es
+        pop     ax
+        iret
+
+; IRQ7 : le 8259 donne ce vecteur quand l'entree est retombee avant INTA (pas de fin
+; d'interruption a envoyer) ; comptee pour SysInfo.
+irq_parasite:
+        push    ds
+        push    ax
+        mov     ax, DSEG
+        mov     ds, ax
+        inc     word [V_IRQ7]
+        pop     ax
+        pop     ds
+        iret
+
+; ufile_ajoute : AL dans la file de l'UART (perdu si pleine). ES = DSEG. Preserve tout.
+ufile_ajoute:
+        push    bx
+        mov     bl, [es:V_UFILE_Q]
+        mov     bh, bl
+        inc     bh
+        and     bh, UFILE_N - 1
+        cmp     bh, [es:V_UFILE_T]
+        je      .fin
+        mov     [es:V_UFILE_Q], bh
+        xor     bh, bh
+        mov     [es:bx + V_UFILE], al
+.fin:   pop     bx
+        ret
+
+; ufile_retire : AL = octet le plus ancien, CF = 1 si la file est vide. Preserve le reste.
+ufile_retire:
+        push    bx
+        mov     bl, [es:V_UFILE_T]
+        cmp     bl, [es:V_UFILE_Q]
+        je      .vide
+        mov     bh, bl
+        inc     bh
+        and     bh, UFILE_N - 1
+        mov     [es:V_UFILE_T], bh
+        xor     bh, bh
+        mov     al, [es:bx + V_UFILE]
+        pop     bx
+        clc
+        ret
+.vide:  pop     bx
+        stc
+        ret
+
+; nav_traite : Maj + fleche notee par IRQ1 -> deplacement de la fenetre. Preserve tout.
+nav_traite:
+        cmp     byte [es:V_NAV], 0
+        je      .fin
+        push    ax
+        mov     ah, 0
+        xchg    ah, [es:V_NAV]
+        call    ecran_nav
+        pop     ax
+.fin:   ret
 
 ; =============================================================================
 ; INT 10h - ecran
@@ -683,19 +860,42 @@ int12h:
         pop     ds
         iret
 
-; INT 14h : AH = 01h envoie AL sur l'UART logiciel ; reception non geree (delai depasse).
+; INT 14h : AH = 01h envoie AL sur l'UART logiciel ; AH = 02h rend l'octet le plus
+; ancien recu par IRQ4 (attente ~0,5 s, puis AH = 80h) ; AH = 03h : AH bit 0 = octet
+; en attente. Sans 8259 : rien n'est recu.
 int14h:
+        sti
         cmp     ah, 01h
         jne     .pas_tx
         call    uart_tx
         mov     ah, 60h                 ; emetteur vide
         iret
 .pas_tx:
+        push    es
+        push    cx
+        mov     cx, DSEG
+        mov     es, cx
         cmp     ah, 02h
         jne     .etat
-        mov     ah, 80h                 ; delai depasse
-        iret
-.etat:  mov     ax, 6000h
+        xor     cx, cx                  ; ~65536 essais
+.r:     call    ufile_retire
+        jnc     .recu
+        cmp     byte [es:V_PIC], 0
+        je      .delai
+        loop    .r
+.delai: mov     ah, 80h                 ; delai depasse
+        jmp     .fin
+.recu:  xor     ah, ah
+        jmp     .fin
+.etat:  mov     ax, 6030h               ; emetteur vide ; CTS, DSR
+        push    bx
+        mov     bl, [es:V_UFILE_T]
+        cmp     bl, [es:V_UFILE_Q]
+        pop     bx
+        je      .fin
+        or      ah, 01h                 ; donnee prete
+.fin:   pop     cx
+        pop     es
         iret
 
 int15h:
@@ -885,7 +1085,15 @@ int16h:
         inc     byte [es:V_INACTIF]
         jmp     .e1
 .e2:    call    ecran_suit_h
-.e1:    call    file_regarde
+.e1:    cmp     byte [es:V_PIC], 0
+        je      .e_scrute
+        call    nav_traite              ; 8259 : la file est remplie par IRQ1
+        mov     byte [es:V_SORTIE], 0
+        call    file_regarde
+        jnc     .attend
+        jmp     .vide
+.e_scrute:
+        call    file_regarde
         jnc     .attend
         call    kbd_libere
         mov     cx, KBD_FENETRE         ; DOS affiche : ecoute courte ; DOS attend
@@ -928,7 +1136,9 @@ int16h:
         jmp     bios_sortie
 .pousse:
         mov     ax, cx
+        cli                             ; (IRQ1 ajoute aussi a la file)
         call    file_ajoute
+        sti
         mov     byte [bp + R_AX], 0
         jmp     bios_sortie
 
@@ -941,13 +1151,25 @@ kbd_libere:
         out     PPI2_CTRL, al
         ret
 kbd_bloque:
+        cmp     byte [es:V_PIC], 0      ; 8259 : le clavier reste libre (IRQ1)
+        jne     .fin
         mov     al, KBD_BLOQUE
         out     PPI2_CTRL, al
-        ret
+.fin:   ret
 
 ; kbd_attend : attend une touche. Sortie : AX = code (AH = XT, AL = ASCII). ES = DSEG.
+; Avec le 8259 : attend que IRQ1 remplisse la file (interruptions permises) et traite
+; Maj + fleches sous DOS ; sinon : scrutation.
 kbd_attend:
         push    cx
+        cmp     byte [es:V_PIC], 0
+        je      .scrute
+        sti
+.it:    call    file_retire
+        jnc     .ok
+        call    nav_traite
+        jmp     .it
+.scrute:
         call    file_retire
         jnc     .ok
         push    ax
