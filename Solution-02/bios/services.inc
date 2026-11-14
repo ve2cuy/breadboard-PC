@@ -1,0 +1,1050 @@
+; =============================================================================
+; services.inc - services du BIOS de type IBM PC (interruptions LOGICIELLES : le
+; montage n'a pas de 8259, INTR et NMI du 8088 sont a la masse).
+;
+;   INT 10h  ecran : tampon de 24 lignes x 80 colonnes en RAM (DSEG:ECRAN), en mode
+;            teletype ; le LCD 20x4 montre une FENETRE de ce tampon, qui suit le
+;            curseur (les dernieres lignes ecrites). Maj + fleches deplacent la
+;            fenetre (haut/bas : 1 ligne, gauche/droite : NAV_C colonnes).
+;   INT 11h  equipement (BDA 0040:0010) ; INT 12h memoire (BDA 0040:0013, RAM_KO Ko).
+;   INT 13h  disquette A: = image de 180 Ko EN ROM (DISQUE_SEG), lecture seule.
+;   INT 14h  UART logiciel : envoi seulement (AH=01h).
+;   INT 15h  non gere (CF = 1, AH = 86h).
+;   INT 16h  clavier PS/2 par scrutation + file de FILE_N touches.
+;   INT 17h  pas d'imprimante. INT 18h retour au menu. INT 19h amorcage de A:.
+;   INT 1Ah  compteur de tops du BDA (pas de minuterie : l'heure ne change pas).
+;
+; Conventions : dans les gestionnaires, DS = CS (tables en ROM), ES = DSEG
+; (variables et tampon d'ecran). Les registres d'entree sont dans le cadre
+; [bp + R_xx] (BIOS_ENTREE) ; les resultats y sont ecrits, bios_sortie les rend.
+; =============================================================================
+
+R_AX    equ     0
+R_BX    equ     2
+R_CX    equ     4
+R_DX    equ     6
+R_SI    equ     8
+R_DI    equ     10
+R_BP    equ     12
+R_ES    equ     14
+R_DS    equ     16
+R_FL    equ     22                      ; indicateurs empiles par INT (IP 18, CS 20)
+
+%macro BIOS_ENTREE 0
+        push    ds
+        push    es
+        push    bp
+        push    di
+        push    si
+        push    dx
+        push    cx
+        push    bx
+        push    ax
+        mov     bp, sp
+        cld
+        mov     ax, cs
+        mov     ds, ax
+        mov     ax, DSEG
+        mov     es, ax
+        mov     ax, [bp + R_AX]
+%endmacro
+
+bios_cf1:                               ; sortie avec CF = 1
+        or      word [bp + R_FL], 1
+        jmp     bios_sortie
+bios_cf0:                               ; sortie avec CF = 0
+        and     word [bp + R_FL], 0FFFEh
+bios_sortie:
+        pop     ax
+        pop     bx
+        pop     cx
+        pop     dx
+        pop     si
+        pop     di
+        pop     bp
+        pop     es
+        pop     ds
+int_defaut:                             ; vecteurs non geres : retour immediat
+        iret
+
+; -----------------------------------------------------------------------------
+; Table des vecteurs : (numero, gestionnaire ou table en F000), 0FFh = fin
+; -----------------------------------------------------------------------------
+vecteurs:
+        db      10h
+        dw      int10h
+        db      11h
+        dw      int11h
+        db      12h
+        dw      int12h
+        db      13h
+        dw      int13h
+        db      14h
+        dw      int14h
+        db      15h
+        dw      int15h
+        db      16h
+        dw      int16h
+        db      17h
+        dw      int17h
+        db      18h
+        dw      int18h
+        db      19h
+        dw      int19h
+        db      1Ah
+        dw      int1ah
+        db      1Dh
+        dw      table_nulle             ; parametres video (pas de CRTC)
+        db      1Eh
+        dw      dpt_180                 ; parametres de la disquette
+        db      1Fh
+        dw      table_nulle             ; caracteres graphiques
+        db      0FFh
+
+; table des parametres de disquette (INT 1Eh) : valeurs du BIOS d'origine, 9 secteurs
+dpt_180:
+        db      0DFh, 02h, 25h, 02h, DISQUE_SPT, 2Ah, 0FFh, 50h, 0F6h, 0Fh, 02h
+table_nulle:
+        times   16 db 0
+
+; =============================================================================
+; dos_charger : installe les vecteurs, le BDA et l'ecran, puis amorce A: (INT 19h).
+; =============================================================================
+dos_charger:
+        cli
+        cld
+        xor     ax, ax                  ; IVT : 256 vecteurs -> int_defaut
+        mov     es, ax
+        xor     di, di
+        mov     cx, 256
+.v:     mov     ax, int_defaut
+        stosw
+        mov     ax, cs
+        stosw
+        loop    .v
+        mov     si, vecteurs            ; puis nos gestionnaires
+.s:     lodsb
+        cmp     al, 0FFh
+        je      .bda
+        xor     ah, ah
+        shl     ax, 1
+        shl     ax, 1
+        mov     di, ax
+        movsw
+        mov     ax, cs
+        stosw
+        jmp     .s
+.bda:   mov     ax, 40h                 ; BDA (0040:0000-00FF) : remis a zero puis rempli
+        mov     es, ax
+        xor     di, di
+        xor     ax, ax
+        mov     cx, 128
+        rep     stosw
+        mov     word [es:10h], EQUIPEMENT
+        mov     word [es:13h], RAM_KO
+        mov     word [es:1Ah], 1Eh      ; file du clavier du BDA (vide ; la vraie est en DSEG)
+        mov     word [es:1Ch], 1Eh
+        mov     word [es:80h], 1Eh
+        mov     word [es:82h], 3Eh
+        mov     byte [es:49h], 3        ; mode video 3 : 80 colonnes
+        mov     word [es:4Ah], COLS
+        mov     word [es:4Ch], 1000h
+        mov     word [es:60h], 0607h
+        mov     word [es:63h], 3D4h
+        mov     byte [es:84h], LIGNES - 1
+        mov     ax, DSEG
+        mov     es, ax
+        call    ecran_init
+        call    kbd_bloque
+        int     19h
+
+; =============================================================================
+; INT 10h - ecran
+; =============================================================================
+int10h:
+        BIOS_ENTREE
+        mov     byte [es:V_SORTIE], 1
+        cmp     ah, 0Eh
+        je      .tty
+        cmp     ah, 02h
+        je      .pos
+        cmp     ah, 03h
+        je      .lit_pos
+        cmp     ah, 06h
+        je      .defile
+        cmp     ah, 07h
+        je      .defile
+        cmp     ah, 09h
+        je      .ecrit
+        cmp     ah, 0Ah
+        je      .ecrit
+        cmp     ah, 08h
+        je      .lit_car
+        cmp     ah, 0Fh
+        je      .mode
+        cmp     ah, 00h
+        je      .efface
+        jmp     bios_sortie             ; 01h, 05h, 0Bh, ... : sans effet
+.tty:   call    ecran_tty
+.fin:   call    ecran_fin
+        jmp     bios_sortie
+.pos:   cmp     dh, LIGNES - 1
+        jbe     .p1
+        mov     dh, LIGNES - 1
+.p1:    cmp     dl, COLS - 1
+        jbe     .p2
+        mov     dl, COLS - 1
+.p2:    mov     [es:V_CUR], dx
+        jmp     .fin
+.lit_pos:
+        mov     ax, [es:V_CUR]
+        mov     [bp + R_DX], ax
+        mov     word [bp + R_CX], 0607h
+        jmp     bios_sortie
+.defile:
+        call    ecran_defile
+        jmp     .fin
+.ecrit: mov     dx, [es:V_CUR]          ; AL, CX fois, sans deplacer le curseur
+.e:     jcxz    .fin
+        call    ecran_cellule
+        inc     dl
+        cmp     dl, COLS
+        jb      .e1
+        xor     dl, dl
+        inc     dh
+        cmp     dh, LIGNES
+        jae     .fin
+.e1:    loop    .e
+        jmp     .fin
+.lit_car:
+        mov     dx, [es:V_CUR]
+        call    ecran_adr
+        mov     al, [es:di]
+        mov     ah, 07h
+        mov     [bp + R_AX], ax
+        jmp     bios_sortie
+.mode:  mov     word [bp + R_AX], (COLS << 8) | 3
+        mov     byte [bp + R_BX + 1], 0
+        jmp     bios_sortie
+.efface:
+        call    ecran_vide
+        jmp     .fin
+
+; ecran_init : tampon vide, curseur et fenetre en 0,0, LCD efface. Mode DOS actif.
+ecran_init:
+        mov     byte [es:V_DOS], 1
+        mov     byte [es:V_LCDC], 0
+        mov     al, 0Ch                 ; afficheur allume, sans curseur
+        call    lcd_cmd_r
+        mov     al, 01h                 ; effacer (1,52 ms)
+        call    lcd_cmd_r
+        push    cx
+        DELAY   3000
+        pop     cx
+ecran_vide:
+        push    cx
+        push    di
+        mov     ax, 2020h
+        xor     di, di
+        mov     cx, LIGNES * COLS / 2
+        rep     stosw
+        xor     ax, ax
+        mov     [es:V_CUR], ax
+        mov     [es:V_VUE], ax
+        mov     byte [es:V_REDESS], 1
+        pop     di
+        pop     cx
+        ret
+
+; ecran_adr : DX = position (DH ligne, DL colonne) -> DI = decalage dans le tampon. Detruit AX.
+ecran_adr:
+        mov     al, COLS
+        mul     dh
+        mov     di, ax
+        mov     al, dl
+        xor     ah, ah
+        add     di, ax
+        ret
+
+; ecran_cellule : ecrit AL en DX dans le tampon, et au LCD si la case est visible.
+; Preserve tout.
+ecran_cellule:
+        push    ax
+        push    bx
+        push    di
+        push    ax
+        call    ecran_adr
+        pop     ax
+        mov     [es:di], al
+        mov     bx, [es:V_VUE]          ; BL = colonne de gauche, BH = ligne du haut
+        mov     ah, dh
+        sub     ah, bh                  ; AH = ligne du LCD
+        jb      .fin
+        cmp     ah, 4
+        jae     .fin
+        mov     bh, dl
+        sub     bh, bl                  ; BH = colonne du LCD
+        jb      .fin
+        cmp     bh, LCD_COLS
+        jae     .fin
+        push    ax
+        call    lcd_aller
+        pop     ax
+        call    lcd_car_f
+.fin:   pop     di
+        pop     bx
+        pop     ax
+        ret
+
+; ecran_tty : AL en mode teletype (BEL ignore, BS, CR, LF, retour a la ligne en
+; colonne 80, defilement en bas du tampon).
+ecran_tty:
+        mov     dx, [es:V_CUR]
+        cmp     al, 7
+        je      .fin
+        cmp     al, 8
+        jne     .pas_bs
+        or      dl, dl
+        jz      .fin
+        dec     dl
+        jmp     .pos
+.pas_bs:
+        cmp     al, 13
+        jne     .pas_cr
+        xor     dl, dl
+        jmp     .pos
+.pas_cr:
+        cmp     al, 10
+        je      .lf
+        call    ecran_cellule
+        inc     dl
+        cmp     dl, COLS
+        jb      .pos
+        xor     dl, dl
+.lf:    inc     dh
+        cmp     dh, LIGNES
+        jb      .pos
+        mov     dh, LIGNES - 1
+        call    ecran_monte
+.pos:   mov     [es:V_CUR], dx
+.fin:   ret
+
+; ecran_monte : tout le tampon monte d'une ligne, derniere ligne vide. Preserve tout.
+ecran_monte:
+        push    ax
+        push    cx
+        push    si
+        push    di
+        push    ds
+        push    es
+        pop     ds
+        xor     di, di
+        mov     si, COLS
+        mov     cx, (LIGNES - 1) * COLS / 2
+        rep     movsw
+        mov     ax, 2020h
+        mov     cx, COLS / 2
+        rep     stosw
+        pop     ds
+        mov     byte [es:V_REDESS], 1
+        pop     di
+        pop     si
+        pop     cx
+        pop     ax
+        ret
+
+; ecran_defile : INT 10h AH = 06h (vers le haut) ou 07h (vers le bas) ; AL = lignes
+; (0 = efface la fenetre), CH,CL = coin haut gauche, DH,DL = coin bas droit.
+ecran_defile:
+        cmp     dh, LIGNES - 1
+        jbe     .1
+        mov     dh, LIGNES - 1
+.1:     cmp     dl, COLS - 1
+        jbe     .2
+        mov     dl, COLS - 1
+.2:     cmp     ch, dh
+        ja      .fin
+        cmp     cl, dl
+        ja      .fin
+        mov     bl, al                  ; BL = nombre de lignes
+        mov     al, dh
+        sub     al, ch
+        inc     al                      ; AL = hauteur de la fenetre
+        or      bl, bl
+        jz      .tout
+        cmp     bl, al
+        jb      .n
+.tout:  mov     bl, al
+.n:     mov     al, dl
+        sub     al, cl
+        inc     al
+        mov     bh, al                  ; BH = largeur
+        push    ds
+        push    es
+        pop     ds                      ; DS = ES = DSEG pour MOVSB
+        cmp     byte [bp + R_AX + 1], 07h
+        je      .bas
+        mov     al, ch                  ; vers le haut : lignes CH..DH
+.h:     mov     ah, al
+        add     ah, bl                  ; AH = ligne source
+        cmp     ah, dh
+        ja      .h_vide
+        call    ligne_copie
+        jmp     .h_suiv
+.h_vide:
+        call    ligne_vide
+.h_suiv:
+        cmp     al, dh
+        je      .fait
+        inc     al
+        jmp     .h
+.bas:   mov     al, dh                  ; vers le bas : lignes DH..CH
+.b:     mov     ah, al
+        sub     ah, bl
+        jb      .b_vide
+        cmp     ah, ch
+        jb      .b_vide
+        call    ligne_copie
+        jmp     .b_suiv
+.b_vide:
+        call    ligne_vide
+.b_suiv:
+        cmp     al, ch
+        je      .fait
+        dec     al
+        jmp     .b
+.fait:  pop     ds
+        mov     byte [es:V_REDESS], 1
+.fin:   ret
+
+; ligne_copie : ligne AL <- ligne AH, a partir de la colonne CL, BH colonnes.
+; ligne_vide : ligne AL remplie d'espaces, memes colonnes. DS = ES = DSEG. Preservent AX-DX.
+ligne_copie:
+        push    ax
+        push    cx
+        push    dx
+        mov     dx, ax                  ; DL = destination, DH = source
+        mov     al, COLS
+        mul     dl
+        mov     di, ax
+        mov     al, COLS
+        mul     dh
+        mov     si, ax
+        xor     ch, ch
+        add     di, cx
+        add     si, cx
+        mov     cl, bh
+        rep     movsb
+        pop     dx
+        pop     cx
+        pop     ax
+        ret
+ligne_vide:
+        push    ax
+        push    cx
+        mov     ah, COLS
+        mul     ah
+        mov     di, ax
+        xor     ch, ch
+        add     di, cx
+        mov     cl, bh
+        mov     al, ' '
+        rep     stosb
+        pop     cx
+        pop     ax
+        ret
+
+; ecran_fin : la fenetre suit le curseur (deplacement minimal pour le rendre visible),
+; redessine le LCD si la fenetre a bouge ou si le tampon a change en bloc, puis place
+; le curseur du LCD. Detruit AX, BX, DX.
+ecran_fin:
+        mov     dx, [es:V_CUR]
+        mov     bx, [es:V_VUE]
+        cmp     dh, bh                  ; vertical
+        jae     .v1
+        mov     bh, dh
+        jmp     .v2
+.v1:    mov     al, bh
+        add     al, 3
+        cmp     dh, al
+        jbe     .v2
+        mov     bh, dh
+        sub     bh, 3
+.v2:    cmp     dl, bl                  ; horizontal
+        jae     .h1
+        mov     bl, dl
+        jmp     .h2
+.h1:    mov     al, bl
+        add     al, LCD_COLS - 1
+        cmp     dl, al
+        jbe     .h2
+        mov     bl, dl
+        sub     bl, LCD_COLS - 1
+.h2:    cmp     bx, [es:V_VUE]
+        je      .meme
+        mov     [es:V_VUE], bx
+        jmp     .redess
+.meme:  cmp     byte [es:V_REDESS], 0
+        je      lcd_curseur
+.redess:
+        mov     byte [es:V_REDESS], 0
+        call    ecran_redessine
+        ; (suite : lcd_curseur)
+
+; lcd_curseur : curseur du LCD sur la case du curseur si elle est visible, cache sinon.
+; Detruit AX, BX, DX.
+lcd_curseur:
+        mov     dx, [es:V_CUR]
+        mov     bx, [es:V_VUE]
+        mov     ah, dh
+        sub     ah, bh
+        jb      .cache
+        cmp     ah, 4
+        jae     .cache
+        mov     al, dl
+        sub     al, bl
+        jb      .cache
+        cmp     al, LCD_COLS
+        jae     .cache
+        mov     bh, al
+        call    lcd_aller
+        cmp     byte [es:V_LCDC], 1
+        je      .fin
+        mov     byte [es:V_LCDC], 1
+        mov     al, 0Eh                 ; curseur (souligne) visible
+        jmp     lcd_cmd_r
+.cache: cmp     byte [es:V_LCDC], 0
+        je      .fin
+        mov     byte [es:V_LCDC], 0
+        mov     al, 0Ch
+        jmp     lcd_cmd_r
+.fin:   ret
+
+; ecran_redessine : les 4 lignes de la fenetre au LCD. Preserve tout.
+ecran_redessine:
+        push    ax
+        push    bx
+        push    cx
+        push    si
+        xor     ah, ah                  ; AH = ligne du LCD
+.l:     xor     bh, bh
+        call    lcd_aller
+        push    ax
+        mov     bx, [es:V_VUE]
+        mov     al, bh
+        add     al, ah
+        mov     cl, COLS
+        mul     cl
+        xor     bh, bh
+        add     ax, bx
+        mov     si, ax                  ; SI = (haut + ligne) * 80 + gauche
+        pop     ax
+        mov     cl, LCD_COLS
+.c:     mov     al, [es:si]
+        call    lcd_car_f
+        inc     si
+        dec     cl
+        jnz     .c
+        inc     ah
+        cmp     ah, 4
+        jb      .l
+        pop     si
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; ecran_nav : AH = code XT d'une fleche (Maj enfoncee) : deplace la fenetre.
+; CF = 1 si AH n'est pas une fleche. Preserve tout.
+ecran_nav:
+        push    ax
+        push    bx
+        push    dx
+        mov     bx, [es:V_VUE]
+        cmp     ah, 48h                 ; haut
+        jne     .b
+        or      bh, bh
+        jz      .ok
+        dec     bh
+        jmp     .ok
+.b:     cmp     ah, 50h                 ; bas
+        jne     .g
+        cmp     bh, LIGNES - 4
+        jae     .ok
+        inc     bh
+        jmp     .ok
+.g:     cmp     ah, 4Bh                 ; gauche
+        jne     .d
+        sub     bl, NAV_C
+        jae     .ok
+        xor     bl, bl
+        jmp     .ok
+.d:     cmp     ah, 4Dh                 ; droite
+        jne     .non
+        add     bl, NAV_C
+        cmp     bl, COLS - LCD_COLS
+        jbe     .ok
+        mov     bl, COLS - LCD_COLS
+.ok:    cmp     bx, [es:V_VUE]
+        je      .r
+        mov     [es:V_VUE], bx
+        call    ecran_redessine
+        call    lcd_curseur
+.r:     clc
+        jmp     .sortie
+.non:   stc
+.sortie:
+        pop     dx
+        pop     bx
+        pop     ax
+        ret
+
+; lcd_aller : AH = ligne du LCD (0-3), BH = colonne -> adresse DDRAM. Preserve tout sauf AL.
+lcd_aller:
+        push    bx
+        mov     bl, ah
+        mov     al, bh
+        xor     bh, bh
+        add     al, [cs:bx + lignes_ddram]
+        or      al, 80h
+        pop     bx
+        jmp     lcd_cmd_r
+
+; lcd_car_f : caractere AL au LCD (codes de controle -> espace). Preserve tout.
+lcd_car_f:
+        cmp     al, ' '
+        jae     lcd_car_r
+        mov     al, ' '
+; lcd_car_r / lcd_cmd_r : donnee / commande AL, delai LCD_D. Preservent tout.
+lcd_car_r:
+        out     LCD_DATA, al
+        jmp     lcd_attente
+lcd_cmd_r:
+        out     LCD_CMD, al
+lcd_attente:
+        push    cx
+        mov     cx, LCD_D
+.d:     loop    .d
+        pop     cx
+        ret
+
+lignes_ddram:
+        db      LIGNE1, LIGNE2, LIGNE3, LIGNE4
+
+; =============================================================================
+; INT 11h, 12h, 14h, 15h, 17h, 18h
+; =============================================================================
+int11h:
+        push    ds
+        mov     ax, 40h
+        mov     ds, ax
+        mov     ax, [10h]
+        pop     ds
+        iret
+
+int12h:
+        push    ds
+        mov     ax, 40h
+        mov     ds, ax
+        mov     ax, [13h]
+        pop     ds
+        iret
+
+; INT 14h : AH = 01h envoie AL sur l'UART logiciel ; reception non geree (delai depasse).
+int14h:
+        cmp     ah, 01h
+        jne     .pas_tx
+        call    uart_tx
+        mov     ah, 60h                 ; emetteur vide
+        iret
+.pas_tx:
+        cmp     ah, 02h
+        jne     .etat
+        mov     ah, 80h                 ; delai depasse
+        iret
+.etat:  mov     ax, 6000h
+        iret
+
+int15h:
+        BIOS_ENTREE
+        mov     byte [bp + R_AX + 1], 86h
+        jmp     bios_cf1
+
+int17h:
+        mov     ah, 01h                 ; delai depasse : pas d'imprimante
+        iret
+
+int18h:                                 ; (ROM BASIC sur un PC) : retour au menu
+        jmp     menu
+
+; =============================================================================
+; INT 19h - amorcage : secteur 0 de A: en 0000:7C00, saut avec DL = 0
+; =============================================================================
+int19h:
+        cli
+        xor     ax, ax
+        mov     ss, ax
+        mov     sp, 7C00h
+        sti
+        mov     si, 3                   ; 3 essais
+.essai: xor     ax, ax
+        mov     es, ax
+        mov     bx, 7C00h
+        mov     ax, 0201h
+        mov     cx, 0001h
+        xor     dx, dx
+        int     13h
+        jnc     .ok
+        dec     si
+        jnz     .essai
+        jmp     menu                    ; (n'arrive pas : le disque est en ROM)
+.ok:    xor     dx, dx
+        jmp     0000h:7C00h
+
+; =============================================================================
+; INT 13h - disquette A: en ROM (180 Ko : 40 cylindres, 1 tete, 9 secteurs)
+; =============================================================================
+int13h:
+        BIOS_ENTREE
+        or      dl, dl
+        jnz     .absent
+        cmp     ah, 02h
+        je      .lire
+        cmp     ah, 00h
+        je      .ok
+        cmp     ah, 04h
+        je      .verifier
+        cmp     ah, 01h
+        je      .etat
+        cmp     ah, 03h
+        je      .protege
+        cmp     ah, 05h
+        je      .protege
+        cmp     ah, 08h
+        je      .params
+        cmp     ah, 15h
+        je      .type
+        cmp     ah, 16h
+        je      .ok
+        mov     ah, 01h                 ; fonction inconnue
+        jmp     .err
+.absent:
+        mov     ah, 80h                 ; autre disquette : delai depasse
+        test    dl, 80h
+        jz      .err
+        mov     ah, 01h                 ; disque dur : aucun
+        jmp     .err
+.protege:
+        mov     ah, 03h
+.err:   mov     [bp + R_AX + 1], ah
+        mov     [es:V_DSTAT], ah
+        jmp     bios_cf1
+.ok:    mov     byte [bp + R_AX + 1], 0
+        mov     byte [es:V_DSTAT], 0
+        jmp     bios_cf0
+.etat:  mov     al, [es:V_DSTAT]
+        mov     [bp + R_AX], al
+        jmp     .ok
+.type:  mov     byte [bp + R_AX + 1], 01h   ; disquette sans ligne de changement
+        jmp     bios_cf0
+.params:
+        mov     word [bp + R_AX], 0
+        mov     word [bp + R_BX], 0001h
+        mov     word [bp + R_CX], ((DISQUE_CYL - 1) << 8) | DISQUE_SPT
+        mov     word [bp + R_DX], 0001h     ; tete max 0, 1 lecteur
+        mov     word [bp + R_DI], dpt_180
+        mov     [bp + R_ES], cs
+        jmp     bios_cf0
+.verifier:
+        call    disque_lba
+        jc      .err
+        jmp     .ok
+.lire:  call    disque_lba              ; AX = premier secteur (LBA)
+        jc      .err
+        mov     dx, ax
+        mov     cl, 5
+        shl     dx, cl
+        add     dx, DISQUE_SEG          ; DX = segment du secteur dans la ROM
+        mov     ax, [bp + R_BX]         ; destination ES:BX normalisee : ES' = ES + BX/16
+        mov     di, ax
+        and     di, 0Fh
+        mov     cl, 4
+        shr     ax, cl
+        add     ax, [bp + R_ES]
+        mov     es, ax
+        mov     bl, [bp + R_AX]         ; BL = nombre de secteurs
+.sect:  mov     ds, dx
+        xor     si, si
+        mov     cx, 256
+        rep     movsw
+        mov     ax, es
+        add     ax, 32                  ; secteur suivant (512 octets)
+        mov     es, ax
+        sub     di, 512
+        add     dx, 32
+        dec     bl
+        jnz     .sect
+        mov     ax, DSEG
+        mov     es, ax
+        jmp     .ok
+
+; disque_lba : AL = nombre de secteurs, CH = cylindre, CL = secteur, DH = tete.
+; Sortie : AX = LBA du premier secteur, ou CF = 1 et AH = code d'erreur.
+disque_lba:
+        or      al, al
+        jz      .inval
+        or      dh, dh
+        jnz     .introuvable
+        cmp     ch, DISQUE_CYL
+        jae     .introuvable
+        mov     bl, cl
+        and     bl, 3Fh
+        jz      .introuvable
+        cmp     bl, DISQUE_SPT
+        ja      .introuvable
+        mov     bh, al                  ; BH = nombre
+        mov     al, DISQUE_SPT
+        mul     ch                      ; AX = cylindre * 9
+        dec     bl
+        add     al, bl
+        adc     ah, 0                   ; AX = LBA
+        push    ax
+        add     al, bh
+        adc     ah, 0
+        cmp     ax, DISQUE_SECT
+        pop     ax
+        ja      .introuvable
+        clc
+        ret
+.inval: mov     ah, 01h
+        stc
+        ret
+.introuvable:
+        mov     ah, 04h
+        stc
+        ret
+
+; =============================================================================
+; INT 16h - clavier
+; =============================================================================
+int16h:
+        BIOS_ENTREE
+        and     ah, 0EFh                ; 10h-12h (clavier etendu) = 00h-02h
+        cmp     ah, 00h
+        je      .lire
+        cmp     ah, 01h
+        je      .etat
+        cmp     ah, 02h
+        je      .drapeaux
+        cmp     ah, 05h
+        je      .pousse
+        jmp     bios_sortie
+.lire:  call    kbd_attend
+        mov     [bp + R_AX], ax
+        jmp     .bloque
+.etat:  call    file_regarde
+        jnc     .attend
+        call    kbd_libere
+        mov     cx, KBD_FENETRE         ; DOS affiche : ecoute courte ; DOS attend
+        cmp     byte [es:V_SORTIE], 0   ; (rien affiche depuis l'appel precedent) :
+        jne     .scrute                 ; ecoute longue
+        mov     cx, KBD_FENETRE_L
+.scrute:
+        mov     byte [es:V_SORTIE], 0
+        call    kbd_scrute
+        call    file_regarde
+        jc      .vide
+.attend:
+        mov     [bp + R_AX], ax
+        and     word [bp + R_FL], ~40h  ; ZF = 0 : une touche attend
+        jmp     .bloque
+.vide:  or      word [bp + R_FL], 40h   ; ZF = 1
+.bloque:
+        call    kbd_bloque
+        jmp     bios_sortie
+.drapeaux:
+        mov     bl, [es:V_CLAVIER]
+        xor     al, al
+        test    bl, CLV_MAJ
+        jz      .d1
+        or      al, 02h                 ; Maj gauche
+.d1:    test    bl, CLV_CTRL
+        jz      .d2
+        or      al, 04h
+.d2:    test    bl, CLV_ALT
+        jz      .d3
+        or      al, 08h
+.d3:    test    bl, CLV_VERR_MAJ
+        jz      .d4
+        or      al, 40h
+.d4:    or      al, 20h                 ; Verr Num (suppose actif)
+        mov     [bp + R_AX], al
+        jmp     bios_sortie
+.pousse:
+        mov     ax, cx
+        call    file_ajoute
+        mov     byte [bp + R_AX], 0
+        jmp     bios_sortie
+
+; kbd_libere / kbd_bloque : relache / bloque l'horloge du clavier (diode sur PC0 de
+; U12). Le clavier n'est libre que pendant que le BIOS l'ecoute (kbd_attend, INT 16h,
+; attentes du LED Show) : une touche frappee entre-temps attend dans le clavier.
+; Detruisent AL.
+kbd_libere:
+        mov     al, KBD_LIBRE
+        out     PPI2_CTRL, al
+        ret
+kbd_bloque:
+        mov     al, KBD_BLOQUE
+        out     PPI2_CTRL, al
+        ret
+
+; kbd_attend : attend une touche. Sortie : AX = code (AH = XT, AL = ASCII). ES = DSEG.
+kbd_attend:
+        push    cx
+        call    file_retire
+        jnc     .ok
+        push    ax
+        call    kbd_libere
+        pop     ax
+.a:     mov     cx, 2000
+        call    kbd_scrute
+        call    file_retire
+        jc      .a
+        push    ax
+        call    kbd_bloque
+        pop     ax
+.ok:    pop     cx
+        ret
+
+; kbd_scrute : scrute l'horloge du clavier pendant CX tours (~8 us chacun) ; une
+; trame recue est decodee et la touche mise dans la file. Rend la main des qu'une
+; touche est dans la file. Detruit AX.
+kbd_scrute:
+        push    cx
+.w:     in      al, PPI2_PB
+        test    al, KBD_CLK
+        jz      .trame
+        loop    .w
+        jmp     .fin
+.trame: call    kbd_octet
+        jnc     .fin
+        loop    .w
+.fin:   pop     cx
+        ret
+
+; kbd_octet : CLK vient d'etre vu bas : lit la trame, decode, traite les touches
+; speciales. CF = 0 si une touche a ete mise dans la file. Detruit AX.
+kbd_octet:
+        call    ps2_trame
+        jc      .rien
+        call    clavier_decode
+        jc      .rien
+        cmp     ah, 53h                 ; Ctrl + Alt + Suppr : retour au menu
+        jne     .pas_reset
+        test    byte [es:V_CLAVIER], CLV_CTRL
+        jz      .pas_reset
+        test    byte [es:V_CLAVIER], CLV_ALT
+        jz      .pas_reset
+        jmp     0F000h:debut
+.pas_reset:
+        or      al, al                  ; Maj + fleche sous DOS : deplace la fenetre
+        jnz     .file
+        cmp     byte [es:V_DOS], 0
+        je      .file
+        test    byte [es:V_CLAVIER], CLV_MAJ
+        jz      .file
+        push    ax
+        call    kbd_bloque              ; clavier bloque pendant le dessin du LCD
+        pop     ax
+        call    ecran_nav
+        pushf
+        push    ax
+        call    kbd_libere
+        pop     ax
+        popf
+        jnc     .rien
+.file:  call    file_ajoute
+        clc
+        ret
+.rien:  stc
+        ret
+
+; file de FILE_N codes de touche (mots) en DSEG : tete V_FILE_T, queue V_FILE_Q.
+; file_ajoute : AX dans la file (perdu si elle est pleine). Preserve tout.
+file_ajoute:
+        push    bx
+        mov     bl, [es:V_FILE_Q]
+        mov     bh, bl
+        inc     bh
+        and     bh, FILE_N - 1
+        cmp     bh, [es:V_FILE_T]
+        je      .fin
+        mov     [es:V_FILE_Q], bh
+        xor     bh, bh
+        shl     bx, 1
+        mov     [es:bx + V_FILE], ax
+.fin:   pop     bx
+        ret
+
+; file_regarde : AX = premier code sans le retirer ; CF = 1 si la file est vide.
+; file_retire : idem, en le retirant. Preservent le reste.
+file_regarde:
+        push    bx
+        mov     bl, [es:V_FILE_T]
+        cmp     bl, [es:V_FILE_Q]
+        je      file_vide
+        xor     bh, bh
+        shl     bx, 1
+        mov     ax, [es:bx + V_FILE]
+        pop     bx
+        clc
+        ret
+file_retire:
+        push    bx
+        mov     bl, [es:V_FILE_T]
+        cmp     bl, [es:V_FILE_Q]
+        je      file_vide
+        mov     bh, bl
+        inc     bh
+        and     bh, FILE_N - 1
+        mov     [es:V_FILE_T], bh
+        xor     bh, bh
+        shl     bx, 1
+        mov     ax, [es:bx + V_FILE]
+        pop     bx
+        clc
+        ret
+file_vide:
+        pop     bx
+        stc
+        ret
+
+; =============================================================================
+; INT 1Ah - horloge : compteur de tops du BDA (0040:006C), sans minuterie
+; =============================================================================
+int1ah:
+        BIOS_ENTREE
+        push    ds
+        mov     bx, 40h
+        mov     ds, bx
+        cmp     ah, 00h
+        jne     .pas_0
+        mov     ax, [6Ch]
+        mov     [bp + R_DX], ax
+        mov     ax, [6Eh]
+        mov     [bp + R_CX], ax
+        mov     al, [70h]
+        mov     [bp + R_AX], al
+        mov     byte [70h], 0
+        pop     ds
+        jmp     bios_cf0
+.pas_0: cmp     ah, 01h
+        jne     .non
+        mov     [6Ch], dx
+        mov     [6Eh], cx
+        mov     byte [70h], 0
+        pop     ds
+        jmp     bios_cf0
+.non:   pop     ds                      ; horloge temps reel (AT) : absente
+        jmp     bios_cf1
