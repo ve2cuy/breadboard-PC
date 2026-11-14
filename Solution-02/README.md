@@ -192,14 +192,14 @@ CAS0–CAS2 libres. Le 8088 n'avait aucune interruption matérielle : **INTR
 | 26 | INTA# | 8088 broche **24** (INTA#) |
 | 16 | SP#/EN# | +5 V (maître unique) |
 | 12, 13, 15 | CAS0–CAS2 | libres |
-| 19 | IR1 = IRQ1 | U14 (74HC14) broche 2 = KBD_CLK inversée |
+| 19 | IR1 = IRQ1 | U14 (74LS14) broche 2 = KBD_CLK inversée |
 | 22 | IR4 = IRQ4 | U14 broche 4 = UART_RX inversée |
 | 18, 20, 21, 23–25 | IR0, IR2, IR3, IR5–IR7 | libres (masquées par le BIOS) |
 | 28 / 14 | VCC / GND | +5 V / GND (+ 100 nF) |
 
 Le 8259 réagit au **front montant** (mode front, comme le PC) ; or une trame
 PS/2 commence par un front **descendant** de l'horloge et un octet série par un
-front descendant de RX (bit de départ). **U14 (74HC14, trigger de Schmitt)
+front descendant de RX (bit de départ). **U14 (74LS14, trigger de Schmitt)
 inverse donc KBD_CLK** (broche 1 → 2, vers IR1) **et UART_RX** (broche 3 → 4,
 vers IR4) ; les portes 3 à 6 sont inutilisées, entrées à la masse (VCC
 broche 14, GND broche 7). Les bits eux-mêmes restent lus par U12 (PB0, PB1,
@@ -409,7 +409,7 @@ LCD, les deux 8255, un **vrai clavier PS/2** et l'UART (la trame part à son
 heure, que le BIOS écoute ou non ; perdue si PB n'est pas lu pendant la trame),
 le **8259** (ICW, masque, EOI, mode front : demande mémorisée au front montant,
 valable seulement si l'entrée est encore haute ; INT levée jusqu'à INTA ; IRQ7
-parasite sinon) relié par le 74HC14 (IR1 = horloge inversée, IR4 = RX
+parasite sinon) relié par le 74LS14 (IR1 = horloge inversée, IR4 = RX
 inversée), les interruptions matérielles servies entre deux instructions quand
 IF = 1 (pas juste après STI), et l'aiguillage des interruptions logicielles du
 mode réel. 12 scénarios : démarrage et
@@ -454,6 +454,7 @@ ROM, A14 est à la broche 29 et A15 à la broche 3.
 
 ## État
 
+- 2026-11-14 : U14 = 74LS14 (au lieu de 74HC14), testée au TL866 (6 inverseurs OK) ; BIOS 0.8 gravé.
 - 2026-11-14 : BIOS 0.8 : clavier (IRQ1) et réception UART (IRQ4) par le 8259, détecté au menu (sinon scrutation comme le 0.7) ; INT 14h AH=02h/03h ; SysInfo : 8259 et IRQ7 parasites. Simulé (12 scénarios), pas encore gravé.
 - 2026-11-14 : schéma : 8259A (U13) sur O2 (20h–21h), INT → INTR, INTA ; 74HC14 (U14) : IRQ1 = KBD_CLK inversée, IRQ4 = UART_RX inversée. Pas encore câblé ; BIOS 0.8 à venir.
 - 2026-11-14 : BIOS 0.7 : sous DOS, seules les 20 colonnes de la fenêtre vont au LCD (la fenêtre ne suit plus le curseur horizontalement pendant l'affichage) ; Maj gauche reconnue pour la navigation (Maj gauche/droite suivies séparément, Maj factice). Pas de diode : 8259 à venir.
