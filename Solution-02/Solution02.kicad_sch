@@ -22783,7 +22783,7 @@
 			)
 		)
 	)
-	(label "KBD_CLK"
+	(label "KBD_DATA"
 		(at 474.98 345.44 0)
 		(effects
 			(font
@@ -22793,7 +22793,7 @@
 		)
 		(uuid "4d98057f-020c-45f3-8865-304a44033eb1")
 	)
-	(label "KBD_DATA"
+	(label "KBD_CLK"
 		(at 474.98 342.9 0)
 		(effects
 			(font
@@ -23235,7 +23235,7 @@
 			)
 		)
 	)
-	(text "U12 = 2e 8255 (uPD71055C) sur O3 du 74LS138 : ports 30h-33h\n30h = PA, 31h = PB, 32h = PC, 33h = controle\nClavier (bit-bang, comme Solution-01) : PB0 = horloge, PB1 = donnees (entrees)\nJ4 : clavier USB a repli PS/2 (D- = horloge, D+ = donnees, tirages R2/R3 = mode PS/2)\nJ5 UART TTL : 1 = TX (PA7, sortie), 2 = RX (PB2, entree, tirage R4), 3 = GND\nAdaptateur USB-serie 5 V : son RX sur J5-1, son TX sur J5-2"
+	(text "U12 = 2e 8255 (uPD71055C) sur O3 du 74LS138 : ports 30h-33h\n30h = PA, 31h = PB, 32h = PC, 33h = controle\nClavier (bit-bang, comme Solution-01) : PB0 = horloge, PB1 = donnees (entrees)\nJ4 : clavier USB a repli PS/2 (D+ = horloge, D- = donnees, comme Solution-01, tirages R2/R3 = mode PS/2)\nJ5 UART TTL : 1 = TX (PA7, sortie), 2 = RX (PB2, entree, tirage R4), 3 = GND\nAdaptateur USB-serie 5 V : son RX sur J5-1, son TX sur J5-2"
 		(exclude_from_sim no)
 		(at 396.24 391.16 0)
 		(effects
