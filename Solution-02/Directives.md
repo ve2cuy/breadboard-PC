@@ -69,3 +69,4 @@ Schema : Solution02.kicad_sch. Chaque etape du projet est ajoutee a la fin de ce
 * 2026-11-14 Schema (demande): U14 = 74LS14 (valeur des 7 unites et note du schema; symbole 74xx:74HC14 garde, brochage identique); ERC inchange (110). README: 74LS14. Commit et push (demande).
 * 2026-11-14 Montage: U13 (8259A) et U14 (74LS14) cables par l'usager; BIOS 0.8 fonctionne avec le 8259 (validation de l'usager).
 * 2026-11-14 Correction: SysInfo affiche '8259 absent (scrut.)' -> la detection (relecture du masque A5h/5Ah) echoue sur le montage; le BIOS 0.8 fonctionnait en repli par scrutation. A diagnostiquer (cablage de U13).
+* 2026-11-14 Cablage de U13 corrige par l'usager: SysInfo affiche '8259 OK   IRQ7 0000' -> BIOS 0.8 valide avec le 8259 (clavier et UART par interruptions).
