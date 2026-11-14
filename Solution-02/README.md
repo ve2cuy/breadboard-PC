@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 0.8 :
+Contenu de la ROM et de la RAM avec le BIOS 0.9 :
 
 | Adresses | Contenu |
 |---|---|
@@ -230,17 +230,17 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 0.8
+## BIOS 0.9
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.8`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 0.9`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
-3. **Menu**, au clavier PS/2 (touches 1 à 4). En entrant au menu, le BIOS
+3. **Menu**, au clavier PS/2 (touches 1 à 5). En entrant au menu, le BIOS
    installe les vecteurs, réinitialise le 8259 et le **détecte** en relisant
    son registre de masque (A5h puis 5Ah) :
    - **8259 présent** : le clavier (IRQ1, INT 09h) et la réception de l'UART
@@ -256,8 +256,12 @@ type IBM PC). Déroulement :
 1) Load DOS
 2) Test memory
 3) LED Show
-4) SysInfo
+4) Info  5) UART:OFF
 ```
+
+La touche **5** bascule la **console du DOS sur l'UART** (`UART:OFF` ↔
+`UART:ON`, OFF au démarrage ; voir plus bas). Rien n'est envoyé sur l'UART au
+changement.
 
 ### 1) Load DOS
 
@@ -270,12 +274,12 @@ pas d'horloge), puis affiche `A>`.
 
 | INT | Service |
 |---|---|
-| 10h | écran : AH = 00h, 02h, 03h, 06h, 07h, 08h, 09h, 0Ah, **0Eh (télétype)**, 0Fh |
+| 10h | écran : AH = 00h, 02h, 03h, 06h, 07h, 08h, 09h, 0Ah, **0Eh (télétype, recopié sur l'UART si console ON)**, 0Fh |
 | 11h / 12h | équipement (0021h) / mémoire (508 Ko) |
 | 13h | disquette A: **en ROM**, lecture seule : AH = 00h, 01h, 02h, 04h, 08h, 15h, 16h ; écriture/formatage → erreur 03h (protégée) ; autre lecteur → erreur |
 | 09h / 0Ch / 0Fh | IRQ1 clavier / IRQ4 UART / IRQ7 parasite (8259) |
 | 14h | AH = 01h : envoi sur l'UART logiciel ; AH = 02h : octet reçu par IRQ4 (attente ~0,5 s, sinon AH = 80h) ; AH = 03h : état (AH bit 0 = octet en attente) — réception seulement avec le 8259 |
-| 16h | clavier : AH = 00h, 01h, 02h, 05h (et 10h–12h) ; AH = code XT, AL = ASCII, comme un PC ; file remplie par IRQ1 |
+| 16h | clavier : AH = 00h, 01h, 02h, 05h (et 10h–12h) ; AH = code XT, AL = ASCII, comme un PC ; file remplie par IRQ1 (et par IRQ4 si console ON) |
 | 15h, 17h | sans objet (pas de services AT, pas d'imprimante) |
 | 18h | retour au menu |
 | 19h | amorçage de A: |
@@ -307,6 +311,28 @@ choisie reste jusqu'à la prochaine attente du clavier qui suit un affichage.
 La Maj est aussi reconnue par le « relâchement factice » (E0 F0 12h ou
 E0 F0 59h) que le clavier envoie juste avant la flèche : la navigation marche
 même si l'appui de Maj a été perdu (montage sans diode).
+
+**Console UART** (menu 5 à `UART:ON`, terminal 9600 8N1 sans écho local) :
+
+- **sortie** : chaque caractère écrit par INT 10h en télétype (AH = 0Eh, ce
+  qu'utilise le DOS) part aussi sur TX, tel quel (CR, LF, BS, BEL ; les
+  séquences `ESC [ …` de `CLS` sont donc comprises par le terminal) ;
+- **entrée** (avec le 8259) : les octets reçus par IRQ4 deviennent des
+  touches d'INT 16h, mêlées à celles du clavier PS/2. CR → Entrée, BS ou DEL
+  → retour arrière, TAB, ESC ; LF et NUL ignorés. Séquences ANSI du terminal
+  (envoyées d'un trait, lues dans IRQ4 par scrutation) : `ESC [` ou `ESC O`
+  suivi de A/B/C/D (flèches), H/F (Début/Fin), P/Q/R/S (F1–F4), ou de 1 à 6
+  puis `~` (Début, Inser, Suppr, Fin, Page préc./suiv.). ESC seul (rien dans
+  les ~2,7 ms) : Échap.
+
+À `UART:OFF`, rien du DOS ne passe par l'UART (INT 14h reste disponible). Limites
+de la console : l'UART est logiciel, chaque caractère envoyé prend ~1 ms
+**interruptions masquées** : l'affichage est plus lent (`DIR` : ~1,5 s de plus pour ~1 400 caractères)
+et une trame du clavier PS/2 ou un octet reçu qui commence pendant un envoi
+peut être perdu (un relâchement de touche perdu peut doubler la touche) ; un
+texte collé dans le terminal pendant que le DOS l'écrit en écho perd des
+caractères. Sans 8259 : sortie seulement. Ctrl + Alt + Suppr remet la console à
+OFF. Une puce UART (8250/16550) est prévue pour la suite.
 
 Limites : pas de minuterie (heure figée, pas de `INT 08h`), pas de mémoire
 vidéo (un programme qui écrit directement en B800h n'affiche rien), disque en
@@ -367,7 +393,7 @@ qu'un octet reçu pendant la lecture d'une trame du clavier (et inversement).
 Sans 8259 : scrutation, une touche frappée pendant l'envoi d'un caractère ou le
 changement d'animation peut être perdue.
 
-### 4) SysInfo
+### 4) Info (SysInfo)
 
 Version du BIOS, processeur (**8088** ou **NEC V20**, reconnu par
 l'instruction AAD : le V20 ignore son opérande), mémoire et ROM, et le 8259 :
@@ -412,7 +438,7 @@ valable seulement si l'entrée est encore haute ; INT levée jusqu'à INTA ; IRQ
 parasite sinon) relié par le 74LS14 (IR1 = horloge inversée, IR4 = RX
 inversée), les interruptions matérielles servies entre deux instructions quand
 IF = 1 (pas juste après STI), et l'aiguillage des interruptions logicielles du
-mode réel. 12 scénarios : démarrage et
+mode réel. 13 scénarios : démarrage et
 menu (pile, bannière UART) ; Test memory avec RAM saine puis retour au menu ;
 cellule 7B3FFh défectueuse, RAM absente (test complet d'office), ligne A15
 coupée, puce de 128 Ko ; LED Show (24 DEL vues allumées et éteintes) ;
@@ -423,14 +449,16 @@ Maj + →, saisie longue, Ctrl + Alt + Suppr, avec vérification qu'aucune trame
 du clavier n'est perdue avant Ctrl + Alt + Suppr, qu'aucun vecteur non géré
 n'est appelé et qu'aucun `OUT` du DOS n'atteint le LCD ou les 8255 ; **frappe
 anticipée** : `rem abc` tapé pendant que `DIR` s'affiche apparaît à l'invite
-suivante (IRQ1). Réception UART sous DOS (INT 14h AH=02h) : pas encore de
-scénario.
+suivante (IRQ1) ; **console UART** : menu 5 (`UART:ON`), Load DOS, date,
+heure, `DIR` tapés au terminal, flèche gauche ANSI (`ESC [ D` d'un trait) et
+Échap seul, avec la sortie du DOS vérifiée sur TX. Réception UART sous DOS par
+INT 14h AH=02h : pas encore de scénario.
 
 Commandes (depuis `bios/`) :
 
 ```sh
 make            # build/solution-02-bios.bin (image de 256 Ko)
-make test       # simulateur tests/sim.py (12 scénarios, ~4 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
+make test       # simulateur tests/sim.py (13 scénarios, ~5 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
 make diag       # ROM de diagnostic du 8255 U7 (écritures en rafale) ; graver : make flash PUCE=ok GRAVER=diag
 make diag2      # ROM de diagnostic de U12 (PC/PA clignotent, PB et trames PS/2 au LCD) ; GRAVER=diag2
 make flash PUCE=ok   # graver la W29C020C (TL866CS, minipro sous WSL) — insérer la puce d'abord
@@ -452,8 +480,77 @@ make flash PUCE=ok   # graver la W29C020C (TL866CS, minipro sous WSL) — insér
 Attention : sur la RAM, A14 est à la broche 3 et A15 à la broche 31 ; sur la
 ROM, A14 est à la broche 29 et A15 à la broche 3.
 
+## À Réaliser plus tard
+
+### Carte SD (accès à des fichiers)
+
+Une carte SD peut être reliée sans nouvelle puce logique : on la pilote en
+**mode SPI, en bit-bang**, avec les broches libres du 2e 8255 (U12,
+30h–33h). Il faut 3 sorties (SCK, MOSI, CS#) et 1 entrée (MISO), ce que
+donne déjà le mot de contrôle **82h** (PA et PC en sortie, PB en entrée).
+Aucun changement au décodage, rien de plus sur le bus ; O4–O7 du 74LS138
+restent libres.
+
+Broches libres de U12 :
+
+| Port | Déjà pris | Libre |
+|---|---|---|
+| PA (sortie) | PA7 = UART TX | PA0–PA6 |
+| PB (entrée) | PB0 horloge clavier, PB1 données, PB2 UART RX | PB3–PB7 |
+| PC (sortie) | — (diode de PC0 non posée) | PC0–PC7 |
+
+Câblage proposé :
+
+| Signal SD | 8255 U12 | Broche | Remarque |
+|---|---|---|---|
+| SCK | PC1 | 15 | |
+| MOSI (DI) | PC2 | 16 | |
+| CS# | PC3 | 17 | tirage 10 kΩ au +5 V : au RESET, les sorties du 8255 flottent, la carte reste désélectionnée |
+| MISO (DO) | PB3 | 21 | |
+
+PC0 est évitée (le BIOS la commande encore par des mots BSR), et PA aussi,
+pour ne pas toucher à PA7 (TX de l'UART).
+
+**Niveaux 3,3 V / 5 V** : la carte SD fonctionne en 3,3 V.
+
+- **Recommandé** : un module micro-SD « 5 V » du commerce (type Catalex),
+  avec régulateur 3,3 V et 74LVC125 intégrés. Il se branche directement :
+  VCC = +5 V, GND, SCK, MOSI, MISO, CS. Éviter les modules sans régulateur
+  ni tampon.
+- **À monter soi-même** : régulateur 3,3 V (AMS1117/LM1117) et 74HC4050
+  alimenté en 3,3 V pour abaisser SCK, MOSI et CS#. MISO (3,3 V) peut aller
+  directement au 8255 CMOS (VIH ≈ 2,2 V, à vérifier dans la fiche du
+  µPD71055C).
+
+**Logiciel (BIOS)** :
+
+- L'horloge SPI est fournie par le 8088 : la carte attend aussi longtemps
+  qu'il le faut. Les interruptions du clavier (IRQ1) et de l'UART (IRQ4)
+  peuvent couper un transfert sans dommage ; **aucune section CLI**
+  n'est nécessaire.
+- Débit estimé : ~80–100 cycles par bit, soit **5 à 8 Ko/s** à 5,33 MHz
+  (un secteur de 512 octets ≈ 0,1 s ; 180 Ko ≈ 30 s). La limite de 400 kHz
+  de l'initialisation est respectée d'office.
+- Pilote : CMD0, CMD8, ACMD41, CMD58, puis CMD17/CMD24 (lecture/écriture
+  d'un bloc) ; gérer les cartes SDSC (adresse en octets) et SDHC (adresse
+  en blocs).
+- Intégration : présenter la carte par **INT 13h** comme 2e lecteur (B:)
+  ou disque dur (80h), conversion CHS → numéro de bloc. PC-DOS 2.1 gère
+  alors lui-même le FAT et les fichiers. Limites : FAT12 seulement sous
+  DOS 2.x (partition ≤ ~16 Mo, ou image de disquette de 360 Ko au début de
+  la carte) ; un disque dur demande aussi un MBR et une table de paramètres
+  (INT 41h). Un lecteur FAT dans le BIOS (charger des fichiers depuis le
+  menu) est possible mais plus long à écrire.
+
+**Plus rapide, plus tard** : un registre à décalage SPI matériel
+(74HC595 + 74HC165, ou un compteur) sélectionné par O4 ou O5 du 74LS138
+donnerait ~50–100 Ko/s, au prix de 3 ou 4 puces et d'un décodage avec
+RD#/WR# (comme pour le LCD). Commencer par la version sur U12 : 4 fils et
+un module.
+
 ## État
 
+- 2026-11-14 : BIOS 0.9 : console du DOS sur l'UART, activée au menu (5) `UART:ON|OFF` : sortie INT 10h télétype sur TX, entrée par IRQ4 dans la file d'INT 16h (séquences ANSI) ; bit d'arrêt lu au quart (octets collés). Simulé (13 scénarios), pas encore gravé.
 - 2026-11-14 : 8259 (U13) et 74LS14 (U14) câblés : après correction du câblage, SysInfo affiche « 8259 OK   IRQ7 0000 » ; BIOS 0.8 validé (clavier et UART par interruptions).
 - 2026-11-14 : U14 = 74LS14 (au lieu de 74HC14), testée au TL866 (6 inverseurs OK) ; BIOS 0.8 gravé.
 - 2026-11-14 : BIOS 0.8 : clavier (IRQ1) et réception UART (IRQ4) par le 8259, détecté au menu (sinon scrutation comme le 0.7) ; INT 14h AH=02h/03h ; SysInfo : 8259 et IRQ7 parasites. Simulé (12 scénarios), pas encore gravé.

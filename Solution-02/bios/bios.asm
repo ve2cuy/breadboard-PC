@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 0.8 (VE2CUY, 2026)
+; Solution-02 - BIOS 0.9 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -31,11 +31,13 @@
 ; Deroulement :
 ;   1) ecran d'ouverture (~2 s), verification rapide des 4 Ko de DSEG (sinon : test
 ;      complet de la RAM), banniere sur l'UART ;
-;   MENU (touches 1-4 du clavier PS/2) :
+;   MENU (touches 1-5 du clavier PS/2) :
 ;      1) Load DOS    : vecteurs d'interruption, BDA, ecran 24x80, amorce A: (INT 19h)
 ;      2) Test memory : le test complet ci-dessous, puis retour au menu
 ;      3) LED Show    : animations des DEL + terminal clavier/UART (Echap = menu)
-;      4) SysInfo     : processeur (8088 ou V20), memoire, disque
+;      4) Info        : processeur (8088 ou V20), memoire, 8259
+;      5) UART:ON/OFF : console du DOS sur l'UART (ON : INT 10h teletype recopie sur
+;                       TX ; octets recus par IRQ4 -> touches d'INT 16h, fleches ANSI)
 ;   Ctrl + Alt + Suppr (sous DOS) : retour au demarrage.
 ;
 ;   Test de la RAM : test COMPLET (512 Ko), SANS pile ni variables (macros seulement) :
@@ -97,6 +99,7 @@ V_UFILE_Q       equ     7B1h            ;                                 queue
 V_NAV           equ     7B2h            ; Maj + fleche vue par IRQ1 (code XT), traitee par INT 16h
 V_PIC           equ     7B3h            ; 1 = 8259 present : clavier et UART par interruptions
 V_EVT           equ     7B4h            ; 1 = IRQ1/IRQ4 a mis quelque chose dans une file
+V_UCON          equ     7B5h            ; 1 = console du DOS sur l'UART (menu 5)
 V_IRQ7          equ     7B6h            ; (mot) IRQ7 parasites comptees (SysInfo)
 V_UFILE         equ     7C0h            ; file de l'UART : UFILE_N octets
 UFILE_N         equ     32
@@ -132,6 +135,9 @@ PIC_EOI         equ     20h             ; OCW2 : fin d'interruption non specifiq
 ; uart_rx depuis IRQ4 : le bit de depart a commence ~INTA + empilage plus tot
 ; (~110 cycles = ~6 tours de la boucle de delai) : attente du milieu du bit raccourcie
 UART_AVANCE     equ     5
+; console UART : apres ESC, attente de l'octet suivant d'une sequence (ESC [ A...) envoyee
+; d'un trait par le terminal ; ~2,7 ms (boucle de ~36 cycles). Sinon : touche Echap.
+UCON_ATTENTE    equ     400
 
 PPI_PA          equ     10h             ; 8255 (U7) sur O1 du 74LS138
 PPI_PB          equ     11h
@@ -704,6 +710,7 @@ menu:
         out     PPI_PC, al
         mov     si, txt_menu
         call    lcd_ecran
+        call    menu_uart
 .touche:
         call    kbd_attend
         cmp     al, '1'
@@ -714,9 +721,23 @@ menu:
         je      led_show
         cmp     al, '4'
         je      sysinfo
-        jmp     .touche
+        cmp     al, '5'
+        jne     .touche
+        xor     byte [es:V_UCON], 1     ; console du DOS sur l'UART : ON <-> OFF
+        call    menu_uart               ; (rien sur l'UART : l'envoi masque les interruptions
+        jmp     .touche                 ;  et ferait perdre le relachement de la touche)
 .dos:   jmp     dos_charger
 .ram:   jmp     ram_test
+
+; menu_uart : ligne 4 du menu selon V_UCON. Detruit AX, BX, CX, SI.
+menu_uart:
+        mov     al, 80h | LIGNE4
+        call    lcd_cmd
+        mov     si, txt_menu4_off
+        cmp     byte [es:V_UCON], 0
+        je      .t
+        mov     si, txt_menu4_on
+.t:     jmp     lcd_texte20
 
 ; lcd_ecran : efface le LCD et affiche 4 lignes de 20 caracteres (DS:SI). Detruit AX, BX, CX, SI.
 lcd_ecran:
@@ -752,6 +773,7 @@ vars_init:
         mov     [es:V_NAV], al
         mov     [es:V_PIC], al
         mov     [es:V_EVT], al
+        mov     [es:V_UCON], al         ; console UART : OFF au demarrage
         mov     [es:V_IRQ7], ax
         ret
 
@@ -1009,8 +1031,8 @@ uart_rx:
         rcr     ah, 1
         dec     bl
         jnz     .bit
-        mov     cx, UART_N
-.d1:    loop    .d1
+        mov     cx, UART_N * 3 / 4      ; au QUART du bit d'arret : 3/4 de bit restent
+.d1:    loop    .d1                     ; avant un octet colle (sequence ANSI, IRQ4 suivante)
         in      al, PPI2_PB             ; bit d'arret (doit etre 1)
         test    al, UART_RX
         jz      .err
@@ -1646,7 +1668,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 0.8'
+txt_ouv1:   db  'SOLUTION-02 BIOS 0.9'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -1662,12 +1684,15 @@ txt_pile_err:db 'PILE ERR            '
 txt_menu:   db  '1) Load DOS         '
             db  '2) Test memory      '
             db  '3) LED Show         '
-            db  '4) SysInfo          '
+txt_menu4_off:
+            db  '4) Info  5) UART:OFF'
+txt_menu4_on:
+            db  '4) Info  5) UART:ON '
 txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 0.8'
+txt_sys:    db  'SOLUTION-02 BIOS 0.9'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -1677,8 +1702,9 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 0.8 - VE2CUY 2026', 13, 10
-            db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) SysInfo', 13, 10, 0
+            db  13, 10, 'Solution-02 BIOS 0.9 - VE2CUY 2026', 13, 10
+            db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info'
+            db  '  5) UART:ON/OFF (console du DOS)', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
 fleches_ansi:
             db  48h, 'A', 50h, 'B', 4Dh, 'C', 4Bh, 'D', 0

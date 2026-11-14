@@ -406,6 +406,11 @@ def programmer_codes(ppi2, n, codes):
     return t
 
 
+class Rafale(bytes):
+    """Octets UART envoyes d'un trait (sans pause entre les trames), comme une sequence
+    ANSI d'un terminal."""
+
+
 class Etapes:
     """Suite d'etapes (condition(ctx) -> codes PS/2 ou octets UART) : chaque etape part une
     fois, dans l'ordre, quand sa condition est vraie et que les trames precedentes sont parties."""
@@ -421,7 +426,12 @@ class Etapes:
         cond, action = self.etapes[self.faites]
         if cond(ctx):
             self.faites += 1
-            if isinstance(action, bytes):
+            if isinstance(action, Rafale):
+                t = n + 30000
+                for i, c in enumerate(action):
+                    ppi2.programmer(t + i * 10 * ppi2.bit_uart(), 'uart', c)
+                t += len(action) * 10 * ppi2.bit_uart()
+            elif isinstance(action, bytes):
                 t = n
                 for c in action:
                     t += 30000
@@ -431,7 +441,7 @@ class Etapes:
             self.libre = t + 60000
 
 
-MENU = ["1) Load DOS         ", "2) Test memory      ", "3) LED Show         ", "4) SysInfo          "]
+MENU = ["1) Load DOS         ", "2) Test memory      ", "3) LED Show         ", "4) Info  5) UART:OFF"]
 
 
 def au_menu(ctx):
@@ -599,8 +609,9 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 0.8 - VE2CUY 2026\r\n"
-            b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) SysInfo\r\n")
+BANNIERE = (b"\r\nSolution-02 BIOS 0.9 - VE2CUY 2026\r\n"
+            b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info"
+            b"  5) UART:ON/OFF (console du DOS)\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
 echec_ram = lambda ctx: ctx["lcd"].lignes()[0].endswith("CPT 0003")
 
@@ -695,12 +706,12 @@ def scenario_sysinfo(image, pic=True):
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 0.8" and pret(c):
+        if l[0] == "SOLUTION-02 BIOS 0.9" and pret(c):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
     pas = Etapes([(au_menu, texte('4')), (pret, texte(' '))])
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic)
-    attendu = ["SOLUTION-02 BIOS 0.8", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
+    attendu = ["SOLUTION-02 BIOS 0.9", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
@@ -737,6 +748,56 @@ def scenario_anticipe(image):
     return verifier("DOS : frappe pendant DIR (touches en file par IRQ1)", lcd, etat, None, ok)
 
 
+def scenario_console(image):
+    """Menu 5 (UART:ON), puis Load DOS pilote depuis le terminal : date et heure, DIR, saisie
+    avec la fleche gauche ANSI (ESC [ D d'un trait) et Echap seul ; la sortie du DOS doit
+    arriver sur TX."""
+    tx = lambda c: bytes(c["ppi2"].tx)
+    lignes = lambda c: [l.rstrip() for l in ecran_dos(c["uc"]) if l.strip()]
+    ecran = lambda c: "\n".join(lignes(c))
+    on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON "
+    vu = {}
+
+    def apres_dir(c):
+        return "bytes free" in ecran(c) and lignes(c)[-1] == "A>"
+
+    def fini(c):
+        l = lignes(c)
+        if l and l[-1] == "A>" and "  rem ok" in l:          # (Echap : ligne suivante en retrait)
+            vu["fin"] = l[-6:]
+            return True
+        return False
+    pas = Etapes([
+        (au_menu, texte('5')),
+        (on, texte('1')),
+        (lambda c: b"Enter new date" in tx(c), b"\r"),
+        (lambda c: b"Enter new time" in tx(c), b"\r"),
+        (lambda c: tx(c).count(b"A>") >= 1, b"dir\r"),
+        (apres_dir, b"rem xy"),
+        (lambda c: lignes(c)[-1] == "A>rem xy", Rafale(b"\x1b[D")),
+        (lambda c: lignes(c)[-1] == "A>rem x", b"z\r"),
+        (lambda c: lignes(c)[-1] == "A>" and "A>rem xz" in lignes(c), b"abc\x1b"),
+        (lambda c: "A>abc\\" in ecran(c), b"rem ok\r"),
+    ])
+    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, dos=True, max_instr=250_000_000)
+    t = tx({"ppi2": etat["ppi2"]})
+    debut = len(BANNIERE)
+    print("--- UART TX : %d octets ; fin : %r" % (len(t), t[-160:]))
+    print("    fin de l'ecran du DOS : %s" % vu.get("fin"))
+    ok = "fin" in vu and t.startswith(BANNIERE)
+    for attendu in (b"Enter new date", b"Version 2.10", b"bytes free", b"A>rem xy\x08 \x08z\r", b"A>abc\\\r\n  rem ok"):
+        if attendu not in t[max(debut, 0):]:
+            ok = False
+            print("    attendu sur TX : %r" % attendu)
+    if "fin" not in vu:
+        print("    attendu : 'A>rem xz' (fleche gauche ANSI), 'A>abc\\' (Echap), puis '  rem ok'")
+    p2 = etat["ppi2"]
+    if p2.perdues:
+        ok = False
+        print("    attendu : aucune trame du clavier perdue (%d)" % p2.perdues)
+    return verifier("menu 5) console du DOS sur l'UART (sortie TX, entree IRQ4, ANSI)", lcd, etat, None, ok)
+
+
 def scenario_dos(image):
     """Menu 1 : PC-DOS 2.1 demarre depuis la ROM ; date et heure (Entree), puis DIR, puis
     Maj + fleches (fenetre du LCD), puis Ctrl + Alt + Suppr (retour au menu)."""
@@ -754,7 +815,8 @@ def scenario_dos(image):
     def fenetre(c):
         """Apres DIR : la fenetre montre les 4 dernieres lignes ; on note le LCD."""
         e = ecran(c)
-        if "bytes free" in e and e.rstrip().endswith("A>"):
+        if "bytes free" in e and e.rstrip().endswith("A>") and c["lcd"].lignes()[3].startswith("A>"):
+            # (le tampon est ecrit avant le LCD : attendre que '>' y soit aussi)
             vu.setdefault("apres_dir", c["lcd"].lignes())
             vu.setdefault("car_dir", c["lcd"].donnees - vu["car_avant_dir"])
             return True
@@ -884,6 +946,7 @@ def main():
         ("sans8259", lambda: scenario_sysinfo(image, pic=False)),
         ("dos", lambda: scenario_dos(image)),
         ("anticipe", lambda: scenario_anticipe(image)),
+        ("console", lambda: scenario_console(image)),
     ]
     echecs = 0
     for nom, f in scenarios:

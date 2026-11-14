@@ -70,3 +70,12 @@ Schema : Solution02.kicad_sch. Chaque etape du projet est ajoutee a la fin de ce
 * 2026-11-14 Montage: U13 (8259A) et U14 (74LS14) cables par l'usager; BIOS 0.8 fonctionne avec le 8259 (validation de l'usager).
 * 2026-11-14 Correction: SysInfo affiche '8259 absent (scrut.)' -> la detection (relecture du masque A5h/5Ah) echoue sur le montage; le BIOS 0.8 fonctionnait en repli par scrutation. A diagnostiquer (cablage de U13).
 * 2026-11-14 Cablage de U13 corrige par l'usager: SysInfo affiche '8259 OK   IRQ7 0000' -> BIOS 0.8 valide avec le 8259 (clavier et UART par interruptions).
+* 2026-11-14 README (demande): section 'A Realiser plus tard' - carte SD en SPI bit-bang sur U12 (SCK = PC1, MOSI = PC2, CS# = PC3 avec tirage 10 kOhm, MISO = PB3), module micro-SD 5 V (regulateur + 74LVC125), pilote INT 13h (FAT12 sous DOS 2.x), debit estime 5-8 Ko/s; option SPI materiel (74HC595/165 sur O4/O5).
+* 2026-11-14 BIOS 0.9 (demande: console du DOS sur l'UART, activee par une option du menu UART: [ON|OFF]; a OFF, rien sur l'UART; lent, une puce UART viendra plus tard):
+  - Menu: ligne 4 = '4) Info  5) UART:OFF' / 'UART:ON ' (touche 5 bascule V_UCON 7B5h, OFF au demarrage et apres Ctrl+Alt+Suppr). Pas de message sur l'UART au changement: l'envoi (~50 ms, CLI) faisait perdre le relachement de la touche 5 -> 2e appui fantome (reproduit en simulation).
+  - Sortie: INT 10h AH=0Eh recopie le caractere sur TX (uart_tx, brut) si V_UCON.
+  - Entree (8259 requis): irq_uart, si V_UCON et V_DOS -> ucon_entree: CR=1C0Dh, BS/DEL=0E08h, TAB=0F09h, ESC=011Bh, LF/NUL ignores, autres AH=0. Sequences ANSI lues par scrutation dans IRQ4 (ucon_suivant, ~2,7 ms): ESC [ ou ESC O + A/B/C/D/H/F/P/Q/R/S, ou 1-6 + '~'; ESC seul -> Echap.
+  - uart_rx: bit d'arret verifie au quart (UART_N*3/4) au lieu du milieu: 3/4 de bit avant l'octet suivant colle (avant: '[' de ESC [ D lu decale en simulation; marge reelle estimee ~7 us seulement).
+  - Simulateur: classe Rafale (octets UART sans pause), scenario console (menu 5, date/heure/DIR tapes au terminal, fleche gauche ANSI, Echap seul, sortie du DOS verifiee sur TX); scenario dos: capture du LCD apres que '>' y soit ecrit (faux echec par decalage de 2 instructions). 13 scenarios OK.
+  - Limites: ~1 ms par caractere envoye, interruptions masquees (affichage plus lent; trame PS/2 ou octet recu pendant un envoi: perdu, relachement perdu = touche doublee).
+  - ROM: Z:/Partage/Alain/solution-02-bios-0.9-console-uart.bin (md5 e2f57e3cca90cf6babd0142977ca0841), pas encore gravee.

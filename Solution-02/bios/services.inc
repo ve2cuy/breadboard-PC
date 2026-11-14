@@ -7,6 +7,9 @@
 ;            teletype ; le LCD 20x4 montre une FENETRE de ce tampon, qui suit le
 ;            curseur (les dernieres lignes ecrites). Maj + fleches deplacent la
 ;            fenetre (haut/bas : 1 ligne, gauche/droite : NAV_C colonnes).
+;            Console UART (V_UCON, menu 5) : AH = 0Eh recopie aussi le caractere sur TX
+;            (~1 ms, interruptions masquees) ; les octets recus par IRQ4 deviennent des
+;            touches d'INT 16h (ucon_entree).
 ;   INT 11h  equipement (BDA 0040:0010) ; INT 12h memoire (BDA 0040:0013, RAM_KO Ko).
 ;   INT 13h  disquette A: = image de 180 Ko EN ROM (DISQUE_SEG), lecture seule.
 ;   INT 14h  UART logiciel : envoi (AH=01h) ; reception (AH=02h/03h) avec le 8259.
@@ -260,7 +263,8 @@ irq_clavier:
         iret
 
 ; IRQ4 (INT 0Ch) : bit de depart sur RX. L'octet est lu par scrutation (~1 ms) et
-; mis dans la file de l'UART (INT 14h AH=02h, LED Show).
+; mis dans la file de l'UART (INT 14h AH=02h, LED Show) ; console UART sous DOS :
+; converti en touche dans la file d'INT 16h.
 irq_uart:
         push    ax
         push    es
@@ -269,14 +273,136 @@ irq_uart:
         push    bx
         mov     bx, DSEG
         mov     es, bx
-        call    ufile_ajoute
-        mov     byte [es:V_EVT], 1
+        cmp     byte [es:V_UCON], 0
+        je      .ufile
+        cmp     byte [es:V_DOS], 0
+        je      .ufile
+        call    ucon_entree
+        jmp     .evt
+.ufile: call    ufile_ajoute
+.evt:   mov     byte [es:V_EVT], 1
         pop     bx
 .fin:   mov     al, PIC_EOI
         out     PIC_CMD, al
         pop     es
         pop     ax
         iret
+
+; ucon_entree : console UART, AL = octet recu -> touche(s) dans la file d'INT 16h.
+; CR -> Entree, BS ou DEL -> retour arriere, TAB, ESC ; LF et NUL ignores ; autres :
+; AL = caractere, AH = 0. Sequences ANSI du terminal (envoyees d'un trait, lues ici
+; par scrutation) : ESC [ ou ESC O suivi de A B C D (fleches), H F (debut, fin),
+; P Q R S (F1-F4), ou de 1-6 puis ~ (debut, inser, suppr, fin, page prec/suiv).
+; ESC seul (rien dans les ~2,7 ms) : touche Echap. ES = DSEG. Detruit AX.
+ucon_entree:
+        push    bx
+        push    cx
+        cmp     al, 1Bh
+        je      .esc
+.simple:
+        call    ucon_code
+        jc      .fin
+        call    file_ajoute
+.fin:   pop     cx
+        pop     bx
+        ret
+.esc:   call    ucon_suivant
+        jc      .echap
+        cmp     al, '['
+        je      .csi
+        cmp     al, 'O'
+        je      .csi
+        push    ax                      ; ESC puis un autre octet : Echap, puis cet octet
+        mov     ax, 011Bh
+        call    file_ajoute
+        pop     ax
+        jmp     .simple
+.echap: mov     ax, 011Bh
+        call    file_ajoute
+        jmp     .fin
+.csi:   call    ucon_suivant
+        jc      .fin
+        mov     bx, ucon_csi
+        call    ucon_table
+        jnc     .etendue
+        mov     bx, ucon_tilde
+        call    ucon_table
+        jc      .fin
+        push    ax
+        call    ucon_suivant            ; '~' attendu
+        mov     bl, al
+        pop     ax
+        jc      .fin
+        cmp     bl, '~'
+        jne     .fin
+.etendue:
+        xor     al, al                  ; touche etendue : AL = 0, AH = code XT
+        call    file_ajoute
+        jmp     .fin
+
+; ucon_suivant : attend (~2,7 ms) le bit de depart de l'octet suivant d'une sequence
+; et le lit. AL = octet, CF = 1 si rien ou trame invalide. Detruit CX.
+ucon_suivant:
+        mov     cx, UCON_ATTENTE
+.a:     in      al, PPI2_PB
+        test    al, UART_RX
+        jz      .depart
+        loop    .a
+        stc
+        ret
+.depart:
+        jmp     uart_rx
+
+; ucon_table : cherche AL dans la table CS:BX de paires (caractere, code XT) terminee
+; par 0. AH = code XT, CF = 0 ; CF = 1 si absent. Detruit BX.
+ucon_table:
+        mov     ah, [cs:bx]
+        or      ah, ah
+        jz      .non
+        cmp     ah, al
+        je      .oui
+        add     bx, 2
+        jmp     ucon_table
+.oui:   mov     ah, [cs:bx + 1]
+        clc
+        ret
+.non:   stc
+        ret
+
+ucon_csi:
+        db      'A', 48h, 'B', 50h, 'C', 4Dh, 'D', 4Bh, 'H', 47h, 'F', 4Fh
+        db      'P', 3Bh, 'Q', 3Ch, 'R', 3Dh, 'S', 3Eh, 0
+ucon_tilde:
+        db      '1', 47h, '2', 52h, '3', 53h, '4', 4Fh, '5', 49h, '6', 51h, 0
+
+; ucon_code : AL = octet simple -> AX = touche (AH = code XT des touches de commande).
+; CF = 1 : octet ignore (LF, NUL).
+ucon_code:
+        mov     ah, 1Ch
+        cmp     al, 13
+        je      .ok
+        mov     ah, 0Eh
+        cmp     al, 8
+        je      .ok
+        cmp     al, 7Fh                 ; DEL (retour arriere de bien des terminaux)
+        jne     .tab
+        mov     al, 8
+        jmp     .ok
+.tab:   mov     ah, 0Fh
+        cmp     al, 9
+        je      .ok
+        mov     ah, 01h
+        cmp     al, 1Bh
+        je      .ok
+        cmp     al, 10
+        je      .non
+        or      al, al
+        jz      .non
+        xor     ah, ah
+.ok:    clc
+        ret
+.non:   stc
+        ret
 
 ; IRQ7 : le 8259 donne ce vecteur quand l'entree est retombee avant INTA (pas de fin
 ; d'interruption a envoyer) ; comptee pour SysInfo.
@@ -363,7 +489,10 @@ int10h:
         cmp     ah, 00h
         je      .efface
         jmp     bios_sortie             ; 01h, 05h, 0Bh, ... : sans effet
-.tty:   call    ecran_tty
+.tty:   cmp     byte [es:V_UCON], 0     ; console UART : copie sur TX
+        je      .t1
+        call    uart_tx
+.t1:    call    ecran_tty
 .fin:   call    ecran_fin
         jmp     bios_sortie
 .pos:   cmp     dh, LIGNES - 1
