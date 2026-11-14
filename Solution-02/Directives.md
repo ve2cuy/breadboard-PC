@@ -68,3 +68,4 @@ Schema : Solution02.kicad_sch. Chaque etape du projet est ajoutee a la fin de ce
 * 2026-11-14 U14: l'usager utilise une 74LS14 (au lieu de la 74HC14 du schema; convient: seuils 1,6/0,8 V, ~0,4 mA par entree basse). Test logique au TL866CS (minipro -p 7414 -T, apres rattachement usbipd 1-2): 'Logic test successful', les 6 inverseurs OK (entrees 0 -> sorties H, entrees 1 -> sorties L).
 * 2026-11-14 Schema (demande): U14 = 74LS14 (valeur des 7 unites et note du schema; symbole 74xx:74HC14 garde, brochage identique); ERC inchange (110). README: 74LS14. Commit et push (demande).
 * 2026-11-14 Montage: U13 (8259A) et U14 (74LS14) cables par l'usager; BIOS 0.8 fonctionne avec le 8259 (validation de l'usager).
+* 2026-11-14 Correction: SysInfo affiche '8259 absent (scrut.)' -> la detection (relecture du masque A5h/5Ah) echoue sur le montage; le BIOS 0.8 fonctionnait en repli par scrutation. A diagnostiquer (cablage de U13).
