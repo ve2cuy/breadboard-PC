@@ -19,13 +19,21 @@ $(DIAG): bios.asm clavier_us.inc
 	$(NASM) -f bin $(NASM_DEF) -DDIAG_8255 -l build/diag-8255.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
 
+# ROM de diagnostic du 2e 8255 (U12) : PC et PA clignotent, PB et trames PS/2 au LCD
+DIAG2 = build/solution-02-diag-u12.bin
+diag2: $(DIAG2)
+$(DIAG2): bios.asm clavier_us.inc
+	@mkdir -p build
+	$(NASM) -f bin $(NASM_DEF) -DDIAG_U12 -l build/diag-u12.lst -o $@ bios.asm
+	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
+
 test: $(IMAGE)
 	python tests/sim.py $(IMAGE)
 
 clean:
 	rm -rf build
 
-.PHONY: all test clean flash diag
+.PHONY: all test clean flash diag diag2
 
 # Graver la ROM (TL866CS + minipro sous WSL, comme Solution-01). Inserer la puce d'abord.
 FLASH_CHIP ?= W29C020C
@@ -34,9 +42,11 @@ USB_BUSID  ?= 1-2
 MINIPRO_DIR ?= ~/minipro
 MINIPRO     = MINIPRO_HOME=$(MINIPRO_DIR) $(MINIPRO_DIR)/minipro
 
-# image a graver : la ROM normale, ou celle du diagnostic (make flash PUCE=ok GRAVER=diag)
+# image a graver : la ROM normale, ou un diagnostic (make flash PUCE=ok GRAVER=diag|diag2)
 ifeq ($(GRAVER),diag)
 FLASH_IMAGE = $(DIAG)
+else ifeq ($(GRAVER),diag2)
+FLASH_IMAGE = $(DIAG2)
 else
 FLASH_IMAGE = $(IMAGE)
 endif

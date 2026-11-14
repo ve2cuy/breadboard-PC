@@ -250,6 +250,75 @@ debut:
         out     PPI_PB, al
         out     PPI_PC, al
 
+%ifdef DIAG_U12
+; ---- ROM de diagnostic du 2e 8255 U12 (make diag2) ------------------------------
+; PC et PA de U12 clignotent (55h <-> AAh, ~0,3 s) ; le mot de controle 82h est
+; renvoye a chaque inversion. Ligne 3 : PB lu en direct (CLK = PB0, DATA = PB1).
+; Ligne 4 : dernier octet PS/2 recu, nombre de trames bonnes / en erreur (hexa).
+; La RAM ayant ete validee, la pile est mise en 7000:0000 sans test (pour ps2_trame).
+        mov     ax, 7000h
+        mov     ss, ax
+        xor     sp, sp
+        LCD_LIGNE LIGNE1, txt_du1
+        LCD_LIGNE LIGNE2, txt_du2
+        LCD_LIGNE LIGNE3, txt_du3
+        LCD_LIGNE LIGNE4, txt_du4
+        mov     bl, 55h                 ; BL = motif de PC et PA
+        xor     bh, bh                  ; BH = trames bonnes
+        xor     dx, dx                  ; DH = dernier octet, DL = trames en erreur
+du_motif:
+        mov     al, PPI2_MODE
+        out     PPI2_CTRL, al
+        mov     al, bl
+        out     PPI2_PC, al
+        out     PPI2_PA, al
+        LCD_COMMANDE (80h | LIGNE2 + 3) ; "PC=55 PA=55"
+        LCD_HEX8 bl
+        LCD_COMMANDE (80h | LIGNE2 + 9)
+        LCD_HEX8 bl
+        in      al, PPI2_PB             ; "PB=FF CLK=1 DATA=1"
+        mov     ah, al
+        LCD_COMMANDE (80h | LIGNE3 + 3)
+        LCD_HEX8 ah
+        LCD_COMMANDE (80h | LIGNE3 + 10)
+        mov     al, ah
+        and     al, KBD_CLK
+        add     al, '0'
+        LCD_CAR
+        LCD_COMMANDE (80h | LIGNE3 + 17)
+        mov     al, ah
+        shr     al, 1
+        and     al, 1
+        add     al, '0'
+        LCD_CAR
+        or      bh, bh                  ; "Code 1C OK 03 Err 00"
+        jz      .sans_code
+        LCD_COMMANDE (80h | LIGNE4 + 5)
+        LCD_HEX8 dh
+.sans_code:
+        LCD_COMMANDE (80h | LIGNE4 + 11)
+        LCD_HEX8 bh
+        LCD_COMMANDE (80h | LIGNE4 + 18)
+        LCD_HEX8 dl
+        mov     cx, 45000               ; ~0,3 s en scrutant l'horloge du clavier
+du_attente:
+        in      al, PPI2_PB
+        test    al, KBD_CLK
+        jz      du_trame
+du_suite:
+        loop    du_attente
+        not     bl
+        jmp     du_motif
+du_trame:
+        call    ps2_trame               ; preserve BX, CX, DX
+        jc      du_err
+        mov     dh, al
+        inc     bh
+        jmp     du_suite
+du_err: inc     dl
+        jmp     du_suite
+%endif
+
 %ifdef DIAG_8255
 ; ---- ROM de diagnostic du 8255 (make diag) : ecritures en RAFALE continue -------
 ; CS# (U7 broche 6 = U8 broche 14) et WR# (U7 broche 36) pulsent sans arret (des
@@ -1286,6 +1355,12 @@ txt_uart_banniere:
 txt_diag1:  db  'DIAG 8255  10h-13h  '
 txt_diag2:  db  'Rafale: CS# et WR#  '
 txt_diag3:  db  'U7 br. 6 et 36      '
+%endif
+%ifdef DIAG_U12
+txt_du1:    db  'DIAG 8255 U12  30h  '
+txt_du2:    db  'PC=55 PA=55 clignote'
+txt_du3:    db  'PB=FF CLK=1 DATA=1  '
+txt_du4:    db  'Code -- OK 00 Err 00'
 %endif
 
 ; animations : (nom de 16 caracteres, routine)
