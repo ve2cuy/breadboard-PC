@@ -172,7 +172,7 @@ Le BIOS programme le compteur 0 en mode 3 (onde carrée) avec le diviseur
 cadence du PC (18,2065 Hz, erreur 0,002 %). Un top du PC (compteur du BDA,
 INT 1Ch) sur 4.
 
-### Son (compteur 2 et port 61h), comme le PC
+### Son (compteur 2 et port 61h), comme le PC — pas encore câblé
 
 | Élément | Rôle |
 |---|---|
@@ -180,8 +180,7 @@ INT 1Ch) sur 4.
 | U9 A, B (74LS02) | horloge du verrou CLK_61 = OR(WR#, O6) : front montant à la **fin** de l'écriture (données stables, maintien du 8088 ≥ 88 ns) |
 | U14 C (74LS14) | ~RESET = RESET inversé (le RESET du 82C84 est actif haut) |
 | U14 D, U9 C | SPK = NOR(~OUT2, ~SPK_EN) = **OUT2 ET bit 1** |
-| R8 1 kΩ, Q1 PN2222A | SPK → base ; émetteur à la masse |
-| LS1, R9 33 Ω, D1 1N4148 | haut-parleur 8 Ω (connecteur 2 broches) entre +5 V (par R9) et le collecteur ; D1 en roue libre |
+| R8 220 Ω, BZ1 | **buzzer piézo passif** (sans oscillateur intégré) entre SPK (par R8) et la masse |
 
 Fréquence = 2 666 667 / N (compteur 2 en mode 3) : de **40,7 Hz** (N = 65536)
 jusqu'au-delà de l'audible ; la 440 Hz = N 6061 (439,97 Hz). Le port 61h est en
@@ -682,6 +681,7 @@ un module.
 
 ## État
 
+- 2026-11-15 : schéma : sortie du son sur un **buzzer piézo passif** (BZ1, par R8 220 Ω) au lieu du haut-parleur et de son transistor. Le son n'est pas câblé pour l'instant.
 - 2026-11-15 : BIOS 1.1 : son (compteur 2 de la 8253, port 61h) : mélodie au démarrage, bip sur BEL ; Info affiche « 8253 ». Simulé (19 scénarios), gravé.
 - 2026-11-15 : schéma : son comme le PC : verrou du port 61h (U16 74LS74 sur O6, horloge OR(WR#, O6) par U9 A-B, ~CLR = RESET inversé par U14 C), GATE2 = bit 0, haut-parleur = OUT2 ET bit 1 (U14 D, U9 C) → Q1 PN2222A → LS1 8 Ω (R9 33 Ω, D1 1N4148). 8253 et `TIME` validés sur le montage.
 - 2026-11-15 : BIOS 1.0 : 8254 (IRQ0 : heure du DOS qui avance, animations des DEL en arrière-plan partout), console UART dans tous les modes (écrans du BIOS recopiés, menu piloté au terminal), lecteur B: de 128 Ko en RAM (380 Ko pour le DOS). Simulé (18 scénarios), gravé.
