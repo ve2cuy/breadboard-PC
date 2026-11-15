@@ -121,19 +121,23 @@ DEL : une sortie à 1 allume la DEL si elle est câblée **sortie → 1 kΩ →
 anode, cathode → GND** (broche 10). Le 82C55 ne fournit que ~2,5 mA par
 sortie : pour des DEL plus brillantes, passer par un ULN2803 ou un 74HC245.
 
-**Bargraphes** (comme Solution-01) : trois HDSP-4830 (BAR1–BAR3, 10 DEL,
-8 utilisées) en parallèle sur J1–J3, anode sur la sortie du 8255, cathode à
-la masse par **390 Ω** (RN1–RN3, réseaux SIP9 de 8 résistances à point
-commun). De gauche à droite, dans l'ordre des animations du BIOS :
+**Bargraphes** (comme Solution-01) : trois HDSP-4830 (BAR1–BAR3) en
+parallèle sur J1–J3, câblés en **chaîne contiguë de 30 DEL**, comme les lignes
+d'adresse de Solution-01 : anode sur la sortie du 8255, cathode à la masse par
+**390 Ω** — segments 1 à 9 par un réseau de 9 résistances à point commun
+(RN1–RN3, SIP10), segment 10 par une résistance seule (R5–R7).
 
-| Bargraphe | Anodes 1 → 8 | Réseau |
+| Bargraphe | Broches d'anode 1 → 10 | Cathodes |
 |---|---|---|
-| BAR1 | PC7 → PC0 | RN1 |
-| BAR2 | PA7 → PA0 | RN2 |
-| BAR3 | PB7 → PB0 | RN3 |
+| BAR1 | 1–6 libres (bits 24–29), 7–10 = PC7 → PC4 | RN1 + R5 |
+| BAR2 | PC3 → PC0, PA7 → PA2 | RN2 + R6 |
+| BAR3 | PA1, PA0, PB7 → PB0 | RN3 + R7 |
 
-Les segments 9–10 (broches 9, 10, 11, 12) sont libres. Le courant est limité
-par la sortie du 82C55 (~2,5 mA) plutôt que par les 390 Ω.
+Bit 0 (PB0) = broche 10 de BAR3, bit 23 (PC7) = broche 7 de BAR1 : posés de
+gauche à droite (BAR1, BAR2, BAR3, broche 1 à gauche), les bargraphes montrent
+la rangée du BIOS (PC7 … PB0) avec les 6 DEL de poids fort éteintes à gauche.
+Le courant est limité par la sortie du 82C55 (~2,5 mA) plutôt que par les
+390 Ω.
 
 Au RESET, le 8255 met ses 3 ports en entrée (sorties flottantes). Le BIOS
 envoie le mot de contrôle **80h** (mode 0, PA, PB et PC en sortie) et éteint
@@ -646,6 +650,7 @@ un module.
 ## État
 
 - 2026-11-15 : BIOS 1.0 : 8254 (IRQ0 : heure du DOS qui avance, animations des DEL en arrière-plan partout), console UART dans tous les modes (écrans du BIOS recopiés, menu piloté au terminal), lecteur B: de 128 Ko en RAM (380 Ko pour le DOS). Simulé (18 scénarios), gravé.
+- 2026-11-15 : schéma : bargraphes en chaîne contiguë de 30 DEL (bits 0–23, 6 DEL de poids fort libres), RN1–RN3 = 9 × 390 Ω (SIP10) + R5–R7 390 Ω, réseaux tournés de 90°.
 - 2026-11-15 : schéma : 8254 (U15) sur O4 (40h–43h), CLK = PCLK, OUT0 → IRQ0 ; bargraphes HDSP-4830 (BAR1–BAR3, RN1–RN3 390 Ω) sur PC, PA, PB de U7. BIOS 0.9 validé sur le montage.
 - 2026-11-14 : BIOS 0.9 : console du DOS sur l'UART, activée au menu (5) `UART:ON|OFF` : sortie INT 10h télétype sur TX, entrée par IRQ4 dans la file d'INT 16h (séquences ANSI) ; bit d'arrêt lu au quart (octets collés). Simulé (13 scénarios), gravé.
 - 2026-11-14 : 8259 (U13) et 74LS14 (U14) câblés : après correction du câblage, SysInfo affiche « 8259 OK   IRQ7 0000 » ; BIOS 0.8 validé (clavier et UART par interruptions).
