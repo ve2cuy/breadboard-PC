@@ -306,6 +306,7 @@ irq_temps:
         mov     es, ax
         mov     ax, cs
         mov     ds, ax
+        inc     byte [es:V_IT0]
         inc     byte [es:V_QUART]
         test    byte [es:V_QUART], 3
         jnz     .anim
@@ -361,6 +362,52 @@ irq_temps:
         pop     bx
         pop     ax
         iret
+
+; =============================================================================
+; Son : compteur 2 de la 8253 (mode 3, OUT2) et verrou du port 61h (U16). Seulement
+; avec la 8253 et le 8259 (V_TACHE_ON) : les durees se comptent en IRQ0.
+; son_note : AX = diviseur (2 666 667 / f), CL = duree en IRQ0 (13,7 ms) ; le son est
+; coupe a la fin. Interruptions permises pendant l'attente. ES = DSEG. Preserve tout
+; sauf CL.
+; =============================================================================
+son_note:
+        cmp     byte [es:V_TACHE_ON], 0
+        je      .fin
+        push    ax
+        push    bx
+        mov     bx, ax
+        mov     al, PIT_MOT2
+        out     PIT_MODE, al
+        mov     al, bl
+        out     PIT_C2, al
+        mov     al, bh
+        out     PIT_C2, al
+        mov     al, [es:V_P61]
+        or      al, 3                   ; GATE2 et haut-parleur
+        out     PORT_HP, al
+        sti
+.att:   mov     al, [es:V_IT0]
+.w:     cmp     al, [es:V_IT0]
+        je      .w
+        dec     cl
+        jnz     .att
+        mov     al, [es:V_P61]
+        and     al, 0FCh
+        out     PORT_HP, al
+        pop     bx
+        pop     ax
+.fin:   ret
+
+; son_melodie : joue la suite (diviseur, duree) en CS:SI terminee par 0. Detruit AX, CX, SI.
+son_melodie:
+.n:     mov     ax, [cs:si]
+        or      ax, ax
+        jz      .fin
+        mov     cl, [cs:si + 2]
+        call    son_note
+        add     si, 4
+        jmp     .n
+.fin:   ret
 
 ; tache_cede : (tache des animations) attend DI IRQ0 : sauve ses registres sur sa pile,
 ; rend la main au programme interrompu par IRQ0. Preserve tout (au retour).
@@ -667,7 +714,14 @@ int10h:
 .tty:   cmp     byte [es:V_UCON], 0     ; console UART : copie sur TX
         je      .t1
         call    uart_tx
-.t1:    call    ecran_tty
+.t1:    cmp     al, 7                   ; BEL : bip de 880 Hz, ~0,25 s
+        jne     .t2
+        push    ax
+        mov     ax, NOTE_BIP
+        mov     cl, 18
+        call    son_note
+        pop     ax
+.t2:    call    ecran_tty
 .fin:   call    ecran_fin
         jmp     bios_sortie
 .pos:   cmp     dh, LIGNES - 1

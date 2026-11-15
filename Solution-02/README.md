@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 1.0 :
+Contenu de la ROM et de la RAM avec le BIOS 1.1 :
 
 | Adresses | Contenu |
 |---|---|
@@ -63,7 +63,7 @@ bloc de 16 ports :
 | O3 | 12 | 30h–3Fh | **2e 8255 (U12, occupé)** : 30h = PA, 31h = PB, 32h = PC, 33h = contrôle |
 | O4 | 11 | 40h–4Fh | **8253-2 (U15)** : 40h–42h = compteurs 0–2, 43h = mode (A0–A1) |
 | O5 | 10 | 50h–5Fh | libre |
-| O6 | 9 | 60h–6Fh | libre (8255 dans un PC) |
+| O6 | 9 | 60h–6Fh | **verrou du port 61h (U16)** : bit 0 = GATE2, bit 1 = haut-parleur (écriture seule) |
 | O7 | 7 | 70h–7Fh | libre |
 
 À savoir :
@@ -80,8 +80,8 @@ bloc de 16 ports :
   Elles conviennent telles quelles au CS# des puces qui reçoivent RD# et WR#
   séparément (8255, 8253, 8259, 16550…). Pour un simple verrou
   (74LS374/573) ou un tampon (74LS244), il faut combiner la sortie avec
-  WR# ou RD#, comme pour le LCD : E = NOR(WR#, O0) (U9). Il reste 3 portes
-  NOR libres sur U9.
+  WR# ou RD#, comme pour le LCD : E = NOR(WR#, O0) (U9) et le verrou du port
+  61h : horloge = OR(WR#, O6) (U9). Les 4 portes NOR de U9 sont utilisées.
 - Le décodage tombe sur les mêmes blocs qu'un PC/XT : un 8259 sur O2, un
   8253 sur O4 et un 8255 sur O6 seraient aux adresses standard (20h, 40h,
   60h), ce qui facilitera un BIOS compatible.
@@ -160,15 +160,37 @@ que ce qu'ont toutes ces puces : le mode 3 et le verrouillage du compteur
 | 21 | CS# | U8 (74LS138) broche 11 (O4) |
 | 22 / 23 | RD# / WR# | 8088 broches 32 / 29 |
 | 9, 15, 18 | CLK0, CLK1, CLK2 | PCLK : U11 (82C84) broche 2 |
-| 11, 14, 16 | GATE0, GATE1, GATE2 | +5 V |
+| 11, 14 | GATE0, GATE1 | +5 V |
+| 16 | GATE2 | bit 0 du port 61h (U16 broche 5) |
 | 10 | OUT0 | IR0 du 8259 (U13 broche 18) : **IRQ0, INT 08h** |
-| 13, 17 | OUT1, OUT2 | libres |
+| 17 | OUT2 | haut-parleur (par U14 et U9, voir « Son ») |
+| 13 | OUT1 | libre |
 | 24 / 12 | VCC / GND | +5 V / GND (+ 100 nF) |
 
 Le BIOS programme le compteur 0 en mode 3 (onde carrée) avec le diviseur
 **36617** : IRQ0 à 2 666 667 / 36617 = **72,83 Hz**, soit exactement 4 fois la
 cadence du PC (18,2065 Hz, erreur 0,002 %). Un top du PC (compteur du BDA,
 INT 1Ch) sur 4.
+
+### Son (compteur 2 et port 61h), comme le PC
+
+| Élément | Rôle |
+|---|---|
+| U16 (74LS74) | **verrou du port 61h** : bascule A = bit 0 (D0) → GATE2 ; bascule B = bit 1 (D1) → validation du haut-parleur (~Q = ~SPK_EN) ; ~PRE à +5 V, ~CLR = ~RESET (silence à la mise sous tension) |
+| U9 A, B (74LS02) | horloge du verrou CLK_61 = OR(WR#, O6) : front montant à la **fin** de l'écriture (données stables, maintien du 8088 ≥ 88 ns) |
+| U14 C (74LS14) | ~RESET = RESET inversé (le RESET du 82C84 est actif haut) |
+| U14 D, U9 C | SPK = NOR(~OUT2, ~SPK_EN) = **OUT2 ET bit 1** |
+| R8 1 kΩ, Q1 PN2222A | SPK → base ; émetteur à la masse |
+| LS1, R9 33 Ω, D1 1N4148 | haut-parleur 8 Ω (connecteur 2 broches) entre +5 V (par R9) et le collecteur ; D1 en roue libre |
+
+Fréquence = 2 666 667 / N (compteur 2 en mode 3) : de **40,7 Hz** (N = 65536)
+jusqu'au-delà de l'audible ; la 440 Hz = N 6061 (439,97 Hz). Le port 61h est en
+**écriture seule** (une lecture rend le bus flottant) : les programmes du PC font
+`IN AL,61h / OR AL,3 / OUT 61h,AL` puis `AND AL,0FCh` ; seuls les bits 0 et 1
+comptent, ça marche. **Hauteur des sons des programmes du PC** : ils calculent
+N pour une horloge de 1,193 MHz ; ici elle vaut 2,667 MHz, leurs notes sortent
+**2,235 fois plus aiguës** (~1 octave + 4 demi-tons ; `BEEP`, `SOUND`, `PLAY` de
+BASICA). Les sons du BIOS sont justes.
 
 ## 2e 8255 (U12) : clavier PS/2 et UART
 
@@ -248,8 +270,9 @@ Le 8259 réagit au **front montant** (mode front, comme le PC) ; or une trame
 PS/2 commence par un front **descendant** de l'horloge et un octet série par un
 front descendant de RX (bit de départ). **U14 (74LS14, trigger de Schmitt)
 inverse donc KBD_CLK** (broche 1 → 2, vers IR1) **et UART_RX** (broche 3 → 4,
-vers IR4) ; les portes 3 à 6 sont inutilisées, entrées à la masse (VCC
-broche 14, GND broche 7). Les bits eux-mêmes restent lus par U12 (PB0, PB1,
+vers IR4) ; porte 3 : RESET → ~RESET (broche 5 → 6, verrou du port 61h) ;
+porte 4 : OUT2 → ~OUT2 (broche 9 → 8, son) ; portes 5 et 6 inutilisées, entrées
+à la masse (VCC broche 14, GND broche 7). Les bits eux-mêmes restent lus par U12 (PB0, PB1,
 PB2) : la routine d'interruption lit la trame ou l'octet entier par
 scrutation, comme le BIOS 0.7, mais elle démarre dès le premier front, même
 quand le DOS ne demande rien (BIOS 0.8). Numéros comme le PC : IRQ1 = INT 09h (clavier),
@@ -277,13 +300,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 1.0
+## BIOS 1.1
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.0`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.1`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -314,6 +337,10 @@ type IBM PC). Déroulement :
      suivant, elle rend la main à IRQ0 (`tache_cede`), qui la reprend le
      nombre de tops voulu plus tard (3 = ~41 ms, 5 = ~69 ms, 12 = ~165 ms).
      Un pas dure quelques dizaines de µs, interruptions permises.
+   - **son** : au premier affichage du menu après le démarrage, une petite
+     mélodie (do5, mi5, sol5, do6) ; sous DOS, le caractère **BEL** (07h, écrit
+     par INT 10h) donne un bip de 880 Hz, ~0,25 s. Durées comptées en IRQ0 :
+     sans 8259 ou sans 8253, pas de son.
 
 ```
 1) Load DOS
@@ -422,7 +449,7 @@ caractères. Sans 8259 : sortie seulement. Ctrl + Alt + Suppr remet la console �
 OFF. Une puce UART (8250/16550) est prévue pour la suite.
 
 Limites : pas d'horloge sauvegardée (l'heure repart de 0 à chaque démarrage),
-pas de haut-parleur (OUT2 de la 8253 libre), pas de mémoire vidéo (un programme
+sons des programmes du PC trop aigus (voir « Son »), pas de mémoire vidéo (un programme
 qui écrit directement en B800h n'affiche rien), A: en lecture seule (`COPY`,
 `DEL`… vers A: → « Write protect error » ; utiliser B:), disposition de
 clavier US.
@@ -493,9 +520,9 @@ changement d'animation peut être perdue.
 
 Version du BIOS, processeur (**8088** ou **NEC V20**, reconnu par
 l'instruction AAD : le V20 ignore son opérande), mémoire et ROM, et en ligne 4 :
-`8259+8254 OK I7 nnnn` (nombre d'IRQ7 parasites, en hexadécimal, depuis le
-démarrage), `8259 OK  8254 absent` ou `8259 absent (scrut.)`. Le BIOS 1.0
-écrit « 8254 » pour la minuterie (ici une 8253-2). Une touche ramène au menu.
+`8259+8253 OK I7 nnnn` (nombre d'IRQ7 parasites, en hexadécimal, depuis le
+démarrage), `8259 OK  8253 absent` ou `8259 absent (scrut.)` (le BIOS 1.0
+écrivait « 8254 »). Une touche ramène au menu.
 
 ### Clavier
 
@@ -534,9 +561,10 @@ le **8259** (ICW, masque, EOI, mode front : demande mémorisée au front montant
 valable seulement si l'entrée est encore haute ; INT levée jusqu'à INTA ; IRQ7
 parasite sinon) relié par le 74LS14 (IR1 = horloge inversée, IR4 = RX
 inversée), la **8253** (compteur 0, lecture verrouillée, OUT0 en onde carrée
-vers IR0 ; 8 périodes de PCLK par instruction), les interruptions matérielles
+vers IR0 ; 8 périodes de PCLK par instruction ; diviseurs du compteur 2 notés),
+le port 61h, les interruptions matérielles
 servies entre deux instructions quand IF = 1 (pas juste après STI), et
-l'aiguillage des interruptions logicielles du mode réel. 18 scénarios : démarrage et
+l'aiguillage des interruptions logicielles du mode réel. 19 scénarios : démarrage et
 menu (pile, bannière UART) ; Test memory avec RAM saine puis retour au menu ;
 cellule 7B3FFh défectueuse, RAM absente (test complet d'office), ligne A15
 coupée, puce de 128 Ko ; LED Show (24 DEL vues allumées et éteintes) en
@@ -544,7 +572,8 @@ arrière-plan (IRQ0) et **sans 8253** (premier plan) ;
 terminal (Maj+a, b, 1, retour arrière, flèche haut, « Hi » reçu, Échap) ;
 Info avec 8259 et 8253, **sans 8259** (repli sur la scrutation) et **sans
 8253** ; **console UART hors DOS** (menu et Info recopiés sur TX, menu piloté
-au terminal) ; **Load DOS** :
+au terminal) ; **son** (mélodie de démarrage : diviseurs 5096, 4045, 3401,
+2548 et port 61h à 3 puis 0 pour chaque note, la dernière plus longue) ; **Load DOS** :
 PC-DOS 2.1 démarre depuis la ROM, date et heure (Entrée), `DIR`, Maj + ↑ ×3 et
 Maj + →, saisie longue, Ctrl + Alt + Suppr, avec vérification qu'aucune trame
 du clavier n'est perdue avant Ctrl + Alt + Suppr, qu'aucun vecteur non géré
@@ -561,7 +590,7 @@ Commandes (depuis `bios/`) :
 
 ```sh
 make            # build/solution-02-bios.bin (image de 256 Ko)
-make test       # simulateur tests/sim.py (18 scénarios, ~15 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
+make test       # simulateur tests/sim.py (19 scénarios, ~20 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
 make diag       # ROM de diagnostic du 8255 U7 (écritures en rafale) ; graver : make flash PUCE=ok GRAVER=diag
 make diag2      # ROM de diagnostic de U12 (PC/PA clignotent, PB et trames PS/2 au LCD) ; GRAVER=diag2
 make flash PUCE=ok   # graver la W29C020C (TL866CS, minipro sous WSL) — insérer la puce d'abord
@@ -653,6 +682,8 @@ un module.
 
 ## État
 
+- 2026-11-15 : BIOS 1.1 : son (compteur 2 de la 8253, port 61h) : mélodie au démarrage, bip sur BEL ; Info affiche « 8253 ». Simulé (19 scénarios), gravé.
+- 2026-11-15 : schéma : son comme le PC : verrou du port 61h (U16 74LS74 sur O6, horloge OR(WR#, O6) par U9 A-B, ~CLR = RESET inversé par U14 C), GATE2 = bit 0, haut-parleur = OUT2 ET bit 1 (U14 D, U9 C) → Q1 PN2222A → LS1 8 Ω (R9 33 Ω, D1 1N4148). 8253 et `TIME` validés sur le montage.
 - 2026-11-15 : BIOS 1.0 : 8254 (IRQ0 : heure du DOS qui avance, animations des DEL en arrière-plan partout), console UART dans tous les modes (écrans du BIOS recopiés, menu piloté au terminal), lecteur B: de 128 Ko en RAM (380 Ko pour le DOS). Simulé (18 scénarios), gravé.
 - 2026-11-15 : minuterie = NEC D8253C-2 (8253-2, 5 MHz max ; CLK = 2,67 MHz) et non une 8254 : schéma (valeur, ~CS_8253, note) et documentation corrigés.
 - 2026-11-15 : schéma : bargraphes en chaîne contiguë de 30 DEL (bits 0–23, 6 DEL de poids fort libres), RN1–RN3 = 9 × 390 Ω (SIP10) + R5–R7 390 Ω, réseaux tournés de 90°.

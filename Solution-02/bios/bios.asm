@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 1.0 (VE2CUY, 2026)
+; Solution-02 - BIOS 1.1 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -32,6 +32,9 @@
 ;   O4 : 40h-43h = 8253 (U15, NEC D8253C-2) : CLK0-2 = PCLK (2,67 MHz), compteur 0 en mode 3, diviseur
 ;        PIT_DIV = 36617 -> IRQ0 a 72,83 Hz = 4 x 18,2065 Hz (un top du PC sur 4).
 ;        Detecte au demarrage (deux lectures verrouillees qui different et <= PIT_DIV).
+;        Compteur 2 (mode 3, mot B6h) = son : OUT2 vers le haut-parleur.
+;   O6 : 60h-6Fh = verrou du port 61h (U16, 74LS74, ecriture seule), comme le PC : bit 0 =
+;        GATE2 de la 8253, bit 1 = validation du haut-parleur (HP = OUT2 ET bit 1).
 ;
 ; Deroulement :
 ;   1) ecran d'ouverture (~2 s), verification rapide des 4 Ko de DSEG (sinon : test
@@ -123,6 +126,9 @@ V_CYCLES        equ     7EEh            ; (mot) cycles complets des animations
 V_ANIM_VU       equ     7F0h            ; (mot) animation affichee en ligne 2 (LED Show)
 V_CYC_VU        equ     7F2h            ; (mot) cycles affiches
 V_LCDADR        equ     7F4h            ; adresse DDRAM courante du LCD (copie V_OMBRE)
+V_IT0           equ     7F5h            ; IRQ0 comptees (attentes du son, 13,7 ms chacune)
+V_P61           equ     7F6h            ; copie du port 61h (le verrou ne se relit pas)
+V_MELODIE       equ     7F7h            ; 1 = melodie de demarrage jouee
 V_OMBRE         equ     800h            ; copie des 4 lignes du LCD (80 octets) pour l'UART
 TACHE_PILE      equ     0B00h           ; pile de la tache des animations : 900h-AFFh
 UFILE_N         equ     32
@@ -177,6 +183,11 @@ PIT_MODE        equ     43h
 PIT_MOT         equ     36h             ; compteur 0, LSB puis MSB, mode 3, binaire
 PIT_DIV         equ     36617           ; 2 666 667 Hz / 36617 = 72,83 Hz
 PIC_MASQUE_T    equ     PIC_MASQUE & 0FEh   ; + IR0 (8253)
+PIT_C2          equ     42h             ; compteur 2 : son
+PIT_MOT2        equ     0B6h            ; compteur 2, LSB puis MSB, mode 3, binaire
+PORT_HP         equ     61h             ; verrou U16 : bit 0 = GATE2, bit 1 = haut-parleur
+; frequence -> diviseur du compteur 2 : 2 666 667 / f
+NOTE_BIP        equ     3030            ; 880 Hz (BEL)
 
 PPI_PA          equ     10h             ; 8255 (U7) sur O1 du 74LS138
 PPI_PB          equ     11h
@@ -752,6 +763,11 @@ menu:
         call    lcd_ecran
         call    menu_uart
         call    ecran_uart              ; console UART : le menu aussi sur le terminal
+        cmp     byte [es:V_MELODIE], 0  ; melodie, une fois apres le demarrage
+        jne     .touche
+        mov     byte [es:V_MELODIE], 1
+        mov     si, melodie
+        call    son_melodie
 .touche:
         call    kbd_attend
         cmp     al, '1'
@@ -819,6 +835,7 @@ vars_init:
         mov     [es:V_IRQ7], ax
         mov     [es:V_KBD_N], al
         mov     [es:V_TACHE_ON], al
+        mov     [es:V_MELODIE], al
         call    pit_init
         jmp     tache_init
 
@@ -833,6 +850,9 @@ pit_init:
         mov     al, PIT_DIV >> 8
         out     PIT_C0, al
         mov     byte [es:V_PIT], 0
+        mov     byte [es:V_P61], 0      ; haut-parleur coupe (le RESET l'a deja fait)
+        xor     al, al
+        out     PORT_HP, al
         call    pit_lit
         mov     bx, ax
         DELAY   10
@@ -893,7 +913,7 @@ sysinfo:
 .cpu:   mov     al, 80h | LIGNE2
         call    lcd_cmd
         call    lcd_texte20
-        mov     al, 80h | LIGNE4        ; "8259+8254 OK I7 nnnn", "8259 OK  8254 absent"
+        mov     al, 80h | LIGNE4        ; "8259+8253 OK I7 nnnn", "8259 OK  8253 absent"
         call    lcd_cmd                 ; ou "8259 absent (scrut.)"
         mov     si, txt_pic_absent
         cmp     byte [es:V_PIC], 0
@@ -1945,7 +1965,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 1.0'
+txt_ouv1:   db  'SOLUTION-02 BIOS 1.1'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -1969,19 +1989,19 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 1.0'
+txt_sys:    db  'SOLUTION-02 BIOS 1.1'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
-txt_pic_ok: db  '8259+8254 OK I7 '
+txt_pic_ok: db  '8259+8253 OK I7 '
 txt_pic_seul:
-            db  '8259 OK  8254 absent'
+            db  '8259 OK  8253 absent'
 txt_pic_absent:
             db  '8259 absent (scrut.)'
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 1.0 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 1.1 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
@@ -1998,6 +2018,10 @@ txt_du2:    db  'PC=55 PA=55 clignote'
 txt_du3:    db  'PB=FF CLK=1 DATA=1  '
 txt_du4:    db  'Code -- OK 00 Err 00'
 %endif
+
+; melodie de demarrage : (diviseur du compteur 2, duree en IRQ0 de 13,7 ms), 0 = fin.
+; do5 mi5 sol5 do6 (523, 659, 784, 1047 Hz)
+melodie:    dw  5096, 6, 4045, 6, 3401, 6, 2548, 14, 0
 
 ; secteur d'amorce du lecteur B: (disque virtuel) : BPB d'un 160 Ko (FEh)
 boot_b:     db  0EBh, 3Ch, 90h, 'SOL02 B:'
