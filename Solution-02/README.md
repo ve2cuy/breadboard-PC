@@ -60,7 +60,7 @@ bloc de 16 ports :
 | O1 | 14 | 10h–1Fh | **8255 (U7, occupé)** : 10h = PA, 11h = PB, 12h = PC, 13h = contrôle (A0–A1) |
 | O2 | 13 | 20h–2Fh | **8259A (U13)** : 20h = ICW1/OCW2/OCW3 (A0 = 0), 21h = ICW2-4/OCW1 (masque) — comme le PC |
 | O3 | 12 | 30h–3Fh | **2e 8255 (U12, occupé)** : 30h = PA, 31h = PB, 32h = PC, 33h = contrôle |
-| O4 | 11 | 40h–4Fh | libre (8253 dans un PC) |
+| O4 | 11 | 40h–4Fh | **8254 (U15)** : 40h–42h = compteurs 0–2, 43h = mode (A0–A1) |
 | O5 | 10 | 50h–5Fh | libre |
 | O6 | 9 | 60h–6Fh | libre (8255 dans un PC) |
 | O7 | 7 | 70h–7Fh | libre |
@@ -120,9 +120,46 @@ DEL : une sortie à 1 allume la DEL si elle est câblée **sortie → 1 kΩ →
 anode, cathode → GND** (broche 10). Le 82C55 ne fournit que ~2,5 mA par
 sortie : pour des DEL plus brillantes, passer par un ULN2803 ou un 74HC245.
 
+**Bargraphes** (comme Solution-01) : trois HDSP-4830 (BAR1–BAR3, 10 DEL,
+8 utilisées) en parallèle sur J1–J3, anode sur la sortie du 8255, cathode à
+la masse par **390 Ω** (RN1–RN3, réseaux SIP9 de 8 résistances à point
+commun). De gauche à droite, dans l'ordre des animations du BIOS :
+
+| Bargraphe | Anodes 1 → 8 | Réseau |
+|---|---|---|
+| BAR1 | PC7 → PC0 | RN1 |
+| BAR2 | PA7 → PA0 | RN2 |
+| BAR3 | PB7 → PB0 | RN3 |
+
+Les segments 9–10 (broches 9, 10, 11, 12) sont libres. Le courant est limité
+par la sortie du 82C55 (~2,5 mA) plutôt que par les 390 Ω.
+
 Au RESET, le 8255 met ses 3 ports en entrée (sorties flottantes). Le BIOS
 envoie le mot de contrôle **80h** (mode 0, PA, PB et PC en sortie) et éteint
 les DEL dès le démarrage, juste après l'initialisation du LCD.
+
+## 8254 (U15) : minuterie
+
+8254 sélectionné par **O4** du 74LS138 : ports **40h–43h**, comme le PC
+(répétés jusqu'à 4Fh). Une **8254** est nécessaire : l'horloge est PCLK du
+82C84 (16 MHz / 6 = **2,67 MHz**), au-delà des 2,6 MHz d'une 8253.
+
+| Broche 8254 | Signal | Vient de / va à |
+|---|---|---|
+| 8 → 1 | D0 → D7 | AD0–AD7 du 8088 |
+| 19, 20 | A0, A1 | U2 (74HC573) Q0, Q1 |
+| 21 | CS# | U8 (74LS138) broche 11 (O4) |
+| 22 / 23 | RD# / WR# | 8088 broches 32 / 29 |
+| 9, 15, 18 | CLK0, CLK1, CLK2 | PCLK : U11 (82C84) broche 2 |
+| 11, 14, 16 | GATE0, GATE1, GATE2 | +5 V |
+| 10 | OUT0 | IR0 du 8259 (U13 broche 18) : **IRQ0, INT 08h** |
+| 13, 17 | OUT1, OUT2 | libres |
+| 24 / 12 | VCC / GND | +5 V / GND (+ 100 nF) |
+
+Le BIOS programme le compteur 0 en mode 3 (onde carrée) avec le diviseur
+**36617** : IRQ0 à 2 666 667 / 36617 = **72,83 Hz**, soit exactement 4 fois la
+cadence du PC (18,2065 Hz, erreur 0,002 %). Un top du PC (compteur du BDA,
+INT 1Ch) sur 4.
 
 ## 2e 8255 (U12) : clavier PS/2 et UART
 
@@ -192,9 +229,10 @@ CAS0–CAS2 libres. Le 8088 n'avait aucune interruption matérielle : **INTR
 | 26 | INTA# | 8088 broche **24** (INTA#) |
 | 16 | SP#/EN# | +5 V (maître unique) |
 | 12, 13, 15 | CAS0–CAS2 | libres |
+| 18 | IR0 = IRQ0 | OUT0 du 8254 (U15 broche 10) : minuterie |
 | 19 | IR1 = IRQ1 | U14 (74LS14) broche 2 = KBD_CLK inversée |
 | 22 | IR4 = IRQ4 | U14 broche 4 = UART_RX inversée |
-| 18, 20, 21, 23–25 | IR0, IR2, IR3, IR5–IR7 | libres (masquées par le BIOS) |
+| 20, 21, 23–25 | IR2, IR3, IR5–IR7 | libres (masquées par le BIOS) |
 | 28 / 14 | VCC / GND | +5 V / GND (+ 100 nF) |
 
 Le 8259 réagit au **front montant** (mode front, comme le PC) ; or une trame
