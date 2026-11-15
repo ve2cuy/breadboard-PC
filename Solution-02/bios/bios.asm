@@ -25,11 +25,11 @@
 ;        IRQ4 = RX de l'UART inversee ; vecteurs 08h-0Fh (INT 09h clavier, 0Ch UART),
 ;        mode front, EOI non specifique. INT -> INTR du 8088, INTA <- INTA.
 ;        Sans 8259 (detecte au menu par relecture du masque) : scrutation comme le 0.7.
-;        IRQ0 (INT 08h) = OUT0 du 8254 : temps (BDA, INT 1Ch) et LED Show en arriere-plan.
+;        IRQ0 (INT 08h) = OUT0 de la 8253 : temps (BDA, INT 1Ch) et LED Show en arriere-plan.
 ;   O3 : 30h-33h = 2e 8255 (U12) : mot 82h (PA, PC en sortie, PB en entree).
 ;        Clavier PS/2 (J4, prise USB-A) : PB0 = horloge, PB1 = donnees.
 ;        UART logiciel 9600 8N1 (J5) : PA7 = TX, PB2 = RX.
-;   O4 : 40h-43h = 8254 (U15) : CLK0-2 = PCLK (2,67 MHz), compteur 0 en mode 3, diviseur
+;   O4 : 40h-43h = 8253 (U15, NEC D8253C-2) : CLK0-2 = PCLK (2,67 MHz), compteur 0 en mode 3, diviseur
 ;        PIT_DIV = 36617 -> IRQ0 a 72,83 Hz = 4 x 18,2065 Hz (un top du PC sur 4).
 ;        Detecte au demarrage (deux lectures verrouillees qui different et <= PIT_DIV).
 ;
@@ -40,8 +40,8 @@
 ;      1) Load DOS    : vecteurs d'interruption, BDA, ecran 24x80, amorce A: (INT 19h)
 ;      2) Test memory : le test complet ci-dessous, puis retour au menu
 ;      3) LED Show    : ecran des animations (qui tournent en ARRIERE-PLAN par IRQ0 avec
-;                       le 8254, partout, meme sous DOS) + terminal clavier/UART (Echap)
-;      4) Info        : processeur (8088 ou V20), memoire, 8259 et 8254
+;                       la 8253, partout, meme sous DOS) + terminal clavier/UART (Echap)
+;      4) Info        : processeur (8088 ou V20), memoire, 8259 et 8253
 ;      5) UART:ON/OFF : console sur l'UART dans TOUS les modes (ON : ecrans du BIOS et
 ;                       INT 10h teletype recopies sur TX ; octets recus par IRQ4 ->
 ;                       touches, comme le clavier PS/2, fleches ANSI)
@@ -109,9 +109,9 @@ V_EVT           equ     7B4h            ; 1 = IRQ1/IRQ4 a mis quelque chose dans
 V_UCON          equ     7B5h            ; 1 = console du DOS sur l'UART (menu 5)
 V_IRQ7          equ     7B6h            ; (mot) IRQ7 parasites comptees (SysInfo)
 V_UFILE         equ     7C0h            ; file de l'UART : UFILE_N octets
-V_PIT           equ     7E0h            ; 1 = 8254 present
+V_PIT           equ     7E0h            ; 1 = 8253 present
 V_QUART         equ     7E1h            ; IRQ0 modulo 4 (un top du PC sur 4)
-V_TACHE_ON      equ     7E2h            ; 1 = animations en arriere-plan (8259 et 8254)
+V_TACHE_ON      equ     7E2h            ; 1 = animations en arriere-plan (8259 et 8253)
 V_TACHE_OCC     equ     7E3h            ; 1 = la tache des animations tourne (dans IRQ0)
 V_TACHE_ATT     equ     7E4h            ; IRQ0 a attendre avant le prochain pas
 V_KBD_N         equ     7E5h            ; trames du clavier vues par IRQ1 (attente du calme)
@@ -171,12 +171,12 @@ UART_AVANCE     equ     5
 ; d'un trait par le terminal ; ~2,7 ms (boucle de ~36 cycles). Sinon : touche Echap.
 UCON_ATTENTE    equ     400
 
-; 8254 (U15) sur O4 du 74LS138
+; 8253 (U15, NEC D8253C-2) sur O4 du 74LS138
 PIT_C0          equ     40h
 PIT_MODE        equ     43h
 PIT_MOT         equ     36h             ; compteur 0, LSB puis MSB, mode 3, binaire
 PIT_DIV         equ     36617           ; 2 666 667 Hz / 36617 = 72,83 Hz
-PIC_MASQUE_T    equ     PIC_MASQUE & 0FEh   ; + IR0 (8254)
+PIC_MASQUE_T    equ     PIC_MASQUE & 0FEh   ; + IR0 (8253)
 
 PPI_PA          equ     10h             ; 8255 (U7) sur O1 du 74LS138
 PPI_PB          equ     11h
@@ -219,7 +219,7 @@ CLV_MAJ_D       equ     40h             ; Maj droite
 CLV_FAUX        equ     80h             ; E0 F0 12/59 recu : Maj tenue avec une fleche
 CLV_MAJS        equ     CLV_MAJ | CLV_MAJ_D
 
-; vitesse des animations : IRQ0 (13,7 ms) par pas ; sans 8254, PP_TOUR tours de la
+; vitesse des animations : IRQ0 (13,7 ms) par pas ; sans 8253, PP_TOUR tours de la
 ; boucle d'attente de del_aff (~8 us) par IRQ0 simulee
 VIT_RAPIDE      equ     3               ; ~41 ms
 VIT_NORMAL      equ     5               ; ~69 ms
@@ -822,9 +822,9 @@ vars_init:
         call    pit_init
         jmp     tache_init
 
-; pit_init : compteur 0 du 8254 en mode 3 (PIT_DIV) ; detection : deux lectures
+; pit_init : compteur 0 de la 8253 en mode 3 (PIT_DIV) ; detection : deux lectures
 ; verrouillees, a ~20 us d'intervalle, doivent differer et ne pas depasser PIT_DIV (sans
-; 8254, le bus flottant rend toujours la meme valeur). V_PIT. ES = DSEG. Detruit AX, BX, CX.
+; 8253, le bus flottant rend toujours la meme valeur). V_PIT. ES = DSEG. Detruit AX, BX, CX.
 pit_init:
         mov     al, PIT_MOT
         out     PIT_MODE, al
@@ -918,8 +918,8 @@ sysinfo:
         jmp     menu
 
 ; ---- 3) LED Show : ecran des animations des DEL (8255 U7) + terminal clavier / UART ----
-; Avec le 8254 (V_TACHE_ON) : les animations tournent en arriere-plan (IRQ0) ; l'ecran
-; suit l'animation en cours et traite les touches et les octets recus. Sans 8254 : les
+; Avec la 8253 (V_TACHE_ON) : les animations tournent en arriere-plan (IRQ0) ; l'ecran
+; suit l'animation en cours et traite les touches et les octets recus. Sans 8253 : les
 ; animations tournent ici, au premier plan (del_aff attend en traitant les touches).
 ; Echap ramene au menu.
 led_show:
@@ -954,7 +954,7 @@ led_show:
         mov     word [es:V_CYCLES], 0
         jmp     anim_tache
 
-; anim_tache : les animations en boucle (tache d'arriere-plan, ou premier plan sans 8254).
+; anim_tache : les animations en boucle (tache d'arriere-plan, ou premier plan sans 8253).
 ; V_ANIM = animation en cours, V_CYCLES = cycles complets. DS = CS, ES = DSEG.
 anim_tache:
         mov     si, anim_table
@@ -1169,7 +1169,7 @@ lcd_texte:
 ; =============================================================================
 ; del_aff : sort DL sur PC, BH sur PA, BL sur PB, puis attend DI IRQ0. Detruit AL, CX.
 ; Arriere-plan (V_TACHE_ON) : la tache cede la main a IRQ0 (tache_cede), qui la reprend
-; DI IRQ0 plus tard. Premier plan (sans 8254) : attente de DI x PP_TOUR tours ; avec le
+; DI IRQ0 plus tard. Premier plan (sans 8253) : attente de DI x PP_TOUR tours ; avec le
 ; 8259, les touches et octets mis en file par IRQ1/IRQ4 sont traites pendant l'attente
 ; (V_EVT) ; sans 8259 : le clavier et l'UART sont scrutes.
 del_aff:

@@ -28442,7 +28442,7 @@
 		)
 		(uuid "7ada224a-0d7f-4e56-bdbd-051ba2062789")
 	)
-	(label "~{CS_8254}"
+	(label "~{CS_8253}"
 		(at 283.21 140.97 0)
 		(effects
 			(font
@@ -28494,7 +28494,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "8254"
+		(property "Value" "D8253C-2"
 			(at 78.74 48.26 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -29105,7 +29105,7 @@
 		)
 		(uuid "68711023-3926-4d94-b20b-bacacbfa85f5")
 	)
-	(label "~{CS_8254}"
+	(label "~{CS_8253}"
 		(at 66.04 93.98 180)
 		(effects
 			(font
@@ -29212,7 +29212,7 @@
 			)
 		)
 	)
-	(text "U15 = 8254 sur O4 du 74LS138 : ports 40h-43h (comme le PC)\nCLK0-2 = PCLK du 82C84 (16 MHz / 6 = 2,67 MHz : 8254, pas 8253 qui est limitee a 2,6 MHz)\nGATE0-2 a +5 V ; OUT0 -> IR0 du 8259 (IRQ0, INT 08h) ; OUT1, OUT2 libres\nBIOS : compteur 0 en mode 3, diviseur 36617 -> 72,83 Hz ; 1 top du PC (18,2065 Hz) sur 4"
+	(text "U15 = NEC D8253C-2 (8253-2 : horloge 5 MHz max ; symbole 82C54, meme brochage) sur O4 du 74LS138 : ports 40h-43h (comme le PC)\nCLK0-2 = PCLK du 82C84 (16 MHz / 6 = 2,67 MHz) : 8253-2 ou 8254, pas une 8253 / 8253-5 (2,6 MHz max)\nGATE0-2 a +5 V ; OUT0 -> IR0 du 8259 (IRQ0, INT 08h) ; OUT1, OUT2 libres\nBIOS : compteur 0 en mode 3, diviseur 36617 -> 72,83 Hz ; 1 top du PC (18,2065 Hz) sur 4"
 		(exclude_from_sim no)
 		(at 40.64 116.84 0)
 		(effects

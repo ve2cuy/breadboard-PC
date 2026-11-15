@@ -61,7 +61,7 @@ bloc de 16 ports :
 | O1 | 14 | 10h–1Fh | **8255 (U7, occupé)** : 10h = PA, 11h = PB, 12h = PC, 13h = contrôle (A0–A1) |
 | O2 | 13 | 20h–2Fh | **8259A (U13)** : 20h = ICW1/OCW2/OCW3 (A0 = 0), 21h = ICW2-4/OCW1 (masque) — comme le PC |
 | O3 | 12 | 30h–3Fh | **2e 8255 (U12, occupé)** : 30h = PA, 31h = PB, 32h = PC, 33h = contrôle |
-| O4 | 11 | 40h–4Fh | **8254 (U15)** : 40h–42h = compteurs 0–2, 43h = mode (A0–A1) |
+| O4 | 11 | 40h–4Fh | **8253-2 (U15)** : 40h–42h = compteurs 0–2, 43h = mode (A0–A1) |
 | O5 | 10 | 50h–5Fh | libre |
 | O6 | 9 | 60h–6Fh | libre (8255 dans un PC) |
 | O7 | 7 | 70h–7Fh | libre |
@@ -143,13 +143,17 @@ Au RESET, le 8255 met ses 3 ports en entrée (sorties flottantes). Le BIOS
 envoie le mot de contrôle **80h** (mode 0, PA, PB et PC en sortie) et éteint
 les DEL dès le démarrage, juste après l'initialisation du LCD.
 
-## 8254 (U15) : minuterie
+## 8253 (U15) : minuterie
 
-8254 sélectionné par **O4** du 74LS138 : ports **40h–43h**, comme le PC
-(répétés jusqu'à 4Fh). Une **8254** est nécessaire : l'horloge est PCLK du
-82C84 (16 MHz / 6 = **2,67 MHz**), au-delà des 2,6 MHz d'une 8253.
+**NEC D8253C-2** (horloge jusqu'à **5 MHz**) sélectionné par **O4** du
+74LS138 : ports **40h–43h**, comme le PC (répétés jusqu'à 4Fh). L'horloge est
+PCLK du 82C84 (16 MHz / 6 = **2,67 MHz**) : il faut une 8253-2 (5 MHz) ou une
+8254 (8 MHz) ; une 8253 ou une 8253-5 ordinaire est limitée à 2,6 MHz. Au
+schéma, le symbole est celui de la 82C54 (même brochage). Le BIOS n'utilise
+que ce qu'ont toutes ces puces : le mode 3 et le verrouillage du compteur
+(mot 00h).
 
-| Broche 8254 | Signal | Vient de / va à |
+| Broche 8253 | Signal | Vient de / va à |
 |---|---|---|
 | 8 → 1 | D0 → D7 | AD0–AD7 du 8088 |
 | 19, 20 | A0, A1 | U2 (74HC573) Q0, Q1 |
@@ -234,7 +238,7 @@ CAS0–CAS2 libres. Le 8088 n'avait aucune interruption matérielle : **INTR
 | 26 | INTA# | 8088 broche **24** (INTA#) |
 | 16 | SP#/EN# | +5 V (maître unique) |
 | 12, 13, 15 | CAS0–CAS2 | libres |
-| 18 | IR0 = IRQ0 | OUT0 du 8254 (U15 broche 10) : minuterie |
+| 18 | IR0 = IRQ0 | OUT0 de la 8253 (U15 broche 10) : minuterie |
 | 19 | IR1 = IRQ1 | U14 (74LS14) broche 2 = KBD_CLK inversée |
 | 22 | IR4 = IRQ4 | U14 broche 4 = UART_RX inversée |
 | 20, 21, 23–25 | IR2, IR3, IR5–IR7 | libres (masquées par le BIOS) |
@@ -283,9 +287,9 @@ type IBM PC). Déroulement :
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
-   Programmation du **8254** (compteur 0, mode 3, diviseur 36617) et
+   Programmation de la **8253** (compteur 0, mode 3, diviseur 36617) et
    détection : deux lectures verrouillées du compteur, à ~20 µs d'intervalle,
-   doivent différer et ne pas dépasser 36617 (sans 8254, le bus flottant rend
+   doivent différer et ne pas dépasser 36617 (sans 8253, le bus flottant rend
    toujours la même valeur).
 3. **Menu**, au clavier PS/2 (touches 1 à 5). En entrant au menu, le BIOS
    installe les vecteurs, réinitialise le 8259 et le **détecte** en relisant
@@ -299,7 +303,7 @@ type IBM PC). Déroulement :
    - **8259 absent** (pas encore câblé) : scrutation pendant les attentes,
      comme le BIOS 0.7.
 
-   Avec le 8259 **et** le 8254, IR0 est aussi ouverte : **IRQ0 (INT 08h) à
+   Avec le 8259 **et** la 8253, IR0 est aussi ouverte : **IRQ0 (INT 08h) à
    72,83 Hz**. IRQ0 envoie l'EOI et rétablit les interruptions tout de suite
    (une demande du clavier retombe en ~40 µs : elle ne doit pas attendre), puis :
    - **temps** : un appel sur 4 = un top du PC (18,2065 Hz) : compteur du BDA
@@ -357,7 +361,7 @@ Ctrl + Alt + Suppr, pas à la mise hors tension ni au test de la RAM.
 | INT | Service |
 |---|---|
 | 10h | écran : AH = 00h, 02h, 03h, 06h, 07h, 08h, 09h, 0Ah, **0Eh (télétype, recopié sur l'UART si console ON)**, 0Fh |
-| 08h / 1Ch | IRQ0 (8254) : temps et animations ; INT 1Ch à chaque top (18,2 Hz) |
+| 08h / 1Ch | IRQ0 (8253) : temps et animations ; INT 1Ch à chaque top (18,2 Hz) |
 | 11h / 12h | équipement (0061h : 2 lecteurs) / mémoire (380 Ko) |
 | 13h | A: **en ROM**, lecture seule : AH = 00h, 01h, 02h, 04h, 08h, 15h, 16h ; écriture/formatage → erreur 03h (protégée). B: **en RAM** : lecture, **écriture** (AH = 03h), formatage sans effet ; secteur au-delà de 128 Ko → erreur 04h. Autre lecteur → erreur |
 | 09h / 0Ch / 0Fh | IRQ1 clavier / IRQ4 UART / IRQ7 parasite (8259) |
@@ -366,7 +370,7 @@ Ctrl + Alt + Suppr, pas à la mise hors tension ni au test de la RAM.
 | 15h, 17h | sans objet (pas de services AT, pas d'imprimante) |
 | 18h | retour au menu |
 | 19h | amorçage de A: |
-| 1Ah | compteur de tops du BDA, avancé par IRQ0 (AH = 00h, 01h) ; sans 8254, l'heure ne change pas |
+| 1Ah | compteur de tops du BDA, avancé par IRQ0 (AH = 00h, 01h) ; sans 8253, l'heure ne change pas |
 
 **Écran** : le DOS écrit dans un tampon de **24 lignes × 80 colonnes** (en
 7F000h), en mode télétype (retour à la ligne en colonne 80, défilement en bas).
@@ -418,7 +422,7 @@ caractères. Sans 8259 : sortie seulement. Ctrl + Alt + Suppr remet la console �
 OFF. Une puce UART (8250/16550) est prévue pour la suite.
 
 Limites : pas d'horloge sauvegardée (l'heure repart de 0 à chaque démarrage),
-pas de haut-parleur (OUT2 du 8254 libre), pas de mémoire vidéo (un programme
+pas de haut-parleur (OUT2 de la 8253 libre), pas de mémoire vidéo (un programme
 qui écrit directement en B800h n'affiche rien), A: en lecture seule (`COPY`,
 `DEL`… vers A: → « Write protect error » ; utiliser B:), disposition de
 clavier US.
@@ -446,11 +450,11 @@ compteur (pas de retour au menu : il faut une RAM saine).
 vues comme une seule rangée disposée ainsi sur le montage, de gauche à droite :
 **PC7 … PC0, PA7 … PA0, PB7 … PB0**. Un cycle complet dure ~35 s.
 
-Avec le 8254, les animations tournent **en permanence, en arrière-plan**
+Avec la 8253, les animations tournent **en permanence, en arrière-plan**
 (IRQ0), depuis le démarrage : au menu, sous DOS, partout. Le menu 3 n'est que
 leur **écran** : nom de l'animation en cours et nombre de cycles complets
 depuis le démarrage, et le terminal ci-dessous. **Échap** ramène au menu (les
-DEL continuent). Sans 8254 : les animations tournent seulement dans le menu 3,
+DEL continuent). Sans 8253 : les animations tournent seulement dans le menu 3,
 au premier plan, comme avant.
 
 | Animation | Effet |
@@ -490,8 +494,8 @@ changement d'animation peut être perdue.
 Version du BIOS, processeur (**8088** ou **NEC V20**, reconnu par
 l'instruction AAD : le V20 ignore son opérande), mémoire et ROM, et en ligne 4 :
 `8259+8254 OK I7 nnnn` (nombre d'IRQ7 parasites, en hexadécimal, depuis le
-démarrage), `8259 OK  8254 absent` ou `8259 absent (scrut.)`. Une touche
-ramène au menu.
+démarrage), `8259 OK  8254 absent` ou `8259 absent (scrut.)`. Le BIOS 1.0
+écrit « 8254 » pour la minuterie (ici une 8253-2). Une touche ramène au menu.
 
 ### Clavier
 
@@ -529,17 +533,17 @@ heure, que le BIOS écoute ou non ; perdue si PB n'est pas lu pendant la trame),
 le **8259** (ICW, masque, EOI, mode front : demande mémorisée au front montant,
 valable seulement si l'entrée est encore haute ; INT levée jusqu'à INTA ; IRQ7
 parasite sinon) relié par le 74LS14 (IR1 = horloge inversée, IR4 = RX
-inversée), le **8254** (compteur 0, lecture verrouillée, OUT0 en onde carrée
+inversée), la **8253** (compteur 0, lecture verrouillée, OUT0 en onde carrée
 vers IR0 ; 8 périodes de PCLK par instruction), les interruptions matérielles
 servies entre deux instructions quand IF = 1 (pas juste après STI), et
 l'aiguillage des interruptions logicielles du mode réel. 18 scénarios : démarrage et
 menu (pile, bannière UART) ; Test memory avec RAM saine puis retour au menu ;
 cellule 7B3FFh défectueuse, RAM absente (test complet d'office), ligne A15
 coupée, puce de 128 Ko ; LED Show (24 DEL vues allumées et éteintes) en
-arrière-plan (IRQ0) et **sans 8254** (premier plan) ;
+arrière-plan (IRQ0) et **sans 8253** (premier plan) ;
 terminal (Maj+a, b, 1, retour arrière, flèche haut, « Hi » reçu, Échap) ;
-Info avec 8259 et 8254, **sans 8259** (repli sur la scrutation) et **sans
-8254** ; **console UART hors DOS** (menu et Info recopiés sur TX, menu piloté
+Info avec 8259 et 8253, **sans 8259** (repli sur la scrutation) et **sans
+8253** ; **console UART hors DOS** (menu et Info recopiés sur TX, menu piloté
 au terminal) ; **Load DOS** :
 PC-DOS 2.1 démarre depuis la ROM, date et heure (Entrée), `DIR`, Maj + ↑ ×3 et
 Maj + →, saisie longue, Ctrl + Alt + Suppr, avec vérification qu'aucune trame
@@ -650,6 +654,7 @@ un module.
 ## État
 
 - 2026-11-15 : BIOS 1.0 : 8254 (IRQ0 : heure du DOS qui avance, animations des DEL en arrière-plan partout), console UART dans tous les modes (écrans du BIOS recopiés, menu piloté au terminal), lecteur B: de 128 Ko en RAM (380 Ko pour le DOS). Simulé (18 scénarios), gravé.
+- 2026-11-15 : minuterie = NEC D8253C-2 (8253-2, 5 MHz max ; CLK = 2,67 MHz) et non une 8254 : schéma (valeur, ~CS_8253, note) et documentation corrigés.
 - 2026-11-15 : schéma : bargraphes en chaîne contiguë de 30 DEL (bits 0–23, 6 DEL de poids fort libres), RN1–RN3 = 9 × 390 Ω (SIP10) + R5–R7 390 Ω, réseaux tournés de 90°.
 - 2026-11-15 : schéma : 8254 (U15) sur O4 (40h–43h), CLK = PCLK, OUT0 → IRQ0 ; bargraphes HDSP-4830 (BAR1–BAR3, RN1–RN3 390 Ω) sur PC, PA, PB de U7. BIOS 0.9 validé sur le montage.
 - 2026-11-14 : BIOS 0.9 : console du DOS sur l'UART, activée au menu (5) `UART:ON|OFF` : sortie INT 10h télétype sur TX, entrée par IRQ4 dans la file d'INT 16h (séquences ANSI) ; bit d'arrêt lu au quart (octets collés). Simulé (13 scénarios), gravé.

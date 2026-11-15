@@ -1,6 +1,6 @@
 ; =============================================================================
 ; services.inc - services du BIOS de type IBM PC, et interruptions materielles du
-; 8259A (U13) : IRQ0 = 8254 (INT 08h), IRQ1 = clavier (INT 09h), IRQ4 = UART (INT 0Ch),
+; 8259A (U13) : IRQ0 = 8253 (INT 08h), IRQ1 = clavier (INT 09h), IRQ4 = UART (INT 0Ch),
 ; IRQ7 parasite (0Fh).
 ; Sans 8259 (V_PIC = 0) : clavier et UART scrutes pendant INT 16h, comme le BIOS 0.7.
 ;
@@ -18,7 +18,7 @@
 ;   INT 15h  non gere (CF = 1, AH = 86h).
 ;   INT 16h  file de FILE_N touches, remplie par IRQ1 (ou par scrutation sans 8259).
 ;   INT 17h  pas d'imprimante. INT 18h retour au menu. INT 19h amorcage de A:.
-;   INT 1Ah  compteur de tops du BDA, avance par IRQ0 (8254) : 18,2065 tops/s.
+;   INT 1Ah  compteur de tops du BDA, avance par IRQ0 (8253) : 18,2065 tops/s.
 ;
 ; Conventions : dans les gestionnaires, DS = CS (tables en ROM), ES = DSEG
 ; (variables et tampon d'ecran). Les registres d'entree sont dans le cadre
@@ -79,7 +79,7 @@ int_defaut:                             ; vecteurs non geres : retour immediat
 ; -----------------------------------------------------------------------------
 vecteurs:
         db      08h
-        dw      irq_temps               ; IRQ0 : 8254
+        dw      irq_temps               ; IRQ0 : 8253
         db      09h
         dw      irq_clavier             ; IRQ1
         db      0Ch
@@ -268,7 +268,7 @@ it_init:
         cmp     al, 5Ah
         jne     .absent
         mov     al, PIC_MASQUE
-        cmp     byte [es:V_PIT], 0      ; 8254 : IR0 aussi, animations en arriere-plan
+        cmp     byte [es:V_PIT], 0      ; 8253 : IR0 aussi, animations en arriere-plan
         je      .masque
         mov     al, PIC_MASQUE_T
 .masque:
@@ -283,7 +283,7 @@ it_init:
         ret
 
 ; =============================================================================
-; IRQ0 (INT 08h) : 72,83 Hz (8254). EOI et STI tout de suite (IRQ1/IRQ4 ne doivent pas
+; IRQ0 (INT 08h) : 72,83 Hz (8253). EOI et STI tout de suite (IRQ1/IRQ4 ne doivent pas
 ; attendre : le 8259 en mode front perd la demande si elle retombe avant INTA). Un
 ; appel sur 4 : top du PC (0040:006C, minuit en 0040:0070, INT 1Ch). Puis, si c'est
 ; l'heure, un pas de la tache des animations, sur sa propre pile, jusqu'a ce qu'elle
