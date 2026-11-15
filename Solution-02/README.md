@@ -60,7 +60,7 @@ bloc de 16 ports :
 | O0 | 15 | 00h–0Fh | **LCD (occupé)** : 00h = commande, 01h = donnée (RS = A0) |
 | O1 | 14 | 10h–1Fh | **8255 (U7, occupé)** : 10h = PA, 11h = PB, 12h = PC, 13h = contrôle (A0–A1) |
 | O2 | 13 | 20h–2Fh | **8259A (U13)** : 20h = ICW1/OCW2/OCW3 (A0 = 0), 21h = ICW2-4/OCW1 (masque) — comme le PC |
-| O3 | 12 | 30h–3Fh | **2e 8255 (U12, occupé)** : 30h = PA, 31h = PB, 32h = PC, 33h = contrôle |
+| O3 | 12 | 30h–3Fh | **2e 8255 (U12, occupé)** : 30h = PA, 31h = PB, 32h = PC, 33h = contrôle (au schéma : port A en mode 2 vers l'ATmega U17) |
 | O4 | 11 | 40h–4Fh | **8253-2 (U15)** : 40h–42h = compteurs 0–2, 43h = mode (A0–A1) |
 | O5 | 10 | 50h–5Fh | libre |
 | O6 | 9 | 60h–6Fh | **verrou du port 61h (U16)** : bit 0 = GATE2, bit 1 = haut-parleur (écriture seule) |
@@ -240,6 +240,43 @@ Sans la diode, rien ne change (PC0 n'est relié à rien) : le BIOS compense en
 touche peut encore se perdre de temps en temps. **Décision (2026-11-14) : la
 diode ne sera pas posée** ; le 8259 (U13, ci-dessous) signale le début de
 chaque trame du clavier et de chaque octet de l'UART par une interruption.
+
+## UART par ATmega328P (U17) — au schéma, pas encore câblé
+
+Proposition validée pour le schéma (le BIOS 1.1 utilise encore l'UART
+logiciel) : un **ATmega328P** sur son **oscillateur RC interne à 8 MHz**
+devient l'UART du montage, derrière **U12 en mode 2** (comme le pont STM32 de
+Solution-01). L'ATmega ne peut pas suivre un cycle du bus du 8088 (~375 ns =
+3 instructions) : le port A de U12 sert de boîte aux lettres bidirectionnelle,
+avec sa poignée de main et son interruption.
+
+| U12 (8255, mode 2, mot C2h) | Signal | ATmega328P (U17) |
+|---|---|---|
+| PA0–PA5 (4, 3, 2, 1, 40, 39) | AVR_D0–D5 | PD2–PD7 (4, 5, 6, 11, 12, 13) |
+| PA6, PA7 (38, 37) | AVR_D6, D7 | PB0, PB1 (14, 15) |
+| PC7 = ~OBF (10) | « le 8088 a écrit un octet » | PC0 (23) |
+| PC6 = ~ACK (11) | l'AVR prend l'octet (tirage 10 kΩ, R10) | PC1 (24) |
+| PC4 = ~STB (13) | l'AVR dépose un octet (tirage 10 kΩ, R11) | PC2 (25) |
+| PC5 = IBF (12) | tampon d'entrée du 8255 plein | PC3 (26) |
+| PC0 (14) | AVR_CMD : 1 = commande, 0 = donnée | PB7 (10) |
+| PC3 = INTRA (17) | **IRQ4** (IR4 du 8259, directement) | — |
+
+| ATmega328P | Rôle |
+|---|---|
+| PD0 / PD1 (2, 3) | RXD / TXD : **J5** (UART_RX, UART_TX ; R4 tire RX au +5 V) |
+| PC4 (27) | **OSC_REF** = OUT1 de la 8253 (compteur 1, 100 Hz tiré du quartz) : référence pour calibrer OSCCAL (le RC interne : ±10 % d'usine, ~±1 % calibré) |
+| PC5 (28) / PB6 (9) | RTS / CTS : J8 (optionnel ; CTS tiré à la masse par R12) |
+| PB3, PB4, PB5 (17, 18, 19) | MOSI, MISO, SCK : **J7 (ISP 2×3)** ; libres ensuite pour un lecteur de carte SD |
+| PB2 (16), AREF (21) | libres |
+| RESET (1) | tirage 10 kΩ (R9) ; diode D1 (1N4148) vers ~RESET (U14 C) : le RESET du montage remet l'AVR à zéro sans gêner l'ISP |
+| VCC, AVCC / GND | +5 V / masse, C4 100 nF |
+
+L'**UART logiciel est retiré** du schéma : PA7 (TX) et PB2 (RX) de U12 ne vont
+plus à J5, et la porte B de U14 (UART_RX → IR4) est libre (entrée à la masse).
+Le clavier PS/2 garde PB0 et PB1 (groupe B en mode 0, entrée). Fusibles prévus :
+lfuse E2h (RC 8 MHz, sans division), hfuse D9h, efuse FFh. Débits visés (U2X,
+après calibrage) : 9600, 19200, 38400 (0,2 %). À suivre : micrologiciel
+(`arduino/atmega_uart/`), simulateur, BIOS 1.2 (mode 2, détection, IRQ4).
 
 ## 8259A (U13) : interruptions du clavier et de l'UART
 
@@ -681,6 +718,7 @@ un module.
 
 ## État
 
+- 2026-11-15 : schéma : UART par **ATmega328P** (U17, RC interne 8 MHz) derrière U12 en mode 2 (PA0–7, poignée de main PC4–PC7, INTRA → IRQ4), OUT1 de la 8253 → référence d'horloge, ISP J7, RTS/CTS J8 ; UART logiciel retiré du schéma. À valider ; BIOS inchangé.
 - 2026-11-15 : schéma : sortie du son sur un **buzzer piézo passif** (BZ1, par R8 220 Ω) au lieu du haut-parleur et de son transistor. Le son n'est pas câblé pour l'instant.
 - 2026-11-15 : BIOS 1.1 : son (compteur 2 de la 8253, port 61h) : mélodie au démarrage, bip sur BEL ; Info affiche « 8253 ». Simulé (19 scénarios), gravé.
 - 2026-11-15 : schéma : son comme le PC : verrou du port 61h (U16 74LS74 sur O6, horloge OR(WR#, O6) par U9 A-B, ~CLR = RESET inversé par U14 C), GATE2 = bit 0, haut-parleur = OUT2 ET bit 1 (U14 D, U9 C) → Q1 PN2222A → LS1 8 Ω (R9 33 Ω, D1 1N4148). 8253 et `TIME` validés sur le montage.
