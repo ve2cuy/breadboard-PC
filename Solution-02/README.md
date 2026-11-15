@@ -243,8 +243,8 @@ chaque trame du clavier et de chaque octet de l'UART par une interruption.
 
 ## UART par ATmega328P (U17) — au schéma, pas encore câblé
 
-Proposition validée pour le schéma (le BIOS 1.1 utilise encore l'UART
-logiciel) : un **ATmega328P** sur son **oscillateur RC interne à 8 MHz**
+Au schéma (le BIOS 1.1 utilise encore l'UART logiciel) : un **ATmega328P** sur
+**quartz de 16 MHz** (Y2, C5 et C6 de 22 pF ; puce validée sur plaquette)
 devient l'UART du montage, derrière **U12 en mode 2** (comme le pont STM32 de
 Solution-01). L'ATmega ne peut pas suivre un cycle du bus du 8088 (~375 ns =
 3 instructions) : le port A de U12 sert de boîte aux lettres bidirectionnelle,
@@ -258,24 +258,27 @@ avec sa poignée de main et son interruption.
 | PC6 = ~ACK (11) | l'AVR prend l'octet (tirage 10 kΩ, R10) | PC1 (24) |
 | PC4 = ~STB (13) | l'AVR dépose un octet (tirage 10 kΩ, R11) | PC2 (25) |
 | PC5 = IBF (12) | tampon d'entrée du 8255 plein | PC3 (26) |
-| PC0 (14) | AVR_CMD : 1 = commande, 0 = donnée | PB7 (10) |
+| PC0 (14) | AVR_CMD : 1 = commande, 0 = donnée | PC4 (27) |
 | PC3 = INTRA (17) | **IRQ4** (IR4 du 8259, directement) | — |
 
 | ATmega328P | Rôle |
 |---|---|
 | PD0 / PD1 (2, 3) | RXD / TXD : **J5** (UART_RX, UART_TX ; R4 tire RX au +5 V) |
-| PC4 (27) | **OSC_REF** = OUT1 de la 8253 (compteur 1, 100 Hz tiré du quartz) : référence pour calibrer OSCCAL (le RC interne : ±10 % d'usine, ~±1 % calibré) |
-| PC5 (28) / PB6 (9) | RTS / CTS : J8 (optionnel ; CTS tiré à la masse par R12) |
+| XTAL1, XTAL2 (9, 10) | quartz 16 MHz (Y2) et 22 pF (C5, C6) vers la masse |
+| PC5 (28) / PB2 (16) | RTS / CTS : J8 (optionnel ; CTS tiré à la masse par R12) ; PB2 (SS) sera à revoir pour un lecteur SD |
 | PB3, PB4, PB5 (17, 18, 19) | MOSI, MISO, SCK : **J7 (ISP 2×3)** ; libres ensuite pour un lecteur de carte SD |
-| PB2 (16), AREF (21) | libres |
+| AREF (21) | libre |
 | RESET (1) | tirage 10 kΩ (R9) ; diode D1 (1N4148) vers ~RESET (U14 C) : le RESET du montage remet l'AVR à zéro sans gêner l'ISP |
 | VCC, AVCC / GND | +5 V / masse, C4 100 nF |
 
 L'**UART logiciel est retiré** du schéma : PA7 (TX) et PB2 (RX) de U12 ne vont
 plus à J5, et la porte B de U14 (UART_RX → IR4) est libre (entrée à la masse).
 Le clavier PS/2 garde PB0 et PB1 (groupe B en mode 0, entrée). Fusibles prévus :
-lfuse E2h (RC 8 MHz, sans division), hfuse D9h, efuse FFh. Débits visés (U2X,
-après calibrage) : 9600, 19200, 38400 (0,2 %). À suivre : micrologiciel
+lfuse FFh (quartz externe), hfuse D9h, efuse FDh. Débits à 16 MHz (U2X) : 9600,
+19200, 38400 (0,2 %), 57600 (−0,8 %), 115200 (2,1 %). OUT1 de la 8253 reste libre.
+Micrologiciel : `arduino/atmega_uart/` (PlatformIO, C ; `make flash PUCE=ok` grave
+au TL866CS le code et les fusibles) ; étape 1 = clignotement d'une DEL sur PB5
+(broche 19), validée sur la plaquette. À suivre : micrologiciel
 (`arduino/atmega_uart/`), simulateur, BIOS 1.2 (mode 2, détection, IRQ4).
 
 ## 8259A (U13) : interruptions du clavier et de l'UART
@@ -718,6 +721,7 @@ un module.
 
 ## État
 
+- 2026-11-15 : ATmega328P sur **quartz 16 MHz** (validé sur plaquette, clignotement) ; schéma : Y2 + C5/C6, AVR_CMD → PC4, CTS → PB2, OUT1 de la 8253 libre.
 - 2026-11-15 : schéma : UART par **ATmega328P** (U17, RC interne 8 MHz) derrière U12 en mode 2 (PA0–7, poignée de main PC4–PC7, INTRA → IRQ4), OUT1 de la 8253 → référence d'horloge, ISP J7, RTS/CTS J8 ; UART logiciel retiré du schéma. À valider ; BIOS inchangé.
 - 2026-11-15 : schéma : sortie du son sur un **buzzer piézo passif** (BZ1, par R8 220 Ω) au lieu du haut-parleur et de son transistor. Le son n'est pas câblé pour l'instant.
 - 2026-11-15 : BIOS 1.1 : son (compteur 2 de la 8253, port 61h) : mélodie au démarrage, bip sur BEL ; Info affiche « 8253 ». Simulé (19 scénarios), gravé.

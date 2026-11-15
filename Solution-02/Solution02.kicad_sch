@@ -34823,16 +34823,6 @@
 		(at 436.88 347.98)
 		(uuid "5a6aaaaf-ff4f-4abe-a751-6aa76bc164c5")
 	)
-	(label "OSC_REF"
-		(at 86.36 78.74 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "c4b7d241-c457-4b78-8bd4-46ec88992b44")
-	)
 	(symbol
 		(lib_id "MCU_Microchip_ATmega:ATmega48PV-10P")
 		(at 528.32 335.28 0)
@@ -35206,26 +35196,6 @@
 			)
 		)
 	)
-	(label "CTS"
-		(at 543.56 320.04 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "79a06499-e5a6-440f-ac88-8d75e022fc8d")
-	)
-	(label "AVR_CMD"
-		(at 543.56 322.58 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "0eb9268d-1241-476b-ab16-a187f6ceb5b3")
-	)
 	(label "AVR_D3"
 		(at 543.56 360.68 0)
 		(effects
@@ -35275,10 +35245,6 @@
 			(justify left bottom)
 		)
 		(uuid "3736f2c5-b8cc-44a5-a024-202f3a5e8b9e")
-	)
-	(no_connect
-		(at 543.56 309.88)
-		(uuid "dd050119-e730-4740-89d5-dbe91ffce7be")
 	)
 	(label "MOSI"
 		(at 543.56 312.42 0)
@@ -35430,16 +35396,6 @@
 			(justify left bottom)
 		)
 		(uuid "4ebdcb33-7437-4daa-beed-14fe2ad6349e")
-	)
-	(label "OSC_REF"
-		(at 543.56 337.82 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "6ea3c370-8045-4fce-a560-77e167bf9aba")
 	)
 	(label "RTS"
 		(at 543.56 340.36 0)
@@ -36847,7 +36803,7 @@
 		)
 		(uuid "610cde4c-bb7d-46f4-9ef2-c57d7b28aa8a")
 	)
-	(text "U17 = ATmega328P-PU (symbole ATmega48PV-10P, meme brochage), RC interne 8 MHz (lfuse E2h), = UART du montage.\nU12 en MODE 2 (mot C2h, comme le pont de Solution-01) : PA0-7 <-> AVR (PD2-PD7, PB0-PB1), ~OBF/~ACK/~STB/IBF\n(PC7/PC6/PC4/PC5) <-> AVR PC0-PC3, INTRA (PC3) -> IR4 du 8259, PC0 = AVR_CMD (1 = commande, 0 = donnee) -> PB7.\nJ5 (TX, RX) sur l UART de l AVR (PD1, PD0) ; RTS/CTS optionnels (J8, PC5/PB6, CTS tire a la masse).\nOUT1 de la 8253 (100 Hz, quartz) -> PC4 : reference pour calibrer OSCCAL. PB2-PB5 : SPI libre (ISP J7, futur SD).\nRESET de l AVR : tirage 10k + diode vers ~RESET (U14 C). Ancien UART logiciel retire (PA7, PB2, porte B de U14 libre)."
+	(text "U17 = ATmega328P-PU (symbole ATmega48PV-10P, meme brochage), QUARTZ 16 MHz (Y2, C5/C6 22 pF ; lfuse FFh), = UART du montage.\nU12 en MODE 2 (mot C2h, comme le pont de Solution-01) : PA0-7 <-> AVR (PD2-PD7, PB0-PB1), ~OBF/~ACK/~STB/IBF\n(PC7/PC6/PC4/PC5) <-> AVR PC0-PC3, INTRA (PC3) -> IR4 du 8259, PC0 = AVR_CMD (1 = commande, 0 = donnee) -> AVR PC4.\nJ5 (TX, RX) sur l UART de l AVR (PD1, PD0) ; RTS/CTS optionnels (J8, PC5/PB2, CTS tire a la masse).\nPB3-PB5 : SPI (ISP J7) ; PB2 (SS) sert de CTS : a revoir pour un futur lecteur SD. OUT1 de la 8253 libre.\nRESET de l AVR : tirage 10k + diode vers ~RESET (U14 C). Ancien UART logiciel retire (PA7, PB2, porte B de U14 libre)."
 		(exclude_from_sim no)
 		(at 495.3 248.92 0)
 		(effects
@@ -36857,6 +36813,487 @@
 			(justify left bottom)
 		)
 		(uuid "a9547c2c-a931-49fb-8cdf-9eb129236153")
+	)
+	(label "XTAL1"
+		(at 543.56 320.04 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "47fb9db4-6e43-40a1-b986-a5e6c3fcbd4b")
+	)
+	(label "XTAL2"
+		(at 543.56 322.58 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "b84b92b9-7b9f-4304-9ad6-e85a1539cad6")
+	)
+	(label "AVR_CMD"
+		(at 543.56 337.82 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "c3d97107-a884-43bf-9f34-1b21924eadf7")
+	)
+	(label "CTS"
+		(at 543.56 309.88 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "8fe2796e-7322-4f1e-afa9-6c567461dee0")
+	)
+	(no_connect
+		(at 86.36 78.74)
+		(uuid "b8332967-efd0-4e4d-a56e-5e27c3e9341a")
+	)
+	(symbol
+		(lib_id "Device:Crystal")
+		(at 568.96 299.72 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "1d0788c1-f44a-49fa-86b4-6130bd7b05a3")
+		(property "Reference" "Y2"
+			(at 566.42 295.91 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "16 MHz"
+			(at 566.42 303.53 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Crystal:Crystal_HC49-4H_Vertical"
+			(at 568.96 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 568.96 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 568.96 299.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f20acbb4-9d70-4265-96ad-476520289715")
+		)
+		(pin "2"
+			(uuid "b3c08268-06d5-4a89-8f65-149b9298db12")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "Y2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "XTAL1"
+		(at 565.15 299.72 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "766ac6f5-63d9-4110-902d-b20666b281a8")
+	)
+	(label "XTAL2"
+		(at 572.77 299.72 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "e0906bf4-60e8-478e-8c90-ec5101baf859")
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 563.88 311.15 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "bb40bbe6-9eb4-48ee-8284-0d509c6e0e1e")
+		(property "Reference" "C5"
+			(at 565.15 309.88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "22pF"
+			(at 565.15 312.42 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_THT:C_Disc_D3.0mm_W1.6mm_P2.50mm"
+			(at 563.88 311.15 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 563.88 311.15 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 563.88 311.15 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "4e1ce608-b179-4ee5-ad66-becb0745724c")
+		)
+		(pin "2"
+			(uuid "17aae1b2-0868-42e4-b158-8f3d3f8258ee")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "C5")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "XTAL1"
+		(at 563.88 307.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "654592dc-1f1b-4457-bde5-7bbf475b055d")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 563.88 314.96 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "b2b44d6c-0422-435c-acef-f882244701d3")
+		(property "Reference" "#PWR01201"
+			(at 563.88 308.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 563.88 318.77 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 563.88 314.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 563.88 314.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 563.88 314.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1ad3787a-3c9f-4825-8a05-9d470ff81f51")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR01201")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 574.04 311.15 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "d13e8a2e-b7f1-4990-995a-d6e14947deb2")
+		(property "Reference" "C6"
+			(at 575.31 309.88 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "22pF"
+			(at 575.31 312.42 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_THT:C_Disc_D3.0mm_W1.6mm_P2.50mm"
+			(at 574.04 311.15 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 574.04 311.15 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 574.04 311.15 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f68a0e03-20bc-45de-a341-f9e76b07b64f")
+		)
+		(pin "2"
+			(uuid "2c5cea6b-fa7a-4d92-907b-d5fb18890f36")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "C6")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "XTAL2"
+		(at 574.04 307.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "b984dcea-d08f-4132-8ed9-b6778c713c33")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 574.04 314.96 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "080bc5bd-4d3a-4e44-9a6b-601d81dc3a06")
+		(property "Reference" "#PWR01202"
+			(at 574.04 308.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 574.04 318.77 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 574.04 314.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 574.04 314.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 574.04 314.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "79602ffb-effe-4912-a58d-b6ef6bf54940")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR01202")
+					(unit 1)
+				)
+			)
+		)
 	)
 	(sheet_instances
 		(path "/"
