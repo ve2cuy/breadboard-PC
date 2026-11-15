@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 1.1 :
+Contenu de la ROM et de la RAM avec le BIOS 1.2 :
 
 | Adresses | Contenu |
 |---|---|
@@ -339,13 +339,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 1.1
+## BIOS 1.2
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.1`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.2`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -392,6 +392,11 @@ La touche **5** bascule la **console sur l'UART** (`UART:OFF` ↔ `UART:ON`, OFF
 au démarrage et après Ctrl + Alt + Suppr ou le test de la RAM), **dans tous les
 modes** :
 
+- au passage à ON, un **écran d'accueil en couleur** (séquences ANSI : écran
+  effacé, titre en blanc, adresses du dépôt en rouge, logo « 88 // PC » en vert,
+  slogans), inspiré de l'accueil de z/OS ([medias/Z88.png](../medias/Z88.png)),
+  sans la section LOGON ; il est généré par `tests/gen_accueil.py`
+  (`accueil.inc` ; `--apercu` l'affiche dans la console) ;
 - les écrans du BIOS (menu, Info, LED Show) sont recopiés sur le terminal : le
   BIOS garde une copie des 4 lignes du LCD (tenue à jour par `lcd_cmd` et
   `lcd_car`) et l'envoie, sans les espaces de fin, quand l'écran est dessiné.
@@ -721,6 +726,7 @@ un module.
 
 ## État
 
+- 2026-11-15 : BIOS 1.2 : écran d'accueil ANSI en couleur sur le terminal au passage de la console UART à ON (inspiré de l'accueil de z/OS, sans LOGON). Gravé.
 - 2026-11-15 : ATmega328P sur **quartz 16 MHz** (validé sur plaquette, clignotement) ; schéma : Y2 + C5/C6, AVR_CMD → PC4, CTS → PB2, OUT1 de la 8253 libre.
 - 2026-11-15 : schéma : UART par **ATmega328P** (U17, RC interne 8 MHz) derrière U12 en mode 2 (PA0–7, poignée de main PC4–PC7, INTRA → IRQ4), OUT1 de la 8253 → référence d'horloge, ISP J7, RTS/CTS J8 ; UART logiciel retiré du schéma. À valider ; BIOS inchangé.
 - 2026-11-15 : schéma : sortie du son sur un **buzzer piézo passif** (BZ1, par R8 220 Ω) au lieu du haut-parleur et de son transistor. Le son n'est pas câblé pour l'instant.

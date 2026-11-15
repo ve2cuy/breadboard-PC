@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 1.1 (VE2CUY, 2026)
+; Solution-02 - BIOS 1.2 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -782,8 +782,13 @@ menu:
         jne     .touche
         xor     byte [es:V_UCON], 1     ; console du DOS sur l'UART : ON <-> OFF
         call    menu_uart
-        call    ecran_uart              ; ON : le menu sur le terminal (apres le relachement
-        jmp     .touche                 ; de la touche : l'envoi masque les interruptions)
+        cmp     byte [es:V_UCON], 0     ; ON : ecran d'accueil (ANSI) puis le menu sur le
+        je      .touche                 ; terminal, apres le relachement de la touche (l'envoi
+        call    uart_calme              ; masque les interruptions)
+        mov     si, txt_accueil
+        call    uart_texte
+        call    ecran_uart
+        jmp     .touche
 .dos:   jmp     dos_charger
 .ram:   jmp     ram_test
 
@@ -1095,6 +1100,23 @@ lcd_car:
         pop     ds
         ret
 
+; uart_calme : avec le 8259, attend que le clavier soit calme (aucune trame pendant
+; ~130 ms, au plus ~1 s) avant un long envoi sur l'UART (qui masque les interruptions et
+; ferait perdre le relachement de la touche qui vient d'etre frappee). ES = DSEG.
+; Detruit AL, CX, DL.
+uart_calme:
+        cmp     byte [es:V_PIC], 0
+        je      .fin
+        sti
+        mov     dl, 8
+.calme: mov     al, [es:V_KBD_N]
+        DELAY   40000
+        cmp     al, [es:V_KBD_N]
+        je      .fin
+        dec     dl
+        jnz     .calme
+.fin:   ret
+
 ; ecran_uart : console UART (V_UCON) : envoie les 4 lignes du LCD (V_OMBRE, espaces de
 ; fin retires) sur le terminal. Avec le 8259, attend d'abord que le clavier soit calme
 ; (aucune trame pendant ~130 ms, au plus ~1 s) : l'envoi masque les interruptions et
@@ -1108,17 +1130,7 @@ ecran_uart:
         push    cx
         push    dx
         push    si
-        cmp     byte [es:V_PIC], 0
-        je      .envoie
-        sti
-        mov     dl, 8
-.calme: mov     al, [es:V_KBD_N]
-        DELAY   40000
-        cmp     al, [es:V_KBD_N]
-        je      .envoie
-        dec     dl
-        jnz     .calme
-.envoie:
+        call    uart_calme
         mov     al, 13
         call    uart_tx
         mov     al, 10
@@ -1965,7 +1977,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 1.1'
+txt_ouv1:   db  'SOLUTION-02 BIOS 1.2'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -1989,7 +2001,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 1.1'
+txt_sys:    db  'SOLUTION-02 BIOS 1.2'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2001,7 +2013,7 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 1.1 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 1.2 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
@@ -2062,6 +2074,7 @@ txt_a8:     db  'Etincelles      '
 txt_a9:     db  'Vu-metre        '
 
 %include "clavier_us.inc"
+%include "accueil.inc"
 %include "services.inc"
 
 motifs:     dw  55AAh, 0AA55h, 0000h, 0FFFFh
