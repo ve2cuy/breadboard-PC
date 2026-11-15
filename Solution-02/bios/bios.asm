@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 0.9 (VE2CUY, 2026)
+; Solution-02 - BIOS 1.0 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -11,7 +11,8 @@
 ;   Les 192 premiers Ko contiennent la disquette de PC-DOS 2.1 (180 Ko, decalage 0 :
 ;   C000:0000), lecteur A: en lecture seule (INT 13h).
 ;   Haut de la RAM (7F000h-7FFFFh, DSEG) : donnees du BIOS (ecran 24x80, variables,
-;   pile du menu) ; le DOS voit RAM_KO = 508 Ko (INT 12h).
+;   pile du menu) ; 5F000h-7EFFFh : lecteur B: (disque virtuel de 128 Ko) ; le DOS voit
+;   RAM_KO = 380 Ko (INT 12h).
 ;   Reset du 8088 : FFFF:0000 = FFFF0h = F000:FFF0 (decalage 3FFF0h de la ROM).
 ;
 ; Ports d'E/S (74LS138 U8 : IO/M = 1, A7 = 0, A6-A4 = bloc) :
@@ -24,9 +25,13 @@
 ;        IRQ4 = RX de l'UART inversee ; vecteurs 08h-0Fh (INT 09h clavier, 0Ch UART),
 ;        mode front, EOI non specifique. INT -> INTR du 8088, INTA <- INTA.
 ;        Sans 8259 (detecte au menu par relecture du masque) : scrutation comme le 0.7.
+;        IRQ0 (INT 08h) = OUT0 du 8254 : temps (BDA, INT 1Ch) et LED Show en arriere-plan.
 ;   O3 : 30h-33h = 2e 8255 (U12) : mot 82h (PA, PC en sortie, PB en entree).
 ;        Clavier PS/2 (J4, prise USB-A) : PB0 = horloge, PB1 = donnees.
 ;        UART logiciel 9600 8N1 (J5) : PA7 = TX, PB2 = RX.
+;   O4 : 40h-43h = 8254 (U15) : CLK0-2 = PCLK (2,67 MHz), compteur 0 en mode 3, diviseur
+;        PIT_DIV = 36617 -> IRQ0 a 72,83 Hz = 4 x 18,2065 Hz (un top du PC sur 4).
+;        Detecte au demarrage (deux lectures verrouillees qui different et <= PIT_DIV).
 ;
 ; Deroulement :
 ;   1) ecran d'ouverture (~2 s), verification rapide des 4 Ko de DSEG (sinon : test
@@ -34,10 +39,12 @@
 ;   MENU (touches 1-5 du clavier PS/2) :
 ;      1) Load DOS    : vecteurs d'interruption, BDA, ecran 24x80, amorce A: (INT 19h)
 ;      2) Test memory : le test complet ci-dessous, puis retour au menu
-;      3) LED Show    : animations des DEL + terminal clavier/UART (Echap = menu)
-;      4) Info        : processeur (8088 ou V20), memoire, 8259
-;      5) UART:ON/OFF : console du DOS sur l'UART (ON : INT 10h teletype recopie sur
-;                       TX ; octets recus par IRQ4 -> touches d'INT 16h, fleches ANSI)
+;      3) LED Show    : ecran des animations (qui tournent en ARRIERE-PLAN par IRQ0 avec
+;                       le 8254, partout, meme sous DOS) + terminal clavier/UART (Echap)
+;      4) Info        : processeur (8088 ou V20), memoire, 8259 et 8254
+;      5) UART:ON/OFF : console sur l'UART dans TOUS les modes (ON : ecrans du BIOS et
+;                       INT 10h teletype recopies sur TX ; octets recus par IRQ4 ->
+;                       touches, comme le clavier PS/2, fleches ANSI)
 ;   Ctrl + Alt + Suppr (sous DOS) : retour au demarrage.
 ;
 ;   Test de la RAM : test COMPLET (512 Ko), SANS pile ni variables (macros seulement) :
@@ -73,7 +80,7 @@ LIGNE4          equ     54h
 ; donnees du BIOS en haut de la RAM (4 Ko) : 7F000h-7FFFFh
 DSEG            equ     7F00h
 DSEG_SP         equ     1000h           ; pile du menu : DSEG:1000h (premier PUSH en 7FFFEh)
-RAM_KO          equ     508             ; memoire annoncee au DOS (INT 12h)
+RAM_KO          equ     380             ; memoire annoncee au DOS (INT 12h) : sous le disque B:
 ECRAN           equ     0               ; tampon d'ecran 24 x 80 en DSEG:0000
 LIGNES          equ     24
 COLS            equ     80
@@ -102,6 +109,22 @@ V_EVT           equ     7B4h            ; 1 = IRQ1/IRQ4 a mis quelque chose dans
 V_UCON          equ     7B5h            ; 1 = console du DOS sur l'UART (menu 5)
 V_IRQ7          equ     7B6h            ; (mot) IRQ7 parasites comptees (SysInfo)
 V_UFILE         equ     7C0h            ; file de l'UART : UFILE_N octets
+V_PIT           equ     7E0h            ; 1 = 8254 present
+V_QUART         equ     7E1h            ; IRQ0 modulo 4 (un top du PC sur 4)
+V_TACHE_ON      equ     7E2h            ; 1 = animations en arriere-plan (8259 et 8254)
+V_TACHE_OCC     equ     7E3h            ; 1 = la tache des animations tourne (dans IRQ0)
+V_TACHE_ATT     equ     7E4h            ; IRQ0 a attendre avant le prochain pas
+V_KBD_N         equ     7E5h            ; trames du clavier vues par IRQ1 (attente du calme)
+V_TACHE_SP      equ     7E6h            ; (mot) pile de la tache suspendue
+V_HOTE_SP       equ     7E8h            ; (mot) pile interrompue par IRQ0 pendant le pas
+V_HOTE_SS       equ     7EAh            ; (mot)
+V_ANIM          equ     7ECh            ; (mot) animation en cours (adresse dans anim_table)
+V_CYCLES        equ     7EEh            ; (mot) cycles complets des animations
+V_ANIM_VU       equ     7F0h            ; (mot) animation affichee en ligne 2 (LED Show)
+V_CYC_VU        equ     7F2h            ; (mot) cycles affiches
+V_LCDADR        equ     7F4h            ; adresse DDRAM courante du LCD (copie V_OMBRE)
+V_OMBRE         equ     800h            ; copie des 4 lignes du LCD (80 octets) pour l'UART
+TACHE_PILE      equ     0B00h           ; pile de la tache des animations : 900h-AFFh
 UFILE_N         equ     32
 
 ; disquette A: en ROM (image de 180 Ko au decalage 0 de la ROM = C0000h)
@@ -109,7 +132,16 @@ DISQUE_SEG      equ     0C000h
 DISQUE_SPT      equ     9
 DISQUE_CYL      equ     40
 DISQUE_SECT     equ     360
-EQUIPEMENT      equ     0021h           ; 1 lecteur de disquette, video 80x25
+EQUIPEMENT      equ     0061h           ; 2 lecteurs de disquette (A: ROM, B: RAM), video 80x25
+; lecteur B: : disque virtuel en RAM, format 160 Ko du DOS 2.1 (FEh : 8 secteurs, 1 face,
+; 40 pistes) dont seuls les 256 premiers secteurs (128 Ko) existent ; les amas au-dela
+; sont marques defectueux dans la FAT. Conserve apres Ctrl+Alt+Suppr (signature).
+DISQUE_B_SEG    equ     5F00h           ; 5F000h-7EFFFh
+B_SPT           equ     8
+B_CYL           equ     40
+B_SECT          equ     256             ; secteurs presents (le DOS en croit 320)
+B_AMAS_MAX      equ     314             ; dernier amas d'un 160 Ko
+B_AMAS_BON      equ     250             ; dernier amas dans les 128 Ko (secteur 255)
 %ifndef DISQUE_IMG
 %define DISQUE_IMG "../../PC-DOS/pcdos2_1.img"
 %endif
@@ -138,6 +170,13 @@ UART_AVANCE     equ     5
 ; console UART : apres ESC, attente de l'octet suivant d'une sequence (ESC [ A...) envoyee
 ; d'un trait par le terminal ; ~2,7 ms (boucle de ~36 cycles). Sinon : touche Echap.
 UCON_ATTENTE    equ     400
+
+; 8254 (U15) sur O4 du 74LS138
+PIT_C0          equ     40h
+PIT_MODE        equ     43h
+PIT_MOT         equ     36h             ; compteur 0, LSB puis MSB, mode 3, binaire
+PIT_DIV         equ     36617           ; 2 666 667 Hz / 36617 = 72,83 Hz
+PIC_MASQUE_T    equ     PIC_MASQUE & 0FEh   ; + IR0 (8254)
 
 PPI_PA          equ     10h             ; 8255 (U7) sur O1 du 74LS138
 PPI_PB          equ     11h
@@ -180,11 +219,12 @@ CLV_MAJ_D       equ     40h             ; Maj droite
 CLV_FAUX        equ     80h             ; E0 F0 12/59 recu : Maj tenue avec une fleche
 CLV_MAJS        equ     CLV_MAJ | CLV_MAJ_D
 
-; vitesse des animations : tours de la boucle de scrutation de del_aff par pas
-; (~45 cycles = ~8,4 us chacun sur un 8088 a 5,33 MHz)
-VIT_RAPIDE      equ     4600            ; ~40 ms
-VIT_NORMAL      equ     7700            ; ~65 ms
-VIT_LENTE       equ     19000           ; ~160 ms
+; vitesse des animations : IRQ0 (13,7 ms) par pas ; sans 8254, PP_TOUR tours de la
+; boucle d'attente de del_aff (~8 us) par IRQ0 simulee
+VIT_RAPIDE      equ     3               ; ~41 ms
+VIT_NORMAL      equ     5               ; ~69 ms
+VIT_LENTE       equ     12              ; ~165 ms
+PP_TOUR         equ     1700
 
 ; -----------------------------------------------------------------------------
 ; DELAY n : boucle de n iterations de LOOP (n = 0 -> 65536). Une iteration dure
@@ -711,6 +751,7 @@ menu:
         mov     si, txt_menu
         call    lcd_ecran
         call    menu_uart
+        call    ecran_uart              ; console UART : le menu aussi sur le terminal
 .touche:
         call    kbd_attend
         cmp     al, '1'
@@ -724,8 +765,9 @@ menu:
         cmp     al, '5'
         jne     .touche
         xor     byte [es:V_UCON], 1     ; console du DOS sur l'UART : ON <-> OFF
-        call    menu_uart               ; (rien sur l'UART : l'envoi masque les interruptions
-        jmp     .touche                 ;  et ferait perdre le relachement de la touche)
+        call    menu_uart
+        call    ecran_uart              ; ON : le menu sur le terminal (apres le relachement
+        jmp     .touche                 ; de la touche : l'envoi masque les interruptions)
 .dos:   jmp     dos_charger
 .ram:   jmp     ram_test
 
@@ -775,6 +817,67 @@ vars_init:
         mov     [es:V_EVT], al
         mov     [es:V_UCON], al         ; console UART : OFF au demarrage
         mov     [es:V_IRQ7], ax
+        mov     [es:V_KBD_N], al
+        mov     [es:V_TACHE_ON], al
+        call    pit_init
+        jmp     tache_init
+
+; pit_init : compteur 0 du 8254 en mode 3 (PIT_DIV) ; detection : deux lectures
+; verrouillees, a ~20 us d'intervalle, doivent differer et ne pas depasser PIT_DIV (sans
+; 8254, le bus flottant rend toujours la meme valeur). V_PIT. ES = DSEG. Detruit AX, BX, CX.
+pit_init:
+        mov     al, PIT_MOT
+        out     PIT_MODE, al
+        mov     al, PIT_DIV & 0FFh
+        out     PIT_C0, al
+        mov     al, PIT_DIV >> 8
+        out     PIT_C0, al
+        mov     byte [es:V_PIT], 0
+        call    pit_lit
+        mov     bx, ax
+        DELAY   10
+        call    pit_lit
+        cmp     ax, bx
+        je      .fin
+        cmp     ax, PIT_DIV
+        ja      .fin
+        cmp     bx, PIT_DIV
+        ja      .fin
+        mov     byte [es:V_PIT], 1
+.fin:   ret
+pit_lit:                                ; AX = compteur 0 (verrouille)
+        mov     al, 00h
+        out     PIT_MODE, al
+        in      al, PIT_C0
+        mov     ah, al
+        in      al, PIT_C0
+        xchg    al, ah
+        ret
+
+; tache_init : tache des animations prete a partir au debut de anim_table (pile TACHE_PILE,
+; cadre de tache_cede : ES, DS, BP, DI, SI, DX, CX, BX, AX puis l'adresse de retour).
+; Elle tourne seulement quand it_init a mis V_TACHE_ON. ES = DSEG. Detruit AX, DI.
+tache_init:
+        pushf
+        cli
+        mov     di, TACHE_PILE - 20
+        mov     [es:V_TACHE_SP], di
+        mov     word [es:di], DSEG      ; ES
+        mov     [es:di + 2], cs         ; DS
+        xor     ax, ax
+        mov     [es:di + 4], ax         ; BP
+        mov     [es:di + 6], ax         ; DI
+        mov     [es:di + 8], ax         ; SI
+        mov     [es:di + 10], ax        ; DX
+        mov     [es:di + 12], ax        ; CX
+        mov     [es:di + 14], ax        ; BX
+        mov     [es:di + 16], ax        ; AX
+        mov     word [es:di + 18], anim_tache
+        mov     byte [es:V_TACHE_ATT], 1
+        mov     byte [es:V_TACHE_OCC], 0
+        mov     word [es:V_ANIM], anim_table
+        mov     [es:V_CYCLES], ax
+        popf
         ret
 
 ; ---- 4) SysInfo ---------------------------------------------------------------------
@@ -790,13 +893,16 @@ sysinfo:
 .cpu:   mov     al, 80h | LIGNE2
         call    lcd_cmd
         call    lcd_texte20
-        mov     al, 80h | LIGNE4        ; "8259 OK   IRQ7 nnnn" ou "8259 absent"
-        call    lcd_cmd
+        mov     al, 80h | LIGNE4        ; "8259+8254 OK I7 nnnn", "8259 OK  8254 absent"
+        call    lcd_cmd                 ; ou "8259 absent (scrut.)"
         mov     si, txt_pic_absent
         cmp     byte [es:V_PIC], 0
         je      .pic
+        mov     si, txt_pic_seul
+        cmp     byte [es:V_PIT], 0
+        je      .pic
         mov     si, txt_pic_ok
-        mov     bx, 15
+        mov     bx, 16
         call    lcd_texte
         mov     ax, [es:V_IRQ7]
         push    ax
@@ -807,41 +913,85 @@ sysinfo:
         jmp     .attend
 .pic:   call    lcd_texte20
 .attend:
+        call    ecran_uart
         call    kbd_attend
         jmp     menu
 
-; ---- 3) LED Show : animations des DEL (8255 U7) + terminal clavier / UART (U12) ----
-; Le clavier et l'UART sont scrutes pendant les attentes des animations (del_aff) ;
+; ---- 3) LED Show : ecran des animations des DEL (8255 U7) + terminal clavier / UART ----
+; Avec le 8254 (V_TACHE_ON) : les animations tournent en arriere-plan (IRQ0) ; l'ecran
+; suit l'animation en cours et traite les touches et les octets recus. Sans 8254 : les
+; animations tournent ici, au premier plan (del_aff attend en traitant les touches).
 ; Echap ramene au menu.
 led_show:
         mov     si, txt_led
         call    lcd_ecran
         mov     byte [es:V_COL3], LCD_COLS   ; le premier caractere efface l'invite
         mov     byte [es:V_COL4], LCD_COLS
-        xor     bp, bp                  ; BP = cycles complets (aucune animation n'y touche)
-anim_cycle:
+        mov     word [es:V_ANIM_VU], 0  ; ligne 2 a dessiner
+        cmp     byte [es:V_TACHE_ON], 0
+        je      .premier_plan
+        call    led_maj
+        call    ecran_uart
+.boucle:
+        sti
+        call    led_maj
+        cmp     byte [es:V_EVT], 0
+        je      .boucle
+        mov     byte [es:V_EVT], 0
+.touches:
+        call    file_retire
+        jc      .octets
+        call    clavier_touche
+        jmp     .touches
+.octets:
+        call    ufile_retire
+        jc      .boucle
+        call    uart_car
+        jmp     .octets
+.premier_plan:
+        call    ecran_uart
+        mov     word [es:V_ANIM], anim_table
+        mov     word [es:V_CYCLES], 0
+        jmp     anim_tache
+
+; anim_tache : les animations en boucle (tache d'arriere-plan, ou premier plan sans 8254).
+; V_ANIM = animation en cours, V_CYCLES = cycles complets. DS = CS, ES = DSEG.
+anim_tache:
         mov     si, anim_table
-anim_suivante:
-        push    si
-        mov     al, 80h | LIGNE2        ; "<nom de l'animation>  nnnn"
-        call    lcd_cmd
-        mov     si, [si]
-        mov     bx, 16
-        call    lcd_texte
-        mov     ax, bp
-        mov     al, ah
-        call    lcd_hex8
-        mov     ax, bp
-        call    lcd_hex8
-        pop     si
+.suiv:  mov     [es:V_ANIM], si
         push    si
         call    [si + 2]                ; l'animation (detruit AX, BX, CX, DX, SI, DI)
         pop     si
         add     si, 4
         cmp     si, anim_fin
-        jb      anim_suivante
-        inc     bp
-        jmp     anim_cycle
+        jb      .suiv
+        inc     word [es:V_CYCLES]
+        jmp     anim_tache
+
+; led_maj : ligne 2 du LED Show ("<nom de l'animation>  nnnn") si l'animation ou le
+; nombre de cycles a change. Detruit AX, BX, CX, DX, SI.
+led_maj:
+        cli
+        mov     si, [es:V_ANIM]
+        mov     dx, [es:V_CYCLES]
+        sti
+        cmp     si, [es:V_ANIM_VU]
+        jne     .dessine
+        cmp     dx, [es:V_CYC_VU]
+        je      .fin
+.dessine:
+        mov     [es:V_ANIM_VU], si
+        mov     [es:V_CYC_VU], dx
+        mov     al, 80h | LIGNE2
+        call    lcd_cmd
+        mov     si, [si]
+        mov     bx, 16
+        call    lcd_texte
+        mov     al, dh
+        call    lcd_hex8
+        mov     al, dl
+        call    lcd_hex8
+.fin:   ret
 
 pile_err:
         LCD_LIGNE LIGNE4, txt_pile_err
@@ -862,17 +1012,126 @@ echec_boucle:
 ; =============================================================================
 ; Sous-programmes LCD (utilisables seulement une fois la pile en place)
 ; =============================================================================
-; lcd_cmd : commande AL. Detruit CX.
+; lcd_cmd : commande AL. Detruit CX. Tient a jour V_LCDADR (adresse DDRAM) et la copie
+; V_OMBRE (01h : effacement) pour ecran_uart.
 lcd_cmd:
         out     LCD_CMD, al
         DELAY   60
+        push    ds
+        push    ax
+        mov     cx, DSEG
+        mov     ds, cx
+        test    al, 80h
+        jz      .pas_adr
+        and     al, 7Fh
+        mov     [V_LCDADR], al
+        jmp     .fin
+.pas_adr:
+        cmp     al, 01h
+        jne     .fin
+        mov     byte [V_LCDADR], 0
+        push    di
+        push    es
+        mov     es, cx
+        mov     di, V_OMBRE
+        mov     cx, 40
+        mov     ax, 2020h
+        rep     stosw
+        pop     es
+        pop     di
+.fin:   pop     ax
+        pop     ds
         ret
 
-; lcd_car : caractere AL. Detruit CX.
+; lcd_car : caractere AL (copie dans V_OMBRE). Detruit CX.
 lcd_car:
         out     LCD_DATA, al
         DELAY   60
+        push    ds
+        push    bx
+        mov     cx, DSEG
+        mov     ds, cx
+        mov     bl, [V_LCDADR]
+        inc     byte [V_LCDADR]
+        cmp     bl, 40h                 ; DDRAM 00-13 = ligne 1, 14-27 = ligne 3,
+        jae     .l24                    ;       40-53 = ligne 2, 54-67 = ligne 4
+        cmp     bl, 14h
+        jb      .ecrit
+        cmp     bl, 28h
+        jae     .fin
+        add     bl, 40 - 14h
+        jmp     .ecrit
+.l24:   sub     bl, 40h
+        cmp     bl, 14h
+        jb      .l2
+        cmp     bl, 28h
+        jae     .fin
+        add     bl, 60 - 14h
+        jmp     .ecrit
+.l2:    add     bl, 20
+.ecrit: xor     bh, bh
+        mov     [bx + V_OMBRE], al
+.fin:   pop     bx
+        pop     ds
         ret
+
+; ecran_uart : console UART (V_UCON) : envoie les 4 lignes du LCD (V_OMBRE, espaces de
+; fin retires) sur le terminal. Avec le 8259, attend d'abord que le clavier soit calme
+; (aucune trame pendant ~130 ms, au plus ~1 s) : l'envoi masque les interruptions et
+; ferait perdre le relachement de la touche qui vient d'etre frappee. ES = DSEG.
+; Preserve tout.
+ecran_uart:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        cmp     byte [es:V_PIC], 0
+        je      .envoie
+        sti
+        mov     dl, 8
+.calme: mov     al, [es:V_KBD_N]
+        DELAY   40000
+        cmp     al, [es:V_KBD_N]
+        je      .envoie
+        dec     dl
+        jnz     .calme
+.envoie:
+        mov     al, 13
+        call    uart_tx
+        mov     al, 10
+        call    uart_tx
+        mov     si, V_OMBRE
+.ligne: mov     bx, 20                  ; BX = longueur sans les espaces de fin
+.l:     cmp     byte [es:si + bx - 1], ' '
+        jne     .texte
+        dec     bx
+        jnz     .l
+.texte: xor     cx, cx
+.c:     cmp     cx, bx
+        jae     .cr
+        push    si
+        add     si, cx
+        mov     al, [es:si]
+        pop     si
+        call    uart_tx
+        inc     cx
+        jmp     .c
+.cr:    mov     al, 13
+        call    uart_tx
+        mov     al, 10
+        call    uart_tx
+        add     si, 20
+        cmp     si, V_OMBRE + 80
+        jb      .ligne
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+.r:     ret
 
 ; lcd_hex8 : AL en 2 chiffres hexadecimaux. Detruit AX, CX.
 lcd_hex8:
@@ -905,12 +1164,14 @@ lcd_texte:
 ; Rangee logique de 24 bits DL:BH:BL, bit 23 = DEL la plus a GAUCHE (PC7), bit 0 =
 ; DEL la plus a DROITE (PB0) : DL = PC, BH = PA, BL = PB. Decaler vers la droite =
 ; SHR DL / RCR BH / RCR BL.
-; DI = duree d'un pas. Chaque animation peut detruire AX, BX, CX, DX, SI, DI,
-; mais PAS BP (compteur de cycles).
+; DI = duree d'un pas, en IRQ0 (13,7 ms). Chaque animation peut detruire AX, BX, CX, DX,
+; SI, DI, BP.
 ; =============================================================================
-; del_aff : sort DL sur PC, BH sur PA, BL sur PB, puis attend DI iterations. Detruit AL, CX.
-; Avec le 8259 : les touches et octets mis en file par IRQ1/IRQ4 sont traites pendant
-; l'attente (V_EVT) ; sans 8259 : le clavier et l'UART sont scrutes.
+; del_aff : sort DL sur PC, BH sur PA, BL sur PB, puis attend DI IRQ0. Detruit AL, CX.
+; Arriere-plan (V_TACHE_ON) : la tache cede la main a IRQ0 (tache_cede), qui la reprend
+; DI IRQ0 plus tard. Premier plan (sans 8254) : attente de DI x PP_TOUR tours ; avec le
+; 8259, les touches et octets mis en file par IRQ1/IRQ4 sont traites pendant l'attente
+; (V_EVT) ; sans 8259 : le clavier et l'UART sont scrutes.
 del_aff:
         mov     al, dl
         out     PPI_PC, al
@@ -918,9 +1179,24 @@ del_aff:
         out     PPI_PA, al
         mov     al, bl
         out     PPI_PB, al
+        cmp     byte [es:V_TACHE_ON], 0
+        je      .premier_plan
+        jmp     tache_cede
+.premier_plan:
+        push    ax
+        push    bx
+        push    dx
+        push    si
+        call    led_maj
+        mov     ax, PP_TOUR
+        mul     di
+        mov     cx, ax
+        pop     si
+        pop     dx
+        pop     bx
+        pop     ax
         cmp     byte [es:V_PIC], 0
         je      .scrute
-        mov     cx, di
 .i:     cmp     byte [es:V_EVT], 0
         jne     .evt
 .i_suite:
@@ -944,8 +1220,9 @@ del_aff:
         pop     ax
         jmp     .i_suite
 .scrute:
+        push    cx
         call    kbd_libere              ; attente en scrutant le clavier et l'UART
-        mov     cx, di
+        pop     cx
 .w:     in      al, PPI2_PB
         test    al, KBD_CLK
         jz      .clavier                ; CLK bas : debut d'une trame PS/2
@@ -1668,7 +1945,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 0.9'
+txt_ouv1:   db  'SOLUTION-02 BIOS 1.0'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -1692,19 +1969,21 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 0.9'
+txt_sys:    db  'SOLUTION-02 BIOS 1.0'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
-txt_pic_ok: db  '8259 OK   IRQ7 '
+txt_pic_ok: db  '8259+8254 OK I7 '
+txt_pic_seul:
+            db  '8259 OK  8254 absent'
 txt_pic_absent:
             db  '8259 absent (scrut.)'
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 0.9 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 1.0 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info'
-            db  '  5) UART:ON/OFF (console du DOS)', 13, 10, 0
+            db  '  5) UART:ON/OFF (console)', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
 fleches_ansi:
             db  48h, 'A', 50h, 'B', 4Dh, 'C', 4Bh, 'D', 0
@@ -1719,6 +1998,21 @@ txt_du2:    db  'PC=55 PA=55 clignote'
 txt_du3:    db  'PB=FF CLK=1 DATA=1  '
 txt_du4:    db  'Code -- OK 00 Err 00'
 %endif
+
+; secteur d'amorce du lecteur B: (disque virtuel) : BPB d'un 160 Ko (FEh)
+boot_b:     db  0EBh, 3Ch, 90h, 'SOL02 B:'
+            dw  512                     ; octets par secteur
+            db  1                       ; secteurs par amas
+            dw  1                       ; secteurs reserves
+            db  2                       ; FAT
+            dw  64                      ; entrees du repertoire racine
+            dw  320                     ; secteurs (160 Ko ; seuls 256 existent)
+            db  0FEh                    ; descripteur de media
+            dw  1                       ; secteurs par FAT
+            dw  B_SPT                   ; secteurs par piste
+            dw  1                       ; faces
+            dw  0                       ; secteurs caches
+boot_b_fin:
 
 ; animations : (nom de 16 caracteres, routine)
 anim_table:

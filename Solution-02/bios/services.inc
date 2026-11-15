@@ -1,6 +1,7 @@
 ; =============================================================================
 ; services.inc - services du BIOS de type IBM PC, et interruptions materielles du
-; 8259A (U13) : IRQ1 = clavier (INT 09h), IRQ4 = UART (INT 0Ch), IRQ7 parasite (0Fh).
+; 8259A (U13) : IRQ0 = 8254 (INT 08h), IRQ1 = clavier (INT 09h), IRQ4 = UART (INT 0Ch),
+; IRQ7 parasite (0Fh).
 ; Sans 8259 (V_PIC = 0) : clavier et UART scrutes pendant INT 16h, comme le BIOS 0.7.
 ;
 ;   INT 10h  ecran : tampon de 24 lignes x 80 colonnes en RAM (DSEG:ECRAN), en mode
@@ -11,12 +12,13 @@
 ;            (~1 ms, interruptions masquees) ; les octets recus par IRQ4 deviennent des
 ;            touches d'INT 16h (ucon_entree).
 ;   INT 11h  equipement (BDA 0040:0010) ; INT 12h memoire (BDA 0040:0013, RAM_KO Ko).
-;   INT 13h  disquette A: = image de 180 Ko EN ROM (DISQUE_SEG), lecture seule.
+;   INT 13h  disquette A: = image de 180 Ko EN ROM (DISQUE_SEG), lecture seule ;
+;            B: = disque virtuel de 128 Ko en RAM (DISQUE_B_SEG), lecture-ecriture.
 ;   INT 14h  UART logiciel : envoi (AH=01h) ; reception (AH=02h/03h) avec le 8259.
 ;   INT 15h  non gere (CF = 1, AH = 86h).
 ;   INT 16h  file de FILE_N touches, remplie par IRQ1 (ou par scrutation sans 8259).
 ;   INT 17h  pas d'imprimante. INT 18h retour au menu. INT 19h amorcage de A:.
-;   INT 1Ah  compteur de tops du BDA (pas de minuterie : l'heure ne change pas).
+;   INT 1Ah  compteur de tops du BDA, avance par IRQ0 (8254) : 18,2065 tops/s.
 ;
 ; Conventions : dans les gestionnaires, DS = CS (tables en ROM), ES = DSEG
 ; (variables et tampon d'ecran). Les registres d'entree sont dans le cadre
@@ -76,6 +78,8 @@ int_defaut:                             ; vecteurs non geres : retour immediat
 ; Table des vecteurs : (numero, gestionnaire ou table en F000), 0FFh = fin
 ; -----------------------------------------------------------------------------
 vecteurs:
+        db      08h
+        dw      irq_temps               ; IRQ0 : 8254
         db      09h
         dw      irq_clavier             ; IRQ1
         db      0Ch
@@ -144,11 +148,73 @@ dos_charger:
         mov     word [es:60h], 0607h
         mov     word [es:63h], 3D4h
         mov     byte [es:84h], LIGNES - 1
+        call    disque_b_prepare
         mov     ax, DSEG
         mov     es, ax
         call    ecran_init
         call    kbd_bloque
         int     19h
+
+; disque_b_prepare : lecteur B: (DISQUE_B_SEG) garde s'il porte la signature (OEM
+; 'SOL02 B:', 55AAh, media FEh dans la FAT), sinon formate : amorce, 2 FAT (amas
+; B_AMAS_BON+1 .. B_AMAS_MAX marques defectueux), repertoire vide. DS = CS. Detruit
+; AX, BX, CX, SI, DI ; ES = DISQUE_B_SEG en sortie.
+disque_b_prepare:
+        mov     ax, DISQUE_B_SEG
+        mov     es, ax
+        mov     si, boot_b + 3
+        mov     di, 3
+        mov     cx, 8
+        repe    cmpsb
+        jne     .formate
+        cmp     word [es:510], 0AA55h
+        jne     .formate
+        cmp     byte [es:512], 0FEh
+        jne     .formate
+        ret
+.formate:
+        xor     di, di                  ; secteurs 0-6 : amorce, FAT, FAT, racine (4)
+        xor     ax, ax
+        mov     cx, 7 * 256
+        rep     stosw
+        xor     di, di
+        mov     si, boot_b
+        mov     cx, boot_b_fin - boot_b
+        rep     movsb
+        mov     word [es:510], 0AA55h
+        mov     word [es:512], 0FFFEh   ; FAT : FEh FFh FFh
+        mov     byte [es:514], 0FFh
+        mov     bx, B_AMAS_BON + 1
+.bad:   call    fat12_bad
+        inc     bx
+        cmp     bx, B_AMAS_MAX
+        jbe     .bad
+        push    ds
+        push    es
+        pop     ds
+        mov     si, 512                 ; 2e FAT = copie de la 1re
+        mov     di, 1024
+        mov     cx, 256
+        rep     movsw
+        pop     ds
+        ret
+
+; fat12_bad : amas BX = FF7h (defectueux) dans la FAT en ES:0200h. Detruit AX, DI.
+fat12_bad:
+        mov     di, bx
+        shr     di, 1
+        add     di, bx                  ; DI = 3 x amas / 2
+        mov     ax, [es:di + 512]
+        test    bl, 1
+        jnz     .impair
+        and     ax, 0F000h
+        or      ax, 0FF7h
+        jmp     .ecrit
+.impair:
+        and     ax, 000Fh
+        or      ax, 0FF70h
+.ecrit: mov     [es:di + 512], ax
+        ret
 
 ; ivt_init : IVT = 256 vecteurs vers int_defaut, puis ceux de la table `vecteurs`.
 ; DS = CS. Preserve ES ; detruit AX, CX, SI, DI.
@@ -202,12 +268,122 @@ it_init:
         cmp     al, 5Ah
         jne     .absent
         mov     al, PIC_MASQUE
+        cmp     byte [es:V_PIT], 0      ; 8254 : IR0 aussi, animations en arriere-plan
+        je      .masque
+        mov     al, PIC_MASQUE_T
+.masque:
         out     PIC_DATA, al
+        mov     al, [es:V_PIT]
+        mov     [es:V_TACHE_ON], al
         mov     byte [es:V_PIC], 1
         jmp     kbd_libere
 .absent:
         mov     byte [es:V_PIC], 0
+        mov     byte [es:V_TACHE_ON], 0
         ret
+
+; =============================================================================
+; IRQ0 (INT 08h) : 72,83 Hz (8254). EOI et STI tout de suite (IRQ1/IRQ4 ne doivent pas
+; attendre : le 8259 en mode front perd la demande si elle retombe avant INTA). Un
+; appel sur 4 : top du PC (0040:006C, minuit en 0040:0070, INT 1Ch). Puis, si c'est
+; l'heure, un pas de la tache des animations, sur sa propre pile, jusqu'a ce qu'elle
+; cede la main (tache_cede, depuis del_aff). Pas de pas si la tache tourne deja.
+; =============================================================================
+irq_temps:
+        push    ax
+        mov     al, PIC_EOI
+        out     PIC_CMD, al
+        sti
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    bp
+        push    ds
+        push    es
+        mov     ax, DSEG
+        mov     es, ax
+        mov     ax, cs
+        mov     ds, ax
+        inc     byte [es:V_QUART]
+        test    byte [es:V_QUART], 3
+        jnz     .anim
+        push    ds
+        mov     ax, 40h
+        mov     ds, ax
+        add     word [6Ch], 1
+        adc     word [6Eh], 0
+        cmp     word [6Eh], 18h         ; 1800B0h tops = 24 h
+        jb      .jour
+        cmp     word [6Ch], 0B0h
+        jb      .jour
+        xor     ax, ax
+        mov     [6Ch], ax
+        mov     [6Eh], ax
+        mov     byte [70h], 1
+.jour:  pop     ds
+        int     1Ch
+.anim:  cmp     byte [es:V_TACHE_ON], 0
+        je      .retour
+        cli
+        cmp     byte [es:V_TACHE_OCC], 0
+        jne     .retour_sti
+        dec     byte [es:V_TACHE_ATT]
+        jnz     .retour_sti
+        mov     byte [es:V_TACHE_OCC], 1
+        mov     [es:V_HOTE_SP], sp
+        mov     [es:V_HOTE_SS], ss
+        mov     ax, es
+        mov     ss, ax
+        mov     sp, [es:V_TACHE_SP]
+        pop     es                      ; registres de la tache
+        pop     ds
+        pop     bp
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        sti
+        ret                             ; reprise apres tache_cede
+.retour_sti:
+        sti
+.retour:
+        pop     es
+        pop     ds
+        pop     bp
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        iret
+
+; tache_cede : (tache des animations) attend DI IRQ0 : sauve ses registres sur sa pile,
+; rend la main au programme interrompu par IRQ0. Preserve tout (au retour).
+tache_cede:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    bp
+        push    ds
+        push    es
+        mov     ax, DSEG
+        mov     ds, ax
+        mov     ax, di
+        cli
+        mov     [V_TACHE_ATT], al
+        mov     [V_TACHE_SP], sp
+        mov     byte [V_TACHE_OCC], 0
+        mov     ss, [V_HOTE_SS]
+        mov     sp, [V_HOTE_SP]
+        jmp     irq_temps.retour
 
 ; =============================================================================
 ; IRQ1 (INT 09h) : debut d'une trame du clavier. La trame est lue par scrutation
@@ -223,6 +399,7 @@ irq_clavier:
         mov     ds, ax
         mov     ax, DSEG
         mov     es, ax
+        inc     byte [es:V_KBD_N]       ; (ecran_uart attend le calme)
         call    ps2_trame_it
         jc      .fin
         call    clavier_decode
@@ -263,8 +440,8 @@ irq_clavier:
         iret
 
 ; IRQ4 (INT 0Ch) : bit de depart sur RX. L'octet est lu par scrutation (~1 ms) et
-; mis dans la file de l'UART (INT 14h AH=02h, LED Show) ; console UART sous DOS :
-; converti en touche dans la file d'INT 16h.
+; mis dans la file de l'UART (INT 14h AH=02h, LED Show) ; console UART (V_UCON) :
+; converti en touche dans la file du clavier, dans tous les modes.
 irq_uart:
         push    ax
         push    es
@@ -273,9 +450,7 @@ irq_uart:
         push    bx
         mov     bx, DSEG
         mov     es, bx
-        cmp     byte [es:V_UCON], 0
-        je      .ufile
-        cmp     byte [es:V_DOS], 0
+        cmp     byte [es:V_UCON], 0     ; console UART (tous les modes) : touche
         je      .ufile
         call    ucon_entree
         jmp     .evt
@@ -1068,8 +1243,8 @@ int19h:
 ; =============================================================================
 int13h:
         BIOS_ENTREE
-        or      dl, dl
-        jnz     .absent
+        cmp     dl, 1                   ; A: (ROM) ou B: (RAM)
+        ja      .absent
         cmp     ah, 02h
         je      .lire
         cmp     ah, 00h
@@ -1079,9 +1254,9 @@ int13h:
         cmp     ah, 01h
         je      .etat
         cmp     ah, 03h
-        je      .protege
+        je      .ecrire
         cmp     ah, 05h
-        je      .protege
+        je      .formater
         cmp     ah, 08h
         je      .params
         cmp     ah, 15h
@@ -1113,20 +1288,53 @@ int13h:
         mov     word [bp + R_AX], 0
         mov     word [bp + R_BX], 0001h
         mov     word [bp + R_CX], ((DISQUE_CYL - 1) << 8) | DISQUE_SPT
-        mov     word [bp + R_DX], 0001h     ; tete max 0, 1 lecteur
+        or      dl, dl
+        jz      .p_a
+        mov     word [bp + R_CX], ((B_CYL - 1) << 8) | B_SPT
+.p_a:   mov     word [bp + R_DX], 0002h     ; tete max 0, 2 lecteurs
         mov     word [bp + R_DI], dpt_180
         mov     [bp + R_ES], cs
         jmp     bios_cf0
+.formater:
+        or      dl, dl
+        jz      .protege
+        jmp     .ok                     ; B: : rien a faire (les secteurs existent)
 .verifier:
         call    disque_lba
         jc      .err
         jmp     .ok
-.lire:  call    disque_lba              ; AX = premier secteur (LBA)
+.ecrire:
+        or      dl, dl
+        jz      .protege
+        call    disque_lba              ; DX = segment du 1er secteur dans la RAM
         jc      .err
-        mov     dx, ax
-        mov     cl, 5
-        shl     dx, cl
-        add     dx, DISQUE_SEG          ; DX = segment du secteur dans la ROM
+        mov     ax, [bp + R_BX]         ; source ES:BX normalisee : DS:SI
+        mov     si, ax
+        and     si, 0Fh
+        mov     cl, 4
+        shr     ax, cl
+        add     ax, [bp + R_ES]
+        mov     ds, ax
+        mov     bl, [bp + R_AX]
+.e_sect:
+        mov     es, dx
+        xor     di, di
+        mov     cx, 256
+        rep     movsw
+        mov     ax, ds
+        add     ax, 32
+        mov     ds, ax
+        sub     si, 512
+        add     dx, 32
+        dec     bl
+        jnz     .e_sect
+        mov     ax, cs
+        mov     ds, ax
+        mov     ax, DSEG
+        mov     es, ax
+        jmp     .ok
+.lire:  call    disque_lba              ; DX = segment du 1er secteur (ROM ou RAM)
+        jc      .err
         mov     ax, [bp + R_BX]         ; destination ES:BX normalisee : ES' = ES + BX/16
         mov     di, ax
         and     di, 0Fh
@@ -1150,32 +1358,43 @@ int13h:
         mov     es, ax
         jmp     .ok
 
-; disque_lba : AL = nombre de secteurs, CH = cylindre, CL = secteur, DH = tete.
-; Sortie : AX = LBA du premier secteur, ou CF = 1 et AH = code d'erreur.
+; disque_lba : AL = nombre de secteurs, CH = cylindre, CL = secteur, DH = tete,
+; DL = lecteur (0 = A: en ROM, 1 = B: en RAM). Sortie : AX = LBA du premier secteur,
+; DX = segment de ce secteur, ou CF = 1 et AH = code d'erreur. Detruit BX, SI.
 disque_lba:
-        or      al, al
+        mov     si, geo_a
+        or      dl, dl
+        jz      .geo
+        mov     si, geo_b
+.geo:   or      al, al
         jz      .inval
         or      dh, dh
         jnz     .introuvable
-        cmp     ch, DISQUE_CYL
+        cmp     ch, [cs:si]             ; cylindres
         jae     .introuvable
         mov     bl, cl
         and     bl, 3Fh
         jz      .introuvable
-        cmp     bl, DISQUE_SPT
+        cmp     bl, [cs:si + 1]         ; secteurs par piste
         ja      .introuvable
         mov     bh, al                  ; BH = nombre
-        mov     al, DISQUE_SPT
-        mul     ch                      ; AX = cylindre * 9
+        mov     al, [cs:si + 1]
+        mul     ch                      ; AX = cylindre * secteurs par piste
         dec     bl
         add     al, bl
         adc     ah, 0                   ; AX = LBA
         push    ax
         add     al, bh
         adc     ah, 0
-        cmp     ax, DISQUE_SECT
+        cmp     ax, [cs:si + 2]         ; secteurs presents
         pop     ax
         ja      .introuvable
+        mov     dx, ax
+        push    cx
+        mov     cl, 5
+        shl     dx, cl
+        pop     cx
+        add     dx, [cs:si + 4]         ; DX = segment du secteur
         clc
         ret
 .inval: mov     ah, 01h
@@ -1185,6 +1404,12 @@ disque_lba:
         mov     ah, 04h
         stc
         ret
+
+; geometrie : cylindres, secteurs par piste, secteurs presents, segment
+geo_a:  db      DISQUE_CYL, DISQUE_SPT
+        dw      DISQUE_SECT, DISQUE_SEG
+geo_b:  db      B_CYL, B_SPT
+        dw      B_SECT, DISQUE_B_SEG
 
 ; =============================================================================
 ; INT 16h - clavier
@@ -1427,6 +1652,7 @@ int1ah:
         mov     ds, bx
         cmp     ah, 00h
         jne     .pas_0
+        cli                             ; (IRQ0 avance le compteur)
         mov     ax, [6Ch]
         mov     [bp + R_DX], ax
         mov     ax, [6Eh]
@@ -1434,13 +1660,16 @@ int1ah:
         mov     al, [70h]
         mov     [bp + R_AX], al
         mov     byte [70h], 0
+        sti
         pop     ds
         jmp     bios_cf0
 .pas_0: cmp     ah, 01h
         jne     .non
+        cli
         mov     [6Ch], dx
         mov     [6Eh], cx
         mov     byte [70h], 0
+        sti
         pop     ds
         jmp     bios_cf0
 .non:   pop     ds                      ; horloge temps reel (AT) : absente

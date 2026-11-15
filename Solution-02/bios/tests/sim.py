@@ -356,7 +356,53 @@ class PIC:
         return self.base + irq
 
 
-def sortie_port(lcd, ppi, port, val, n, ppi2=None, pic=None):
+class PIT:
+    """8254 (U15) en 40h-43h, CLK0 = PCLK. PAR_INSTR periodes de PCLK par instruction
+    (~15 cycles du 8088 = ~7,5 PCLK). Compteur 0 seulement (mode 36h attendu) : lecture
+    verrouillee (mot 00h) ; OUT0 en onde carree (mode 3) -> IR0 du 8259."""
+    PAR_INSTR = 8
+
+    def __init__(self):
+        self.diviseur = None
+        self.debut = 0
+        self.etape = None
+        self.lsb = 0
+        self.lecture = []
+        self.erreurs = []
+
+    def _t(self, n):
+        return ((n - self.debut) * self.PAR_INSTR) % self.diviseur
+
+    def ecrire(self, port, val, n):
+        if port & 3 == 3:
+            if val >> 6 == 0 and (val >> 4) & 3 == 0:              # verrouillage du compteur 0
+                c = (self.diviseur - self._t(n)) if self.diviseur else 0
+                self.lecture = [c & 0xFF, (c >> 8) & 0xFF]
+            elif val >> 6 == 0:
+                if val != 0x36:
+                    self.erreurs.append("8254 : mot de mode %02Xh (36h attendu)" % val)
+                self.etape = 'lsb'
+            return
+        if port & 3 == 0:
+            if self.etape == 'lsb':
+                self.lsb, self.etape = val, 'msb'
+            elif self.etape == 'msb':
+                self.diviseur = (self.lsb | val << 8) or 0x10000
+                self.debut, self.etape = n, None
+
+    def lire(self, port, n):
+        if port & 3 == 0 and self.lecture:
+            return self.lecture.pop(0)
+        return 0xFF
+
+    def niveau(self, n):
+        """Bit IR0 : OUT0, haut pendant la premiere moitie de chaque periode."""
+        if not self.diviseur:
+            return 0
+        return 1 if self._t(n) < self.diviseur // 2 else 0
+
+
+def sortie_port(lcd, ppi, port, val, n, ppi2=None, pic=None, pit=None):
     if port in (0, 1):
         lcd.ecrire(port, val, n)
     elif 0x10 <= port <= 0x13:
@@ -366,6 +412,9 @@ def sortie_port(lcd, ppi, port, val, n, ppi2=None, pic=None):
     elif 0x20 <= port <= 0x2F:                 # O2 : 8259 (A0), ou rien s'il est absent
         if pic is not None:
             pic.ecrire(port, val)
+    elif 0x40 <= port <= 0x4F:                 # O4 : 8254, ou rien s'il est absent
+        if pit is not None:
+            pit.ecrire(port, val, n)
     else:
         lcd.erreurs.append("OUT vers le port %02Xh" % port)
 
@@ -469,7 +518,7 @@ def empiler_int(uc, num, ip):
 
 
 def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entrees=None, dos=False,
-           diode=False, pic=True):
+           diode=False, pic=True, pit=True):
     """defaut(a) : la cellule a ne retient rien ; alias : la RAM ignore cette ligne d'adresse
     (une ecriture en a atteint aussi a ^ alias). fini(ctx) arrete la simulation ; entrees(ctx)
     est appelee a chaque lecture de PB de U12 (pour programmer des trames).
@@ -489,7 +538,8 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
     ppi = PPI()
     ppi2 = PPI2(diode)
     pic8259 = PIC() if pic else None
-    etat = {"n": 0, "restaurer": [], "fin": None, "ppi": ppi, "ppi2": ppi2, "pic": pic8259,
+    pit8254 = PIT() if pit else None
+    etat = {"n": 0, "restaurer": [], "fin": None, "ppi": ppi, "ppi2": ppi2, "pic": pic8259, "pit": pit8254,
             "ecritures_rom": 0, "ints": {}, "int_iret": {}, "out_dos": {}, "out_libres": {},
             "irq": {}, "ombre": False}
     ctx = {"uc": uc, "lcd": lcd, "ppi2": ppi2, "etat": etat}
@@ -507,7 +557,7 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
         if entrees and n & 511 == 0:
             entrees(ctx)
         if pic8259 is not None:
-            pic8259.entrees(ppi2.niveaux(n))
+            pic8259.entrees(ppi2.niveaux(n) | (pit8254.niveau(n) if pit8254 is not None else 0))
             if pic8259.int_haut and not etat["ombre"] and uc.reg_read(UC_X86_REG_EFLAGS) & 0x200:
                 vec = pic8259.inta()                     # INTA : interruption materielle
                 etat["irq"][vec] = etat["irq"].get(vec, 0) + 1
@@ -543,7 +593,7 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
                 if pic8259 is not None and 0x20 <= port <= 0x2F:
                     pic8259.ecrire(port, val & 0xFF)
             return
-        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"], ppi2, pic8259)
+        sortie_port(lcd, ppi, port, val & 0xFF, etat["n"], ppi2, pic8259, pit8254)
         if fini and fini(ctx):
             etat["fin"] = "ok"
             uc.emu_stop()
@@ -553,6 +603,8 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
             entrees(ctx)
         if 0x20 <= port <= 0x2F:
             return pic8259.lire(port) if pic8259 is not None else 0xFF
+        if 0x40 <= port <= 0x4F:
+            return pit8254.lire(port, etat["n"]) if pit8254 is not None else 0xFF
         return ppi2.lire(port, etat["n"]) if 0x30 <= port <= 0x33 else 0xFF
 
     def interruption(uc, num, ud):          # aiguillage du mode reel (Unicorn ne le fait pas)
@@ -597,6 +649,11 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     for e in (etat["ppi"].erreurs + etat["ppi2"].erreurs)[:5]:
         ok = False
         print("    ERREUR 8255:", e)
+    pit = etat.get("pit")
+    if pit is not None:
+        for e in pit.erreurs[:5]:
+            ok = False
+            print("    ERREUR 8254:", e)
     pic = etat["pic"]
     if pic is not None:
         for e in pic.erreurs[:5]:
@@ -609,9 +666,9 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 0.9 - VE2CUY 2026\r\n"
+BANNIERE = (b"\r\nSolution-02 BIOS 1.0 - VE2CUY 2026\r\n"
             b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info"
-            b"  5) UART:ON/OFF (console du DOS)\r\n")
+            b"  5) UART:ON/OFF (console)\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
 echec_ram = lambda ctx: ctx["lcd"].lignes()[0].endswith("CPT 0003")
 
@@ -654,16 +711,17 @@ def scenario_ram_defaut(image, titre, attendu, defaut=None, alias=None, touche=T
     return verifier(titre, lcd, etat, attendu)
 
 
-def scenario_led(image):
+def scenario_led(image, pit=True):
     lcd, etat, uc = lancer(image, fini=lambda c: c["lcd"].lignes()[1].endswith("0001"),
-                           entrees=Etapes([(au_menu, texte('3'))]))
+                           entrees=Etapes([(au_menu, texte('3'))]), pit=pit)
     ppi = etat["ppi"]
     print("--- 8255 : %d sorties, DEL vues allumees %s, eteintes %s" % (
         ppi.sorties, ["%02X" % v for v in ppi.allumees], ["%02X" % v for v in ppi.eteintes]))
     ok = ppi.toutes_vues()
     if not ok:
         print("    attendu: chacune des 24 DEL allumee et eteinte au moins une fois")
-    return verifier("menu 3) LED Show : un cycle complet d'animations", lcd, etat,
+    return verifier("menu 3) LED Show : un cycle complet d'animations (%s)" % (
+                    "arriere-plan, IRQ0" if pit else "SANS 8254 : premier plan"), lcd, etat,
                     ["LED SHOW  Echap=menu", "Chenillard      0001", "Clavier PS/2 >      ", "UART 9600 8N1 >     "], ok)
 
 
@@ -698,25 +756,27 @@ def scenario_terminal(image):
     return verifier("menu 3) terminal clavier + UART, Echap = retour au menu", lcd, etat, MENU, ok)
 
 
-def scenario_sysinfo(image, pic=True):
-    """SysInfo ; avec ou sans 8259 (sans : detection par le masque, clavier scrute)."""
+def scenario_sysinfo(image, pic=True, pit=True):
+    """Info ; avec ou sans 8259 (sans : detection par le masque, clavier scrute), avec ou
+    sans 8254."""
     vu = {"l": None}
-    ligne4 = "8259 OK   IRQ7 0000" + " " if pic else "8259 absent (scrut.)"
+    ligne4 = ("8259+8254 OK I7 0000" if pit else "8259 OK  8254 absent") if pic else "8259 absent (scrut.)"
     pret = lambda c: c["lcd"].lignes()[3] == ligne4
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 0.9" and pret(c):
+        if l[0] == "SOLUTION-02 BIOS 1.0" and pret(c):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
     pas = Etapes([(au_menu, texte('4')), (pret, texte(' '))])
-    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic)
-    attendu = ["SOLUTION-02 BIOS 0.9", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
+    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic, pit=pit)
+    attendu = ["SOLUTION-02 BIOS 1.0", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
         print("    attendu : %s" % attendu)
-    return verifier("menu 4) SysInfo puis retour au menu (%s)" % ("8259 present" if pic else "SANS 8259"),
+    return verifier("menu 4) Info puis retour au menu (%s)" % (
+                        ("8259 et 8254" if pit else "SANS 8254") if pic else "SANS 8259"),
                     lcd, etat, MENU, ok)
 
 
@@ -755,7 +815,7 @@ def scenario_console(image):
     tx = lambda c: bytes(c["ppi2"].tx)
     lignes = lambda c: [l.rstrip() for l in ecran_dos(c["uc"]) if l.strip()]
     ecran = lambda c: "\n".join(lignes(c))
-    on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON "
+    on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON " and b"5) UART:ON\r\n" in bytes(c["ppi2"].tx)  # menu envoye
     vu = {}
 
     def apres_dir(c):
@@ -796,6 +856,110 @@ def scenario_console(image):
         ok = False
         print("    attendu : aucune trame du clavier perdue (%d)" % p2.perdues)
     return verifier("menu 5) console du DOS sur l'UART (sortie TX, entree IRQ4, ANSI)", lcd, etat, None, ok)
+
+
+def scenario_partout(image):
+    """Console UART hors DOS : menu 5 au clavier PS/2 -> le menu sur TX ; '4' tape au
+    terminal -> Info sur le LCD et sur TX ; une touche du terminal -> retour au menu."""
+    tx = lambda c: bytes(c["ppi2"].tx)
+    on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON "
+    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 1.0" and c["lcd"].lignes()[3].startswith("8259")
+    vu = {}
+
+    def menu_vu(c):
+        return b"1) Load DOS\r\n2) Test memory" in tx(c)
+
+    def fini(c):
+        if info(c):
+            vu["info"] = True
+        return vu.get("info") and au_menu_on(c) and tx(c).count(b"4) Info  5) UART:ON\r\n") >= 2
+    pas = Etapes([(au_menu, texte('5')), (lambda c: on(c) and menu_vu(c), b"4"),
+                  (lambda c: info(c) and b"8259+8254 OK I7 0000" in tx(c), b" ")])
+    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, max_instr=40_000_000)
+    t = bytes(etat["ppi2"].tx)[len(BANNIERE):]
+    print("--- UART TX apres la banniere : %r" % t)
+    attendu = (b"\r\n1) Load DOS\r\n2) Test memory\r\n3) LED Show\r\n4) Info  5) UART:ON\r\n"
+               b"\r\nSOLUTION-02 BIOS 1.0\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8254 OK I7 0000\r\n"
+               b"\r\n1) Load DOS\r\n2) Test memory\r\n3) LED Show\r\n4) Info  5) UART:ON\r\n")
+    ok = t == attendu
+    if not ok:
+        print("    attendu : %r" % attendu)
+    return verifier("console UART hors DOS : menu et Info sur TX, touches du terminal", lcd, etat, MENU_ON, ok)
+
+
+MENU_ON = MENU[:3] + ["4) Info  5) UART:ON "]
+au_menu_on = lambda c: c["lcd"].lignes() == MENU_ON
+
+
+def scenario_dos_uart(image, titre, commandes, verif, max_instr=300_000_000, invites=None):
+    """Console UART (menu 5), Load DOS, date et heure (Entree), puis les commandes
+    [(condition sur l'ecran du DOS, octets tapes au terminal)] ; verif(ecran, etat) -> ok."""
+    tx = lambda c: bytes(c["ppi2"].tx)
+    on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON " and b"5) UART:ON\r\n" in bytes(c["ppi2"].tx)  # menu envoye
+    pas = Etapes([(au_menu, texte('5')), (on, texte('1')),
+                  (lambda c: b"Enter new date" in tx(c), b"\r"),
+                  (lambda c: b"Enter new time" in tx(c), b"\r")] + commandes)
+
+    def fini(c):
+        return pas.faites == len(pas.etapes) and invite(c, invites or len(commandes) + 1)
+    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, dos=True, max_instr=max_instr)
+    ecran = bytes(etat["ppi2"].tx).decode('latin1').replace('\r', '').split('\n')   # tout ce qu'a ecrit le DOS
+    print("--- ecran du DOS (fin) :")
+    for l in ecran[-14:]:
+        print("    |%s|" % l)
+    ok = verif(ecran, etat)
+    return verifier(titre, lcd, etat, None, ok)
+
+
+def lignes_dos(uc):
+    return [l.rstrip() for l in ecran_dos(uc) if l.strip()]
+
+
+def invite(c, n):
+    """Au moins n invites A> recues sur TX (console UART) et le DOS attend (TX finit par A>)."""
+    t = bytes(c["ppi2"].tx)
+    return t.endswith(b"\r\nA>") and t.count(b"\r\nA>") >= n
+
+
+def scenario_temps(image):
+    """8254 : l'heure du DOS avance (TIME apres DIR), les DEL bougent sous DOS (IRQ0)."""
+    vu = {}
+
+    def apres(c):
+        if "s0" not in vu:
+            vu["s0"] = c["etat"]["ppi"].sorties
+        return invite(c, 2)
+    cmds = [(lambda c: invite(c, 1), b"dir\r"), (apres, b"time\r"),
+            (lambda c: bytes(c["ppi2"].tx).count(b"Enter new time:") >= 2, b"\r")]
+
+    def verif(ecran, etat):
+        heures = [l for l in ecran if l.startswith("Current time is")]
+        print("    %s ; sorties du 8255 U7 pendant le DOS : %d" % (heures, etat["ppi"].sorties - vu.get("s0", 0)))
+        ok = len(heures) >= 2 and heures[-1] not in ("Current time is  0:00:00.00", heures[0])
+        if not ok:
+            print("    attendu : la 2e heure affichee par TIME differe de la 1re")
+        if etat["ppi"].sorties - vu.get("s0", 0) < 30:
+            ok = False
+            print("    attendu : les animations continuent sous DOS (sorties vers U7)")
+        return ok
+    return scenario_dos_uart(image, "8254 : heure du DOS qui avance, DEL animees sous DOS", cmds, verif,
+                             invites=3)
+
+
+def scenario_disque_b(image):
+    """Lecteur B: (disque virtuel de 128 Ko) : DIR B:, COPY SORT.EXE B:, DIR B:."""
+    cmds = [(lambda c: invite(c, 1), b"dir b:\r"), (lambda c: invite(c, 2), b"copy sort.exe b:\r"),
+            (lambda c: invite(c, 3), b"dir b:\r")]
+
+    def verif(ecran, etat):
+        e = "\n".join(ecran)
+        ok = True
+        for attendu in ("1 File(s) copied", "SORT     EXE     1408", "125952 bytes free"):
+            if attendu not in e:
+                ok = False
+                print("    attendu dans l'ecran : %r" % attendu)
+        return ok
+    return scenario_dos_uart(image, "lecteur B: en RAM : DIR, COPY, DIR", cmds, verif)
 
 
 def scenario_dos(image):
@@ -876,7 +1040,7 @@ def scenario_dos(image):
         print("    LCD saisie   : %s (fenetre col,ligne = %d,%d)" % (vu["saisie"][0], vu["saisie"][1][0], vu["saisie"][1][1]))
     ints = etat["ints"]
     print("    INT appelees : %s" % " ".join("%02Xh x%d" % (k, v) for k, v in sorted(ints.items())))
-    non_geres = {k: v for k, v in etat["int_iret"].items() if k < 0x20}
+    non_geres = {k: v for k, v in etat["int_iret"].items() if k < 0x20 and k != 0x1C}   # 1Ch : crochet des programmes
     print("    vecteurs BIOS non geres appeles : %s ; ecritures en ROM : %d" % (non_geres or "aucun", etat["ecritures_rom"]))
     print("    OUT du DOS vers le LCD/U7/U12 : %s ; vers des ports libres : %s" % (
         {"%02Xh" % k: v for k, v in etat["out_dos"].items()} or "aucun",
@@ -942,11 +1106,16 @@ def main():
             alias=1 << 17)),
         ("led", lambda: scenario_led(image)),
         ("terminal", lambda: scenario_terminal(image)),
+        ("led8254", lambda: scenario_led(image, pit=False)),
         ("sysinfo", lambda: scenario_sysinfo(image)),
         ("sans8259", lambda: scenario_sysinfo(image, pic=False)),
+        ("sans8254", lambda: scenario_sysinfo(image, pit=False)),
+        ("partout", lambda: scenario_partout(image)),
         ("dos", lambda: scenario_dos(image)),
         ("anticipe", lambda: scenario_anticipe(image)),
         ("console", lambda: scenario_console(image)),
+        ("temps", lambda: scenario_temps(image)),
+        ("disqueb", lambda: scenario_disque_b(image)),
     ]
     echecs = 0
     for nom, f in scenarios:
