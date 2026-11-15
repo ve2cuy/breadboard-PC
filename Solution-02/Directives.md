@@ -79,3 +79,4 @@ Schema : Solution02.kicad_sch. Chaque etape du projet est ajoutee a la fin de ce
   - Simulateur: classe Rafale (octets UART sans pause), scenario console (menu 5, date/heure/DIR tapes au terminal, fleche gauche ANSI, Echap seul, sortie du DOS verifiee sur TX); scenario dos: capture du LCD apres que '>' y soit ecrit (faux echec par decalage de 2 instructions). 13 scenarios OK.
   - Limites: ~1 ms par caractere envoye, interruptions masquees (affichage plus lent; trame PS/2 ou octet recu pendant un envoi: perdu, relachement perdu = touche doublee).
   - ROM: Z:/Partage/Alain/solution-02-bios-0.9-console-uart.bin (md5 e2f57e3cca90cf6babd0142977ca0841), pas encore gravee.
+* 2026-11-14 BIOS 0.9 grave sur la W29C020C (ID 0xDA45, verification OK du premier coup; md5 e2f57e3cca90cf6babd0142977ca0841).
