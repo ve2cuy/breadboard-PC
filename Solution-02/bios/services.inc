@@ -1484,6 +1484,7 @@ int19h:
 ; =============================================================================
 int13h:
         BIOS_ENTREE
+        mov     byte [es:V_CHG_CALME], 0 ; acces disque : le DOS n'est pas au repos
         cmp     dl, 80h                 ; C: = image de disque dur de la carte
         jne     .pas_c
         cmp     byte [es:V_HD_ACTIF], 0
@@ -1736,6 +1737,7 @@ int16h:
         and     word [bp + R_FL], ~40h  ; ZF = 0 : une touche attend
         jmp     .bloque
 .vide:  or      word [bp + R_FL], 40h   ; ZF = 1
+        call    chg_repos               ; DOS au repos (AH=01h en boucle) : disquette de A:
 .bloque:
         call    kbd_bloque
         jmp     bios_sortie

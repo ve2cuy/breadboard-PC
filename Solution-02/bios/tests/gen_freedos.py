@@ -25,7 +25,10 @@ DOS = os.path.normpath(os.path.join(ICI, '..', '..', '..', 'PC-DOS'))
 TAR = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'tar.exe')
 EXCLUS = ('JEMM', 'HIMEMX', 'FDXMS', 'FDXMS286', 'HTMLHELP')   # 286/386, ou trop gros
 
-FDCONFIG = (b'FILES=20\r\nBUFFERS=20\r\nLASTDRIVE=Z\r\n'
+# STACKS=0,0 : sans lui, le noyau detourne IRQ0/IRQ1/IRQ4 (INT 08h, 09h, 0Ch) par un relais qui
+# change de pile ; le delai fait manquer le bit de depart de l'UART logiciel (octets decales
+# d'un bit) et les premiers fronts du clavier PS/2 (lus bit par bit des l'interruption).
+FDCONFIG = (b'FILES=20\r\nBUFFERS=20\r\nLASTDRIVE=Z\r\nSTACKS=0,0\r\n'
             b'SHELL=C:\\COMMAND.COM C:\\ /E:1024 /P=C:\\FDAUTO.BAT\r\n')
 FDAUTO = (b'@ECHO OFF\r\nSET DOSDIR=C:\\FREEDOS\r\nSET PATH=C:\\FREEDOS\\BIN\r\n'
           b'SET NLSPATH=C:\\FREEDOS\\NLS\r\nSET HELPPATH=C:\\FREEDOS\\HELP\r\n'

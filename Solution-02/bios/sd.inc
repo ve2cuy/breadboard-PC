@@ -1422,6 +1422,25 @@ CHG_SAUVE       equ     0CB0h           ; (512 o, jusqu'a 0EAFh) copie du tampon
 CHG_PILE        equ     1000h           ; pile du changement : 0EB0h-0FFFh (celle du menu,
                                         ; libre sous DOS)
 
+V_CHG_CALME     equ     0CAFh           ; INT 16h AH=01h sans touche de suite, sans INT 13h
+CHG_CALME_N     equ     10              ; ... a partir de combien le DOS est au repos
+
+; chg_repos : (INT 16h AH=01h, file vide) le DOS attend une touche en interrogeant AH=01h
+; en boucle (il n'appelle AH=00h qu'une fois la touche la) : apres CHG_CALME_N appels
+; de suite sans INT 13h (remis a 0 par int13h : jamais au milieu d'un COPY), un
+; changement de A: demande est permis. ES = DSEG. Preserve tout.
+chg_repos:
+        cmp     byte [es:V_CHG_A], 0
+        je      .r
+        cmp     byte [es:V_CHG_CALME], CHG_CALME_N
+        jae     .repos
+        inc     byte [es:V_CHG_CALME]
+        ret
+.repos: mov     byte [es:V_CHG_OK], 1
+        call    chg_verifie
+        mov     byte [es:V_CHG_OK], 0
+.r:     ret
+
 ; chg_verifie : si un changement de A: est demande et permis : la liste (chg_a). ES =
 ; DSEG. Preserve tout.
 chg_verifie:
@@ -1447,6 +1466,7 @@ chg_verifie:
         mov     ax, cs
         mov     ds, ax
         call    chg_a
+        mov     byte [es:V_CHG_CALME], 0
         pop     ds
         pop     bp
         pop     di

@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 1.8 :
+Contenu de la ROM et de la RAM avec le BIOS 1.9 :
 
 | Adresses | Contenu |
 |---|---|
@@ -328,13 +328,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 1.8
+## BIOS 1.9
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.8`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.9`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -480,6 +480,11 @@ carte fraîchement formatée), produites depuis les disquettes d'installation :
 | `DOS622_C.IMG` (32 Mo, FAT16) | MS-DOS 6.22 français installé : `IO.SYS`, `MSDOS.SYS`, `COMMAND.COM`, `CONFIG.SYS`, `AUTOEXEC.BAT` à la racine, tout `C:\DOS` (fichiers `*.??_` décompressés : format KWAJ de MS-DOS 6, noms d'origine par `PACKING.LST`) | `python tests/gen_dos622.py` (archive `.7z` des 4 disquettes) |
 | `FREEDOS_C.IMG` (32 Mo, FAT16) | FreeDOS 1.4 version 8086 : `KERNEL.SYS` de l'édition disquette (x86), `COMMAND.COM`, `FDCONFIG.SYS`, `FDAUTO.BAT` ; les 50 paquets BASE de l'édition LiteUSB dans `C:\FREEDOS` (sans sources ni paquets 286/386) | `python tests/gen_freedos.py` (`FD14-FloppyEdition.zip`, `FD14-LiteUSB.zip`) |
 
+`FDCONFIG.SYS` porte **`STACKS=0,0`** : sans lui, le noyau de FreeDOS détourne
+IRQ0, IRQ1 et IRQ4 (INT 08h, 09h, 0Ch) par un relais qui change de pile ; ce
+délai fait manquer le bit de départ de l'UART logiciel (octets décalés d'un
+bit) et les premiers fronts du clavier PS/2, lus bit par bit dès l'interruption.
+
 Les deux ont un MBR 8086 (`tests/mbr8086.asm` : partition active, CHS, 3
 essais) et une partition FAT16 active de 16 têtes × 63 secteurs (bibliothèque
 `tests/fatlib.py`). Sans KEYB ni HIMEM (8088).
@@ -489,7 +494,10 @@ essais) et une partition FAT16 active de 16 têtes × 63 secteurs (bibliothèque
 il l'envoie (`ESC [ 2 ; 7 ~`, terminaux de type xterm) ou **Ctrl+]** (1Dh). La
 touche ne fait que lever une demande ; la liste (`Disquette A: Entree`, la ROM
 et les images de disquette, sans les lignes C:) s'ouvre quand le DOS attend
-vraiment une touche (INT 16h AH=00h), jamais au milieu d'un accès disque. La
+vraiment une touche, jamais au milieu d'un accès disque : INT 16h AH=00h, ou
+(BIOS 1.9) une dizaine d'INT 16h AH=01h de suite sans touche et sans INT 13h
+entre eux (le DOS au repos interroge AH=01h en boucle et n'appelle AH=00h qu'une
+fois la touche là). La
 carte est relue (on peut en changer ; C: et B: gardent la position de leur
 image). Entrée monte l'image (ou la ROM) en A:, Échap ne change rien ; le LCD
 reprend ensuite l'écran du DOS. INT 13h AH=15h annonce maintenant une **ligne
@@ -871,6 +879,7 @@ un module.
 
 ## État
 
+- 2026-11-16 : BIOS 1.9 : le changement de A: s'ouvre aussi quand le DOS attend en interrogeant INT 16h AH=01h (sinon jamais) ; image FreeDOS avec `STACKS=0,0` (clavier PS/2 et UART corrects sous FreeDOS). Gravé.
 - 2026-11-16 : BIOS 1.8 : la barre oblique inverse s'affiche au LCD (CGRAM 4 ; la ROM A00 a le yen en 5Ch), â → a. Gravé.
 - 2026-11-16 : BIOS 1.7 : changement de la disquette de A: sous DOS (Ctrl+Alt+Inser, ou Ctrl+] au terminal) ; plusieurs images de disque dur au choix (Espace), C: vérifié après le choix (liste plus rapide) ; voyants d'accès sur U12 (D1 = PA0 disquettes, D2 = PA1 disque dur ; schéma), LED Show plus suspendu. Gravé.
 - 2026-11-16 : BIOS 1.6 : **disque dur C:** = image `.IMG` de plus de 1,44 Mo de la carte SD (INT 13h 80h, démarrage depuis C:, INT 41h) ; voyants : PC7 = disquettes, PC6 = disque dur, LED Show suspendu pendant les accès. Images `DOS622_C.IMG` (MS-DOS 6.22) et `FREEDOS_C.IMG` (FreeDOS 1.4) générées hors de git. Simulé (26 scénarios), gravé.
