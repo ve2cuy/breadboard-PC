@@ -16,7 +16,7 @@ $(BASIC_BIN): $(BASIC_SRC)
 ../../PC-DOS/pcdos2_1_rom.img: tests/gen_dos_rom.py ../../PC-DOS/pcdos2_1.img
 	python tests/gen_dos_rom.py
 
-$(IMAGE): bios.asm clavier_us.inc accueil.inc services.inc sd.inc $(BASIC_BIN) ../../PC-DOS/pcdos2_1_rom.img
+$(IMAGE): bios.asm clavier_us.inc accueil.inc services.inc sd.inc ramtest.inc $(BASIC_BIN) ../../PC-DOS/pcdos2_1_rom.img
 	@mkdir -p build
 	$(NASM) -f bin $(NASM_DEF) -l build/bios.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"

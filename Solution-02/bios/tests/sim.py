@@ -811,7 +811,7 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 2.2 - VE2CUY 2026\r\n"
+BANNIERE = (b"\r\nSolution-02 BIOS 2.3 - VE2CUY 2026\r\n"
             b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info"
             b"  5) UART:ON/OFF (console)  6) BASIC\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
@@ -833,6 +833,52 @@ def scenario_menu(image):
         ok = False
         print("    attendu: banniere, accueil ANSI et menu sur l'UART (console a ON par defaut)")
     return verifier("demarrage : ecran d'ouverture, DSEG, banniere, menu", lcd, etat, MENU, ok)
+
+
+def scenario_ram_s01(image, titre, mode, attendu_tx, lcd0, defaut=None, alias=None, max_instr=150_000_000):
+    """BIOS 2.3 : menu 2) = test exhaustif de Solution-01 (ramtest.inc) : sous-menu, mode
+    1 (Trace) ou 2 (MAP) ; rapport sur l'UART (attendu_tx : morceaux a trouver) ; LCD ligne 1
+    = lcd0 a la fin ; une touche : sous-menu ; Echap : menu."""
+    tx = lambda c: bytes(c["ppi2"].tx)
+    sous = lambda c: (c["lcd"].lignes()[0].startswith("Test RAM 512K") and c["lcd"].lignes()[1].startswith("1) Trace")
+                      and tx(c).endswith(b"retour au menu\r\n"))
+    vu = {}
+
+    def fin_test(c):
+        if b"TOTAL DEFAUT" in tx(c) and b"Une touche" in tx(c)[-60:]:
+            vu.setdefault("lcd", c["lcd"].lignes())
+            return True
+        return False
+    pas = Etapes([(au_menu, texte('2')), (sous, texte(mode)), (fin_test, texte('\r')),
+                  (lambda c: sous(c) and pas.faites == 3, texte('\x1b'))])
+    lcd, etat, uc = lancer(image, defaut, alias, entrees=pas, max_instr=max_instr,
+                           fini=lambda c: pas.faites == 4 and au_menu(c))
+    t = tx({"ppi2": etat["ppi2"]})
+    rapport = t[t.find(b"=== Test RAM"):]
+    manque = [m for m in attendu_tx if m not in rapport]
+    print("--- LCD a la fin : %s ; manque : %s" % (vu.get("lcd"), manque))
+    print("    %r" % rapport[-420:])
+    ok = not manque and vu.get("lcd") and vu["lcd"][0].startswith(lcd0)
+    return verifier(titre, lcd, etat, MENU, ok)
+
+
+def scenario_ram_boucle(image):
+    """BIOS 2.3 : menu 2) 3) Loop : la passe 1 tourne ; Echap pendant la passe (interruptions
+    permises hors du segment 0 : la touche attend en file) -> arret apres la passe, bilan
+    'Boucle: 1 passe(s), 1 bonne(s), 0 avec defauts', retour au sous-menu, Echap : menu."""
+    tx = lambda c: bytes(c["ppi2"].tx)
+    sous = lambda c: (c["lcd"].lignes()[0].startswith("Test RAM 512K") and c["lcd"].lignes()[1].startswith("1) Trace")
+                      and tx(c).endswith(b"retour au menu\r\n"))
+    pas = Etapes([(au_menu, texte('2')), (sous, texte('3')),
+                  (lambda c: b"K testes" in tx(c)[-40:], texte('\x1b')),
+                  (lambda c: sous(c) and b"arrete (Echap)" in tx(c), texte('\x1b'))])
+    lcd, etat, uc = lancer(image, entrees=pas, max_instr=200_000_000, fini=lambda c: pas.faites == 4 and au_menu(c))
+    t = tx({"ppi2": etat["ppi2"]})
+    ok = b"passe 1 " in t and b"passe 2 " not in t and b"Boucle: 1 passe(s), 1 bonne(s), 0 avec defauts" in t
+    print("--- %r" % t[t.find(b"arrete"):][:160])
+    if not ok:
+        print("    attendu : une seule passe, arret par Echap, bilan 1 / 1 / 0")
+    return verifier("menu 2) Test RAM, Loop arrete par Echap", lcd, etat, MENU, ok)
 
 
 def scenario_test_ram(image):
@@ -914,12 +960,12 @@ def scenario_sysinfo(image, pic=True, pit=True):
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 2.2" and pret(c):
+        if l[0] == "SOLUTION-02 BIOS 2.3" and pret(c):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
     pas = Etapes([(au_menu, texte('4')), (pret, texte(' '))])
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic, pit=pit)
-    attendu = ["SOLUTION-02 BIOS 2.2", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
+    attendu = ["SOLUTION-02 BIOS 2.3", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
@@ -1042,7 +1088,7 @@ def carte_dos(fragmente=False):
 
 
 def scenario_sd_boot(image):
-    """BIOS 2.2 : Load DOS avec une carte : choix de PCDOS21.IMG (fleche bas, Entree), le DOS
+    """BIOS 2.3 : Load DOS avec une carte : choix de PCDOS21.IMG (fleche bas, Entree), le DOS
     demarre depuis la carte, puis 'dir > liste.txt' ecrit dans l'image (A:), relue sur la carte."""
     import gen_sd
     carte, img = carte_dos()
@@ -1076,7 +1122,7 @@ def scenario_sd_boot(image):
     if copie != img:
         ok = False
         print("    attendu : l'autre image intacte")
-    return verifier("BIOS 2.2 : demarrage sur une image de la carte SD, ecriture dans l'image", lcd, etat, None, ok)
+    return verifier("BIOS 2.3 : demarrage sur une image de la carte SD, ecriture dans l'image", lcd, etat, None, ok)
 
 
 def scenario_sd_fragmentee(image):
@@ -1092,7 +1138,7 @@ def scenario_sd_fragmentee(image):
     pas = Etapes([(au_menu, texte('1')), (lambda c: c["lcd"].lignes() == choix, appui(0x72, True) + appui(0x72, True)),
                   (lambda c: c["lcd"].lignes()[3].startswith(">COPIE"), texte('\r'))])
     lcd, etat, uc = lancer(image, fini=msg, entrees=pas, max_instr=40_000_000, sd=carte)
-    return verifier("BIOS 2.2 : image fragmentee refusee", lcd, etat, None, bool(vu.get("msg")))
+    return verifier("BIOS 2.3 : image fragmentee refusee", lcd, etat, None, bool(vu.get("msg")))
 
 
 def scenario_basic(image):
@@ -1221,7 +1267,7 @@ def scenario_disque_c(image):
 
 
 def scenario_change_a(image):
-    """BIOS 2.2 : changement de la disquette de A: sous DOS. DOS 3.3 demarre depuis DOS33.IMG ;
+    """BIOS 2.3 : changement de la disquette de A: sous DOS. DOS 3.3 demarre depuis DOS33.IMG ;
     Ctrl+Alt+Inser (clavier PS/2) a l'invite : liste 'Disquette A: Entree', 2 x fleche bas ->
     PCDOS21.IMG ; DIR A: montre MASM.EXE. Puis Ctrl+] (terminal) : DOS33.IMG ; DIR A: montre
     de nouveau COUNTRY.SYS (INT 13h AH=16h signale chaque changement)."""
@@ -1293,7 +1339,7 @@ def disquette_vide_360k():
 
 
 def scenario_basic_disque(image):
-    """BIOS 2.2 : fichiers du BASIC sur la disquette A: et historique. BASIC ; Ctrl+] (terminal) :
+    """BIOS 2.3 : fichiers du BASIC sur la disquette A: et historique. BASIC ; Ctrl+] (terminal) :
     VIDE.IMG (360 Ko vierge) en A: ; 10 PRINT "BONJOUR" ; SAVE "ESSAI" ; FILES ; NEW ; LOAD
     "ESSAI" ; LIST ; fleche haut (rappel de LIST) + Entree ; SAVE "B2" ; KILL "B2.BAS" ; FILES.
     L'image relue sur la carte doit contenir ESSAI.BAS (le programme en texte) et pas B2.BAS."""
@@ -1336,7 +1382,7 @@ def scenario_basic_disque(image):
 
 
 def scenario_basic_boot(image):
-    """BIOS 2.2 : BOOT "NOM" du BASIC : INT 13h AH=F0h monte DOS33.IMG en A: (nom en minuscules,
+    """BIOS 2.3 : BOOT "NOM" du BASIC : INT 13h AH=F0h monte DOS33.IMG en A: (nom en minuscules,
     sans extension : .IMG ajoute ; un nom absent -> File not found), puis INT 19h prepare le
     DOS (dos_charger, DS = CS pour ivt_init) et DOS 3.3 demarre (date)."""
     import gen_sd
@@ -1358,7 +1404,7 @@ def scenario_basic_boot(image):
 
 
 def scenario_utf8_reset(image):
-    """BIOS 2.2 : terminal en UTF-8 (PuTTY) : PRINT "àç" tape au terminal (chaque lettre
+    """BIOS 2.3 : terminal en UTF-8 (PuTTY) : PRINT "àç" tape au terminal (chaque lettre
     accentuee = 2 octets d'un trait, C3 A0 puis C3 A7) arrive au BASIC en page 437 (85h 87h) et
     revient en UTF-8 (echo et resultat) ; Ctrl+Alt+Suppr au terminal (ESC [ 3 ; 7 ~) : retour
     au demarrage (banniere de nouveau)."""
@@ -1382,7 +1428,7 @@ def scenario_utf8_reset(image):
 
 
 def scenario_basic_chg(image):
-    """BIOS 2.2 : dans le BASIC, la liste 'Disquette A:' s'ouvre par Ctrl+Alt+Inser (clavier PS/2),
+    """BIOS 2.3 : dans le BASIC, la liste 'Disquette A:' s'ouvre par Ctrl+Alt+Inser (clavier PS/2),
     Ctrl+\\ et F12 (ESC [ 2 4 ~) au terminal ; Echap la referme chaque fois."""
     import gen_sd
     secteurs, nb = gen_sd.carte_fat32([('VIDE.IMG', disquette_vide_360k())])
@@ -1459,7 +1505,7 @@ def scenario_partout(image):
     terminal -> Info sur le LCD et sur TX ; une touche du terminal -> retour au menu."""
     tx = lambda c: bytes(c["ppi2"].tx)
     on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON "
-    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 2.2" and c["lcd"].lignes()[3].startswith("8259")
+    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 2.3" and c["lcd"].lignes()[3].startswith("8259")
     vu = {}
 
     def menu_vu(c):
@@ -1476,7 +1522,7 @@ def scenario_partout(image):
     print("--- UART TX apres la banniere : %r" % t)
     import gen_accueil                         # ecran d'accueil ANSI, puis le menu
     attendu = gen_accueil.octets() + MENU_TX + (
-               b"\r\nSOLUTION-02 BIOS 2.2\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n") + MENU_TX
+               b"\r\nSOLUTION-02 BIOS 2.3\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n") + MENU_TX
     ok = t == attendu
     if not ok:
         print("    attendu : %r" % attendu)
@@ -1687,19 +1733,20 @@ def main():
     seul = sys.argv[2] if len(sys.argv) > 2 else None
     scenarios = [
         ("menu", lambda: scenario_menu(image)),
-        ("ram", lambda: scenario_test_ram(image)),
-        ("defaut", lambda: scenario_ram_defaut(image, "menu 2) cellule 7B3FFh qui ne retient rien",
-            ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 001", "Adresses A0-A18: OK ", "ERR 7B3FF 55/00     "],
-            defaut=lambda a: a == 0x7B3FF)),
+        ("ram", lambda: scenario_ram_s01(image, "menu 2) Test RAM (Solution-01), MAP, RAM saine", '2',
+            [b"*** RAM OK - 524288 octets", b"RAM testee: 512 Ko", b"Defectueuse: 0 Ko", b"A0-A18 OK", b"TOTAL DEFAUT: 0000h"],
+            "RAM OK")),
+        ("defaut", lambda: scenario_ram_s01(image, "menu 2) Test RAM (Solution-01), Trace, cellule 7B3FFh qui ne retient rien", '1',
+            [b"DEFAUT memoire @ 7000:B3FF  attendu=AA  lu=00", b"7000:B000-7000:B3FF", b"RAM DEFECTUEUSE", b"TOTAL DEFAUT: 0001h, 1 octet"],
+            "RAM DEFECTUEUSE", defaut=lambda a: a == 0x7B3FF, max_instr=400_000_000)),
+        ("ramboucle", lambda: scenario_ram_boucle(image)),
         ("absente", lambda: scenario_ram_defaut(image, "RAM absente (DSEG defectueux : test complet d'office)",
             ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 512", "Adresses: ERR base  ", "ERR 00000 AA/00     "],
             defaut=lambda a: a < RAM, touche=False)),
-        ("a15", lambda: scenario_ram_defaut(image, "menu 2) ligne A15 coupee (8000h repond comme 0)",
-            ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 000", "Adresses: ERR A15   ", "                    "],
-            alias=1 << 15)),
-        ("a17", lambda: scenario_ram_defaut(image, "menu 2) puce de 128 Ko (A17 ignoree)",
-            ["RAM DEFAUT  CPT 0003", "Ko: 512  Defauts 000", "Adresses: ERR A17   ", "                    "],
-            alias=1 << 17)),
+        ("a15", lambda: scenario_ram_s01(image, "menu 2) Test RAM, MAP, ligne A15 coupee (8000h repond comme 0)", '2',
+            [b"LIGNE D'ADRESSE A15 EN DEFAUT", b"octet par octet SAUTE"], "RAM DEFECTUEUSE", alias=1 << 15)),
+        ("a17", lambda: scenario_ram_s01(image, "menu 2) Test RAM, MAP, puce de 128 Ko (A17 ignoree)", '2',
+            [b"LIGNE D'ADRESSE A17 EN DEFAUT", b"octet par octet SAUTE"], "RAM DEFECTUEUSE", alias=1 << 17)),
         ("led", lambda: scenario_led(image)),
         ("terminal", lambda: scenario_terminal(image)),
         ("led8254", lambda: scenario_led(image, pit=False)),

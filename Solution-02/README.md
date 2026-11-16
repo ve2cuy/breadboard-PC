@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 2.2 :
+Contenu de la ROM et de la RAM avec le BIOS 2.3 :
 
 | Adresses | Contenu |
 |---|---|
@@ -328,13 +328,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 2.2
+## BIOS 2.3
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 2.2`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 2.3`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -635,20 +635,35 @@ clavier US.
 
 ### 2) Test memory
 
-Test complet de la RAM, fait **sans pile ni variables** (macros seulement),
-donc fiable même si la RAM est défectueuse :
+BIOS 2.3 (`ramtest.inc`) : le **test exhaustif de Solution-01** (`test_ram`,
+`test_ram_map`, `test_ram_loop`), rapport complet sur l'**UART** (toujours) et
+progression sur le **LCD**. Sous-menu : **1) Trace** (une ligne par bloc de
+1 Ko : plage, adresse physique en binaire, OK/DEFAUT, Ko testés ; chaque octet
+défectueux détaillé : adresse, attendu, lu), **2) MAP** (mêmes essais, carte
+et bilan à la fin, LCD tous les 64 Ko), **3) Loop** (MAP en boucle ; Échap,
+pressé pendant une passe, l'arrête à la fin de la passe ; bilan des passes).
+Échap : menu. LCD : `Bloc:NNN/512 Def:NNN`, la plage et l'état du bloc (Trace),
+les lignes d'adresse, puis `RAM OK` ou `RAM DEFECTUEUSE`.
 
-- **motifs** : chaque bloc de 1 Ko est rempli puis relu avec 55AAh, AA55h,
-  0000h et FFFFh, de sorte que chaque octet voit AAh, 55h, 00h et FFh
-  (mêmes motifs que Solution-01). Environ 7 s pour 512 Ko ;
-- **lignes d'adresse A0–A18** (méthode de Solution-01) : 5Ah à l'adresse
-  de base 35555h, puis k+1 à 35555h xor 2ᵏ, et relecture. Une ligne
-  coupée ou en court-circuit fait tomber deux adresses sur la même case ;
-  une puce de 128 ou 256 Ko vendue pour 512 Ko échoue sur A17/A18.
+Non destructif (chaque octet est sauvé puis remis), dans cet ordre :
 
-RAM bonne : effacement à 0, pile en 7F00:1000 vérifiée par PUSH/POP,
-`PILE OK  Touche=menu`. RAM défectueuse : le résultat reste affiché avec un
-compteur (pas de retour au menu : il faut une RAM saine).
+1. **Lignes d'adresse A0–A18** d'abord (écritures par DS avec IF = 1,
+   relectures par ES avec IF = 0, comme Solution-01 : base 35555h et ses 19
+   voisines ; la ligne fautive est nommée, même quand la base est écrasée).
+   En défaut, deux adresses se recouvrent : l'essai octet par octet écrirait
+   aussi dans la table des vecteurs et dans DSEG (pile du BIOS) ; il est
+   **sauté** (message), au lieu de planter.
+2. **00000h–7EFFFh octet par octet**, 4 motifs (AAh, 55h, 00h, FFh) ;
+   interruptions masquées pendant le segment 0 (vecteurs, BDA, carte en
+   0000:8000h), permises ailleurs (les gestionnaires n'utilisent que DSEG).
+3. **DSEG** (7F000h–7FFFFh, 4 Ko : données, écran et pile du BIOS) : pile
+   déplacée dans un bloc bas trouvé bon, aucun appel pendant l'essai, défauts
+   notés (64 au plus) puis rapportés.
+4. **Carte mémoire** (8 lignes de 64 blocs : `.` bon, `X` défectueux, `R` non
+   testé) et bilan (Ko testés, bons, défectueux, octets défectueux).
+
+Le **test au démarrage** ne change pas : vérification rapide de DSEG, et test
+complet sans pile (LCD) si DSEG est défectueux.
 
 ### 3) LED Show
 
@@ -914,6 +929,7 @@ un module.
 
 ## État
 
+- 2026-11-16 : BIOS 2.3 : menu 2) = test RAM exhaustif de Solution-01 (Trace, MAP, Loop ; UART et LCD), lignes d'adresse d'abord ; test du démarrage inchangé. Gravé.
 - 2026-11-16 : BIOS 2.2 : terminal (PuTTY) : accents tapés en UTF-8 → page 437 ; Ctrl+\ et F12 changent la disquette de A: ; Ctrl+Alt+Suppr au terminal (`ESC [ 3 ; 7 ~`) ; messages du chargement (Carte SD..., Verification C:..., Lecture : nnn Ko tous les 64 Ko, refus) aussi au terminal. Gravé.
 - 2026-11-16 : BIOS 2.1 : BOOT "NOM.IMG" du BASIC corrigé (INT 19h hors Load DOS : DS = CS pour la table des vecteurs). Gravé.
 - 2026-11-16 : BIOS 2.0 : fichiers du BASIC sur la disquette A: (FAT12 : SAVE, LOAD, FILES, KILL, OPEN…), flèche haut au BASIC, BOOT "NOM.IMG" (INT 13h AH=F0h) ; curseur dans le BDA et recopié au terminal (retour arrière de FreeDOS). Gravé.
