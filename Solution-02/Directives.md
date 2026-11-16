@@ -147,3 +147,24 @@ Schema : Solution02.kicad_sch. Chaque etape du projet est ajoutee a la fin de ce
 * 2026-11-16 BIOS 1.9: scenario changea (BIOS 1.7/1.8) en ECHEC: a l'invite, le DOS attend en interrogeant INT 16h AH=01h en boucle (avec INT 28h) et n'appelle AH=00h qu'une fois la touche la: chg_verifie n'etait jamais atteint. Correctif: chg_repos (INT 16h AH=01h, file vide): apres CHG_CALME_N = 10 appels de suite sans INT 13h (V_CHG_CALME 0CAFh, remis a 0 par int13h et apres chg_a), le changement est permis. changea OK (Ctrl+Alt+Inser -> PCDOS21.IMG, DIR A: = MASM.EXE; Ctrl+] -> DOS33.IMG, COUNTRY.SYS); menu, accents, disquec, sdboot OK.
   - FreeDOS (clavier UART decale, PS/2 muet sur le montage): reproduit au simulateur ('ver' par l'UART -> CP437 BBh B9h = octets decales d'un bit, 'e' perdu). Cause: le noyau FreeDOS detourne INT 08h/09h/0Ch vers 0070:000F/0016/0056 (changement de pile, comme STACKS= de MS-DOS) -> latence avant irq_uart/irq_clavier, qui lisent bit par bit des l'entree. Correctif dans l'image (pas le BIOS): tests/gen_freedos.py, FDCONFIG.SYS STACKS=0,0 -> vecteurs du BIOS gardes, 'ver' par l'UART OK. PC-DOS/FREEDOS_C.IMG regeneree (md5 df9d2db8016635040c0ce8a5b7544ae4), a recopier sur la carte.
   - ROM: Z:/Partage/Alain/solution-02-bios-1.9-changeA-repos.bin (md5 c1bb5aa781d0c07ea41bc79f692f34d0), gravee (1er essai: ID 0xDA47, contact; 2e: verification OK).
+
+---
+À faire avec confirmation:
+
+Écrire une application qui permet d'éditer le contenu des fichiers images:
+
+- Ouvrir une image
+- afficher son contenu, la taille, l'espace disponible, ainsi que les détails des fichiers
+- Ajouter des fichiers
+- Effacer, ...
+- Renommer
+- Enregister/Enregistrer sous
+
+Application écrite en Rust et éventuellement portable sous MACOS et Linux.* 2026-11-16 Essais de l'usager: FreeDOS demarre (STACKS=0,0); retour arriere = un espace au terminal; Ctrl+C, Ctrl+Z signales ne fonctionnant pas. Sous BASIC: fichiers inoperants (fs_* = Device unavailable), fleche haut sans effet; demande: charger une disquette sous BASIC.
+* 2026-11-16 BIOS 2.0:
+  - BASIC: fs_s02.inc (inclus par basic_s02.asm, remplace les fs_* vides): API du pont de Solution-01 (memes contrats que bridge.asm) sur un FAT12 (racine) de la disquette A: par INT 13h. FS_SEG 2000h: FAT entiere (12 sect. max), racine (16 sect. max), tampon de secteur, copie des octets de l'appelant, variables; BPB lu du secteur 0 (CHS 0/0/1), geometrie du BPB pour le LBA -> CHS; relecture a la 1re operation et apres INT 13h AH=16h = 06h; FAT (toutes les copies) et racine reecrites par secteurs marques a la fermeture, KILL, FORMAT; un fichier ouvert (fs_open ferme le precedent); erreurs: FSE_NOTREADY sans BPB, FSE_NOTFOUND, FSE_BADNAME, FSE_FULL, FSE_IO (ROM en lecture seule). Bogues trouves en relecture avant essai: SI ecrase par fs_position, mode ecrase par fs_libere, LBA ecrase par AH dans fs_sec_*.
+  - BASIC: touches etendues d'INT 16h (fleches, Debut, Fin) -> ESC [ A..D/H/F (fk_n, fk_buf en FS_SEG) : fleche haut = rappel de la derniere commande; etat remis a zero a l'entree du BASIC.
+  - BIOS: INT 13h AH=F0h (monter en A: l'image DS:SI, '.IMG' ajoute sans point; E1h pas de carte, E2h introuvable, E5h nom invalide, EFh taille/fragmente; tampon 00500h sauve) et AH=F1h (A: = ROM), comme Solution-01 (BOOT "NOM.IMG" du BASIC). Bogue trouve en simulation: comparaison des noms (INC apres CMP: ZF perdu -> toujours 'File not found'). INT 19h hors Load DOS (V_DOS_PRET 0C92h = 0): passe par dos_charger (BDA, vecteurs, B:) qui revient a INT 19h.
+  - Console UART (FreeDOS): reproduit au simulateur ('ab', BS, 'c' -> FreeCOM recoit 'ac', le terminal montre 'ab c'): FreeCOM lit la position du curseur dans le BDA (0040:0050), jamais tenue -> ecran_fin la recopie; INT 10h AH=02h -> deplacement relatif ESC [ n A/B/C/D au terminal (uart_curseur), AH=09h/0Ah -> caracteres puis ESC [ n D (uart_ecrit). Apres correction: le terminal recoit '\b \b'. Ctrl+Z (copy con) et Ctrl+C (pause) par l'UART fonctionnent en simulation: a preciser avec l'usager (clavier, terminal).
+  - Simulateur: scenario basicdisque (VIDE.IMG 360 Ko vierge par Ctrl+]; SAVE, FILES, NEW, LOAD, LIST, fleche haut + Entree, SAVE "B2", KILL "B2.BAS", FILES; ESSAI.BAS relu dans l'image): OK; menu, dos, console, anticipe, sdboot, changea, basic, accents, terminal OK. BOOT "DOS33" depuis le BASIC: en cours de verification au simulateur.
+  - ROM: Z:/Partage/Alain/solution-02-bios-2.0-basic-fichiers.bin (md5 8826e3a35c00b24e02a2cc54eec21310), gravee (verification OK du premier coup).

@@ -1413,6 +1413,7 @@ tx_sortie_lcd:
 ; disquette (pas de ligne C:) ; Echap : rien ne change. INT 13h AH=16h signale le
 ; changement une fois (V_CHG_LIGNE) ; AH=15h annonce la ligne de changement.
 ;-----------------------------------------------------------------------------
+V_DOS_PRET      equ     0C92h           ; 1 = dos_charger a prepare le DOS (INT 19h)
 V_CHG_OK        equ     0C91h           ; 1 = INT 16h AH=00h attend : changement permis
 V_CHG_A         equ     0C93h           ; 1 = changement de A: demande (touche)
 V_CHG_LIGNE     equ     0CA8h           ; 1 = A: changee depuis le dernier INT 13h AH=16h
@@ -1612,6 +1613,174 @@ chg_a:
         mov     ss, [es:V_CHG_SS]
         mov     sp, [es:V_CHG_SP]
         sti
+        ret
+
+;-----------------------------------------------------------------------------
+; INT 13h AH=F0h (BIOS 2.0, comme Solution-01) : MONTER en A: l'image de disquette dont le
+; nom est en DS:SI de l'appelant (zero final, "NOM.IMG" ; sans point : ".IMG" ajoute) ->
+; AH = 0 et CX:DX = taille ; sinon CF = 1 et AH = E1h (pas de carte / pas de FAT), E2h
+; (introuvable), E5h (nom invalide), EFh (taille inconnue ou fichier fragmente). AH=F1h :
+; A: = la disquette en ROM. Le BASIC s'en sert (BOOT "NOM.IMG"). Le tampon de la carte
+; (00500h) est sauve puis remis ; la carte est relue (C: et B: gardent leur image).
+;-----------------------------------------------------------------------------
+V_NOM83         equ     V_NOM1          ; (11 o) nom cherche (V_NOM1 : diagnostic seulement)
+
+int13_monte:
+        push    ds                      ; nom de l'appelant -> V_NOM83 (8 + 3, espaces)
+        mov     ds, [bp + R_DS]
+        mov     si, [bp + R_SI]
+        call    nom83_es
+        pop     ds
+        mov     ah, 0E5h
+        jc      .err
+        push    ds                      ; tampon de la carte -> CHG_SAUVE
+        mov     ax, SD_TAMPON
+        mov     ds, ax
+        xor     si, si
+        mov     di, CHG_SAUVE
+        mov     cx, 256
+        cld
+        rep     movsw
+        pop     ds
+        call    sd_init
+        jc      .pas_carte
+        call    fat_ouvre
+        jc      .pas_carte
+        call    img_liste
+        xor     bl, bl                  ; BL = image
+.cherche:
+        cmp     bl, [es:V_IMG_NB]
+        jae     .introuvable
+        mov     al, bl
+        mov     cl, IMG_T
+        mul     cl
+        add     ax, T_IMG
+        mov     si, ax
+        mov     di, V_NOM83
+        mov     cx, 11
+        push    si
+.c:     mov     al, [es:si]
+        cmp     al, [es:di]
+        jne     .diff
+        inc     si
+        inc     di
+        loop    .c
+        pop     si                      ; 11 caracteres egaux
+        jmp     .trouve
+.diff:  pop     si
+        inc     bl
+        jmp     .cherche
+.trouve:
+        mov     ax, [es:si + 11]        ; taille -> CX:DX de l'appelant
+        mov     [bp + R_DX], ax
+        mov     ax, [es:si + 13]
+        mov     [bp + R_CX], ax
+        mov     al, bl
+        call    img_ouvre
+        mov     ah, 0EFh
+        jc      .remet
+        mov     di, IMG_A
+        call    img_vers
+        mov     byte [es:V_CHG_LIGNE], 1
+        xor     ah, ah
+        jmp     .remet
+.introuvable:
+        mov     ah, 0E2h
+        jmp     .remet
+.pas_carte:
+        mov     ah, 0E1h
+.remet: push    ax                      ; CHG_SAUVE -> tampon de la carte
+        push    ds
+        push    es
+        mov     ax, es
+        mov     ds, ax
+        mov     ax, SD_TAMPON
+        mov     es, ax
+        mov     si, CHG_SAUVE
+        xor     di, di
+        mov     cx, 256
+        cld
+        rep     movsw
+        pop     es
+        pop     ds
+        mov     word [es:V_FAT_CACHE], 0FFFFh
+        mov     word [es:V_FAT_CACHE + 2], 0FFFFh
+        pop     ax
+        or      ah, ah
+        jnz     .err
+        mov     byte [bp + R_AX + 1], 0
+        jmp     bios_cf0
+.err:   mov     [bp + R_AX + 1], ah
+        jmp     bios_cf1
+
+int13_demonte:
+        mov     byte [es:V_IMG_ACTIF], 0
+        mov     byte [es:V_CHG_LIGNE], 1
+        mov     byte [bp + R_AX + 1], 0
+        jmp     bios_cf0
+
+; nom83_es : nom DS:SI (zero final, minuscules acceptees) -> ES:V_NOM83 (8 + 3 caracteres,
+; espaces ; sans point : extension IMG). CF = 1 : nom invalide. Detruit AX, CX, SI, DI.
+nom83_es:
+        mov     di, V_NOM83
+        mov     cx, 11
+        mov     al, ' '
+        cld
+        rep     stosb
+        mov     di, V_NOM83
+        mov     cx, 8
+.base:  lodsb
+        or      al, al
+        jz      .sans_ext
+        cmp     al, '.'
+        je      .ext
+        jcxz    .non
+        call    .car
+        jc      .non
+        stosb
+        dec     cx
+        jmp     .base
+.ext:   cmp     di, V_NOM83
+        je      .non                    ; nom vide
+        mov     di, V_NOM83 + 8
+        mov     cx, 3
+.e:     lodsb
+        or      al, al
+        jz      .oui
+        jcxz    .non
+        call    .car
+        jc      .non
+        stosb
+        dec     cx
+        jmp     .e
+.sans_ext:
+        cmp     di, V_NOM83
+        je      .non
+        mov     word [es:V_NOM83 + 8], 'IM'
+        mov     byte [es:V_NOM83 + 10], 'G'
+.oui:   clc
+        ret
+.non:   stc
+        ret
+.car:   cmp     al, 'a'                 ; AL : majuscule ; CF = 1 si interdit
+        jb      .c1
+        cmp     al, 'z'
+        ja      .c1
+        sub     al, 20h
+.c1:    cmp     al, '!'
+        jb      .interdit
+        cmp     al, '*'
+        je      .interdit
+        cmp     al, '?'
+        je      .interdit
+        cmp     al, '/'
+        je      .interdit
+        cmp     al, '\'
+        je      .interdit
+        clc
+        ret
+.interdit:
+        stc
         ret
 
 txt_chg_titre:  db  'Disquette A: Entree '

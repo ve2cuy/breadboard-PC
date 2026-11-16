@@ -10,10 +10,13 @@
 ;   uart_tx_byte      -> INT 10h AH=0Eh : tampon d'ecran 24 x 80, fenetre du LCD et, si la
 ;                        console UART est a ON, le terminal
 ;   uart_rx_available -> INT 16h AH=01h (clavier PS/2 et touches du terminal)
-;   uart_rx_byte      -> INT 16h AH=00h (touches etendues ignorees)
+;   uart_rx_byte      -> INT 16h AH=00h ; fleches, Debut, Fin -> ESC [ A..D, H, F (rappel
+;                        de la derniere commande par fleche haut, comme au terminal)
 ;   rtc_get / rtc_set -> heure : compteur de tops du BDA (INT 1Ah, avance par IRQ0) ;
 ;                        date gardee en RAM (DSEG:0C60h), 1980-01-01 au depart
-;   fs_*              -> pas de disque (pont absent) : etat 9 = "Device unavailable"
+;   fs_*              -> fichiers sur la disquette A: (fs_s02.inc) : SAVE, LOAD, FILES, KILL,
+;                        OPEN/CLOSE/PRINT#/INPUT#, FORMAT, DSKREAD/DSKWRITE ; BOOT "NOM.IMG"
+;                        monte l'image (INT 13h AH=F0h du BIOS) puis demarre dessus
 ; =============================================================================
         bits    16
         cpu     8086
@@ -27,6 +30,15 @@ DSEG_S02        equ     7F00h           ; donnees du BIOS de Solution-02
 RTC_DATE        equ     0C60h           ; (DSEG) annee (mot), mois, jour ; 0 = jamais reglee
 
 entree:
+        push    ax                      ; etat des fichiers et du clavier (FS_SEG) a zero :
+        push    ds                      ; rien d'ouvert, disquette a relire
+        mov     ax, FS_SEG
+        mov     ds, ax
+        mov     byte [fv_monte], 0
+        mov     byte [ff_ouvert], 0
+        mov     byte [fk_n], 0
+        pop     ds
+        pop     ax
         jmp     basic_run
 
 ; ---- console ---------------------------------------------------------------------
@@ -40,38 +52,91 @@ uart_tx_byte:
         pop     ax
         ret
 
+; Touches etendues (AL = 0 : fleches, Debut, Fin, Suppr...) -> sequences ANSI, comme
+; celles du terminal de Solution-01 que le BASIC comprend (ESC [ A : rappel de la
+; derniere commande) : les octets en attente sont gardes en FS_SEG (fk_n, fk_buf).
+touches_ansi:
+        db      48h, 'A', 50h, 'B', 4Dh, 'C', 4Bh, 'D', 47h, 'H', 4Fh, 'F', 0
+
+; touche_ansi : AH = code XT d'une touche etendue -> AL = lettre de sa sequence, CF = 0 ;
+; CF = 1 : sans sequence. Detruit AL.
+touche_ansi:
+        push    si
+        mov     si, touches_ansi
+.l:     mov     al, [cs:si]
+        or      al, al
+        jz      .non
+        cmp     al, ah
+        je      .oui
+        add     si, 2
+        jmp     .l
+.oui:   mov     al, [cs:si + 1]
+        pop     si
+        clc
+        ret
+.non:   pop     si
+        stc
+        ret
+
 ; uart_rx_available : CF = 0 et AL = 1 si une touche attend ; CF = 1 et AL = 0 sinon.
 uart_rx_available:
         push    bx
+        push    ds
+        mov     bx, FS_SEG
+        mov     ds, bx
+        cmp     byte [fk_n], 0          ; reste d'une sequence
+        pop     ds
+        jne     .oui
         mov     bl, ah
         mov     ah, 01h
         int     16h
-        mov     ah, bl
         jz      .rien
-        or      al, al                  ; touche etendue (AL = 0) : la retirer, l'ignorer
-        jnz     .oui
-        push    ax
+        or      al, al
+        jnz     .oui_ah
+        push    ax                      ; touche etendue : gardee si elle a une sequence,
+        call    touche_ansi             ; sinon retiree et ignoree
+        pop     ax
+        jnc     .oui_ah
         mov     ah, 00h
         int     16h
-        pop     ax
-.rien:  pop     bx
+.rien:  mov     ah, bl
+        pop     bx
         mov     al, 0
         stc
         ret
+.oui_ah:
+        mov     ah, bl
 .oui:   pop     bx
         mov     al, 1
         clc
         ret
 
-; uart_rx_byte : AL = caractere (attend une touche ; les touches etendues sont ignorees).
+; uart_rx_byte : AL = caractere (attend une touche ; touche etendue -> ESC [ x, x livre ensuite).
 uart_rx_byte:
         push    bx
+        push    ds
+        mov     bx, FS_SEG
+        mov     ds, bx
         mov     bl, ah
+        cmp     byte [fk_n], 0
+        je      .t
+        mov     al, [fk_buf]            ; octet suivant de la sequence
+        mov     ah, [fk_buf + 1]
+        mov     [fk_buf], ah
+        dec     byte [fk_n]
+        jmp     .fin
 .t:     mov     ah, 00h
         int     16h
         or      al, al
-        jz      .t
-        mov     ah, bl
+        jnz     .fin
+        call    touche_ansi
+        jc      .t                      ; sans sequence : ignoree
+        mov     byte [fk_buf], '['
+        mov     [fk_buf + 1], al
+        mov     byte [fk_n], 2
+        mov     al, 1Bh
+.fin:   mov     ah, bl
+        pop     ds
         pop     bx
         ret
 
@@ -200,27 +265,7 @@ div32_16:
         mov     dx, cx
         ret
 
-; ---- disque : pas de pont ici ------------------------------------------------------
-FS_INDISPONIBLE equ     9               ; -> ERR_DUN "Device unavailable" (basic_disk.asm)
-FS_MODE_READ    equ     0               ; (valeurs de Solution-01/lib/bridge.asm)
-FS_MODE_WRITE   equ     1
-FS_MODE_APPEND  equ     2
-FS_USB_ON       equ     25h
-FS_USB_OFF      equ     26h
-fs_cmd0:
-fs_close:
-fs_delete:
-fs_dir_first:
-fs_dir_next:
-fs_format:
-fs_free:
-fs_open:
-fs_read:
-fs_sec_read:
-fs_sec_write:
-fs_write:
-        mov     al, FS_INDISPONIBLE
-        clc
-        ret
+; ---- disque : la disquette A: (fs_s02.inc, FAT12 sur INT 13h) ------------------------
+%include "fs_s02.inc"
 
 %include "lib/basic.asm"

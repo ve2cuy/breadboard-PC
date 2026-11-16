@@ -7,7 +7,7 @@ NASM_DEF = $(if $(UART_N),-DUART_N=$(UART_N))
 all: $(IMAGE)
 
 BASIC_BIN = build/basic_s02.bin
-BASIC_SRC = basic_s02.asm $(wildcard ../../Solution-01/lib/basic*.asm) ../../Solution-01/lib/basic_tokens.inc
+BASIC_SRC = basic_s02.asm fs_s02.inc $(wildcard ../../Solution-01/lib/basic*.asm) ../../Solution-01/lib/basic_tokens.inc
 $(BASIC_BIN): $(BASIC_SRC)
 	@mkdir -p build
 	$(NASM) -f bin -i ../../Solution-01/ -l build/basic_s02.lst -o $@ basic_s02.asm

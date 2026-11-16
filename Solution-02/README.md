@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 1.9 :
+Contenu de la ROM et de la RAM avec le BIOS 2.0 :
 
 | Adresses | Contenu |
 |---|---|
@@ -328,13 +328,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 1.9
+## BIOS 2.0
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.9`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 2.0`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -479,6 +479,13 @@ carte fraîchement formatée), produites depuis les disquettes d'installation :
 |---|---|---|
 | `DOS622_C.IMG` (32 Mo, FAT16) | MS-DOS 6.22 français installé : `IO.SYS`, `MSDOS.SYS`, `COMMAND.COM`, `CONFIG.SYS`, `AUTOEXEC.BAT` à la racine, tout `C:\DOS` (fichiers `*.??_` décompressés : format KWAJ de MS-DOS 6, noms d'origine par `PACKING.LST`) | `python tests/gen_dos622.py` (archive `.7z` des 4 disquettes) |
 | `FREEDOS_C.IMG` (32 Mo, FAT16) | FreeDOS 1.4 version 8086 : `KERNEL.SYS` de l'édition disquette (x86), `COMMAND.COM`, `FDCONFIG.SYS`, `FDAUTO.BAT` ; les 50 paquets BASE de l'édition LiteUSB dans `C:\FREEDOS` (sans sources ni paquets 286/386) | `python tests/gen_freedos.py` (`FD14-FloppyEdition.zip`, `FD14-LiteUSB.zip`) |
+
+Console UART (BIOS 2.0) : INT 10h AH=02h (position du curseur) est recopié au
+terminal en déplacement relatif (`ESC [ n A/B/C/D`) et AH=09h/0Ah (caractère à
+la position) en caractères suivis d'un retour du curseur ; la position du
+curseur est aussi tenue dans le BDA (0040:0050), que FreeCOM lit directement
+(sans elle, le retour arrière effaçait au mauvais endroit : un espace au
+terminal).
 
 `FDCONFIG.SYS` porte **`STACKS=0,0`** : sans lui, le noyau de FreeDOS détourne
 IRQ0, IRQ1 et IRQ4 (INT 08h, 09h, 0Ch) par un relais qui change de pile ; ce
@@ -696,10 +703,29 @@ F000:8000) avec une couche d'adaptation : affichage par **INT 10h** (écran
 ON), clavier par **INT 16h** (clavier PS/2 et terminal), heure de **TIME$** et
 **TIMER** tirée du compteur de tops du BDA (IRQ0), date en RAM. Son segment est
 10000h (libre hors DOS). Bannière `VE2CUY 86 BASIC Version 1.0 (inspired by
-GW-BASIC)`, puis `Ok` ; **SYSTEM** ramène au menu. Limites : pas de disque
-(`LOAD`, `SAVE`, `FILES`… : *Device unavailable* ; le pont STM32 de Solution-01
-n'existe pas ici), et le rappel de la dernière commande (flèche haut) ne
-marche pas depuis le terminal (les touches étendues sont ignorées).
+GW-BASIC)`, puis `Ok` ; **SYSTEM** ramène au menu.
+
+**Fichiers** (BIOS 2.0, `fs_s02.inc`) : à la place du pont STM32 de Solution-01
+(même API `fs_*`, voir `Solution-01/lib/bridge.asm`), un petit système **FAT12**
+(racine seulement, un fichier ouvert à la fois) sur la **disquette A:** par
+INT 13h : `SAVE`, `LOAD`, `MERGE`, `RUN "f"`, `FILES` (avec l'espace libre),
+`KILL`, `OPEN`/`PRINT#`/`WRITE#`/`INPUT#`/`LINE INPUT#`/`CLOSE`, `FORMAT "YES"`
+(vide la FAT et la racine, garde le BPB), `DSKREAD`/`DSKWRITE` (secteur LBA).
+Données en 20000h (FAT et racine entières, tampon d'un secteur) ; la disquette
+est relue à la première opération et après un changement (INT 13h AH=16h). A:
+est l'image de la carte choisie (Load DOS, **Ctrl+Alt+Inser** ou Ctrl+] au
+terminal, ou `BOOT "NOM.IMG"`) ; sinon la disquette en ROM, en lecture seule
+(écrire donne *Disk I/O error*). `USB ON/OFF` : *Device unavailable*.
+
+**Charger une disquette** : Ctrl+Alt+Inser (liste des images de la carte) ;
+`BOOT "NOM.IMG"` monte l'image (INT 13h **AH=F0h**, propre au projet comme à
+Solution-01 ; « .IMG » ajouté sans point ; AH=F1h : la ROM) puis démarre dessus
+(INT 19h prépare d'abord le DOS comme Load DOS : BDA, vecteurs, B:).
+
+**Flèche haut** (rappel de la dernière commande au prompt) : les touches
+étendues d'INT 16h (flèches, Début, Fin) deviennent les séquences ANSI que
+l'éditeur de ligne du BASIC attend (`ESC [ A`…), au clavier PS/2 comme au
+terminal.
 
 ### 4) Info (SysInfo)
 
@@ -879,6 +905,7 @@ un module.
 
 ## État
 
+- 2026-11-16 : BIOS 2.0 : fichiers du BASIC sur la disquette A: (FAT12 : SAVE, LOAD, FILES, KILL, OPEN…), flèche haut au BASIC, BOOT "NOM.IMG" (INT 13h AH=F0h) ; curseur dans le BDA et recopié au terminal (retour arrière de FreeDOS). Gravé.
 - 2026-11-16 : BIOS 1.9 : le changement de A: s'ouvre aussi quand le DOS attend en interrogeant INT 16h AH=01h (sinon jamais) ; image FreeDOS avec `STACKS=0,0` (clavier PS/2 et UART corrects sous FreeDOS). Gravé.
 - 2026-11-16 : BIOS 1.8 : la barre oblique inverse s'affiche au LCD (CGRAM 4 ; la ROM A00 a le yen en 5Ch), â → a. Gravé.
 - 2026-11-16 : BIOS 1.7 : changement de la disquette de A: sous DOS (Ctrl+Alt+Inser, ou Ctrl+] au terminal) ; plusieurs images de disque dur au choix (Espace), C: vérifié après le choix (liste plus rapide) ; voyants d'accès sur U12 (D1 = PA0 disquettes, D2 = PA1 disque dur ; schéma), LED Show plus suspendu. Gravé.

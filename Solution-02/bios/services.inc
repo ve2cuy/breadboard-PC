@@ -180,6 +180,7 @@ dos_charger:
 .sans_ram:
         mov     ax, DSEG
         mov     es, ax
+        mov     byte [es:V_DOS_PRET], 1 ; INT 19h : le DOS est prepare
         mov     byte [es:V_CHG_A], 0    ; demande de changement de A: faite au menu : oubliee
         mov     byte [es:V_CHG_LIGNE], 0
         call    ecran_init
@@ -786,7 +787,8 @@ int10h:
 .p1:    cmp     dl, COLS - 1
         jbe     .p2
         mov     dl, COLS - 1
-.p2:    mov     [es:V_CUR], dx
+.p2:    call    uart_curseur            ; console UART : le curseur du terminal suit
+        mov     [es:V_CUR], dx
         jmp     .fin
 .lit_pos:
         mov     ax, [es:V_CUR]
@@ -796,7 +798,8 @@ int10h:
 .defile:
         call    ecran_defile
         jmp     .fin
-.ecrit: mov     dx, [es:V_CUR]          ; AL, CX fois, sans deplacer le curseur
+.ecrit: call    uart_ecrit              ; console UART : les caracteres aussi
+        mov     dx, [es:V_CUR]          ; AL, CX fois, sans deplacer le curseur
 .e:     jcxz    .fin
         call    ecran_cellule
         inc     dl
@@ -821,6 +824,88 @@ int10h:
 .efface:
         call    ecran_vide
         jmp     .fin
+
+; uart_curseur : (INT 10h AH=02h) console UART : deplacement RELATIF du curseur du terminal
+; de V_CUR a DX (ESC [ n A/B/C/D) : FreeCOM efface un caractere ainsi (position, espace,
+; position) ; le terminal peut avoir plus de lignes que l'ecran du DOS. Preserve tout.
+uart_curseur:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        push    ax
+        push    bx
+        mov     bx, [es:V_CUR]          ; BL = colonne, BH = ligne actuelles
+        mov     al, dh
+        mov     ah, 'B'                 ; vers le bas
+        sub     al, bh
+        je      .h
+        jnc     .v
+        neg     al
+        mov     ah, 'A'
+.v:     call    uart_csi
+.h:     mov     al, dl
+        mov     ah, 'C'                 ; vers la droite
+        sub     al, bl
+        je      .f
+        jnc     .hh
+        neg     al
+        mov     ah, 'D'
+.hh:    call    uart_csi
+.f:     pop     bx
+        pop     ax
+.r:     ret
+
+; uart_ecrit : (INT 10h AH=09h/0Ah) console UART : AL, CX fois (jusqu'a la fin de la ligne),
+; puis le curseur du terminal revient (ces fonctions ne le deplacent pas). Preserve tout.
+uart_ecrit:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        jcxz    .r
+        push    ax
+        push    bx
+        push    cx
+        mov     bl, COLS
+        sub     bl, [es:V_CUR]          ; colonnes restantes
+        xor     bh, bh
+        cmp     cx, bx
+        jbe     .n
+        mov     cx, bx
+.n:     push    cx
+.c:     call    uart_tx_cp437
+        loop    .c
+        pop     cx
+        mov     al, cl
+        mov     ah, 'D'
+        call    uart_csi
+        pop     cx
+        pop     bx
+        pop     ax
+.r:     ret
+
+; uart_csi : ESC [ n x sur le terminal (AL = n, 1-99 ; AH = x). Preserve tout.
+uart_csi:
+        push    ax
+        push    bx
+        mov     bx, ax
+        mov     al, 1Bh
+        call    uart_tx
+        mov     al, '['
+        call    uart_tx
+        mov     al, bl
+        xor     ah, ah
+        mov     bl, 10
+        div     bl                      ; AL = dizaines, AH = unites
+        or      al, al
+        jz      .u
+        add     al, '0'
+        call    uart_tx
+.u:     mov     al, ah
+        add     al, '0'
+        call    uart_tx
+        mov     al, bh
+        call    uart_tx
+        pop     bx
+        pop     ax
+        ret
 
 ; ecran_init : tampon vide, curseur et fenetre en 0,0, LCD efface (et ses 8 caracteres
 ; programmables charges : accents). Mode DOS actif.
@@ -1055,6 +1140,11 @@ ligne_vide:
 ; le curseur du LCD. Detruit AX, BX, DX.
 ecran_fin:
         mov     dx, [es:V_CUR]
+        push    ds                      ; position du curseur aussi dans le BDA (0040:0050,
+        mov     ax, 40h                 ; page 0) : FreeCOM la lit la (et non par AH=03h)
+        mov     ds, ax
+        mov     [50h], dx
+        pop     ds
         mov     bx, [es:V_VUE]
         cmp     dh, bh                  ; vertical
         jae     .v1
@@ -1451,7 +1541,16 @@ int18h:                                 ; (ROM BASIC sur un PC) : retour au menu
 ; INT 19h - amorcage : secteur 0 de A: en 0000:7C00, saut avec DL = 0
 ; =============================================================================
 int19h:
-        cli
+        push    ax                      ; appele hors du Load DOS (BOOT du BASIC) : le BIOS
+        push    ds                      ; prepare d'abord le DOS (BDA, vecteurs, B:), puis
+        mov     ax, DSEG                ; revient ici
+        mov     ds, ax
+        cmp     byte [V_DOS_PRET], 0
+        pop     ds
+        pop     ax
+        jne     .pret
+        jmp     dos_charger
+.pret:  cli
         xor     ax, ax
         mov     ss, ax
         mov     sp, 7C00h
@@ -1485,6 +1584,14 @@ int19h:
 int13h:
         BIOS_ENTREE
         mov     byte [es:V_CHG_CALME], 0 ; acces disque : le DOS n'est pas au repos
+        cmp     ah, 0F0h                ; F0h/F1h : monter/demonter une image en A: (sd.inc)
+        jne     .pas_f0
+        jmp     int13_monte
+.pas_f0:
+        cmp     ah, 0F1h
+        jne     .pas_f1
+        jmp     int13_demonte
+.pas_f1:
         cmp     dl, 80h                 ; C: = image de disque dur de la carte
         jne     .pas_c
         cmp     byte [es:V_HD_ACTIF], 0
