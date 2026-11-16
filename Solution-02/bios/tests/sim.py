@@ -33,6 +33,9 @@ class LCD:
         self.dernier = None          # (n instr, delai exige)
         self.erreurs = []
         self.fonction = 0            # nombre de "function set" recus
+        self.cgram = [0] * 64        # caracteres programmables (codes 0-7)
+        self.en_cg = False           # True apres une commande 40h-7Fh (adresse CGRAM)
+        self.acg = 0
 
     def ecrire(self, port, val, n):
         if self.dernier is not None:
@@ -47,9 +50,14 @@ class LCD:
             if val == 0x01:
                 self.ddram = [0x20] * 0x80
                 self.ac = 0
+                self.en_cg = False
                 exige = D_EFFACER
             elif val & 0x80:
                 self.ac = val & 0x7F
+                self.en_cg = False
+            elif val & 0x40:
+                self.acg = val & 0x3F
+                self.en_cg = True
             elif val & 0x20:
                 self.fonction += 1
                 if self.fonction == 1:
@@ -58,6 +66,9 @@ class LCD:
                     self.erreurs.append("function set %02Xh : mode 4 bits" % val)
             elif val & 0x08:
                 self.allume = bool(val & 0x04)
+        elif port == 1 and self.en_cg:
+            self.cgram[self.acg] = val
+            self.acg = (self.acg + 1) & 0x3F
         elif port == 1:
             self.donnees += 1
             self.ddram[self.ac] = val
@@ -1129,6 +1140,33 @@ def scenario_rom_b(image):
     return verifier("ROM + carte : B: = image PC-DOS 2.1 de la carte, 508 Ko", lcd, etat, None, ok)
 
 
+def scenario_accents(image):
+    """Caracteres 80h-FFh de la page de codes 437 (ceux du DOS) : PRINT CHR$(130);CHR$(135);
+    CHR$(129) dans le BASIC (INT 10h) -> UTF-8 sur le terminal (e aigu, c cedille, u trema) ;
+    LCD : CGRAM 0 et 5 (glyphes charges) puis 'u' (sans accent)."""
+    tx = lambda c: bytes(c["ppi2"].tx)
+    pas = Etapes([(au_menu, texte('6')), (lambda c: tx(c).endswith(b"Ok\r\n"), b"PRINT CHR$(130);CHR$(135);CHR$(129)\r"),
+                  (lambda c: tx(c).count(b"Ok\r\n") >= 2, b"SYSTEM\r")])
+
+    def fini(c):
+        return pas.faites == 3 and au_menu(c)
+    vu = {}
+
+    def entrees(c):
+        if bytes([0, 5, ord('u')]) in bytes(c["lcd"].ddram):
+            vu["lcd"] = True
+        pas(c)
+    lcd, etat, uc = lancer(image, fini=fini, entrees=entrees, max_instr=60_000_000)
+    t = tx({"ppi2": etat["ppi2"]})
+    utf = "\u00e9\u00e7\u00fc".encode('utf-8')
+    print("--- UART : %r ; LCD (codes 0, 5, 'u') vu : %s ; CGRAM 0 : %s" % (
+        t[t.find(b"PRINT CHR$"):][:60], vu.get("lcd"), ["%02X" % b for b in lcd.cgram[:8]]))
+    ok = utf in t and vu.get("lcd") and lcd.cgram[:8] == [0x02, 0x04, 0x0E, 0x11, 0x1F, 0x10, 0x0E, 0x00]
+    if not ok:
+        print("    attendu : e aigu, c cedille, u trema en UTF-8 sur l'UART ; LCD : CGRAM 0, 5 et 'u'")
+    return verifier("accents (page de codes 437) : UTF-8 sur le terminal, CGRAM sur le LCD", lcd, etat, MENU, ok)
+
+
 def scenario_nav_pave(image):
     """Maj + fleche dont le prefixe E0 est perdu (le BIOS voit la touche 8 du pave), puis
     Maj + 8 du pave : la fenetre du LCD doit remonter (Maj inverse Verr Num), sans '8'."""
@@ -1434,6 +1472,7 @@ def main():
         ("son", lambda: scenario_son(image)),
         ("basic", lambda: scenario_basic(image)),
         ("navpave", lambda: scenario_nav_pave(image)),
+        ("accents", lambda: scenario_accents(image)),
         ("diagsd", lambda: scenario_diag_sd(image)),
         ("sdboot", lambda: scenario_sd_boot(image)),
         ("sdfrag", lambda: scenario_sd_fragmentee(image)),

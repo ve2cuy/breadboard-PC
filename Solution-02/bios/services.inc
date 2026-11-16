@@ -728,9 +728,9 @@ int10h:
         cmp     ah, 00h
         je      .efface
         jmp     bios_sortie             ; 01h, 05h, 0Bh, ... : sans effet
-.tty:   cmp     byte [es:V_UCON], 0     ; console UART : copie sur TX
+.tty:   cmp     byte [es:V_UCON], 0     ; console UART : copie sur TX (80h-FFh en UTF-8)
         je      .t1
-        call    uart_tx
+        call    uart_tx_cp437
 .t1:    cmp     al, 7                   ; BEL : bip de 880 Hz, ~0,25 s
         jne     .t2
         push    ax
@@ -783,10 +783,12 @@ int10h:
         call    ecran_vide
         jmp     .fin
 
-; ecran_init : tampon vide, curseur et fenetre en 0,0, LCD efface. Mode DOS actif.
+; ecran_init : tampon vide, curseur et fenetre en 0,0, LCD efface (et ses 8 caracteres
+; programmables charges : accents). Mode DOS actif.
 ecran_init:
         mov     byte [es:V_DOS], 1
         mov     byte [es:V_LCDC], 0
+        call    lcd_cgram
         mov     al, 0Ch                 ; afficheur allume, sans curseur
         call    lcd_cmd_r
         mov     al, 01h                 ; effacer (1,52 ms)
@@ -1195,10 +1197,21 @@ lcd_aller:
         pop     bx
         jmp     lcd_cmd_r
 
-; lcd_car_f : caractere AL au LCD (codes de controle -> espace). Preserve tout.
+; lcd_car_f : caractere AL (page de codes 437 du DOS) au LCD : codes de controle ->
+; espace ; 80h-FFh -> table cp437_lcd (accents francais courants = CGRAM 0-7, voir
+; lcd_cgram ; les autres sans accent ; quelques symboles de la ROM A00). Preserve tout.
 lcd_car_f:
         cmp     al, ' '
-        jae     lcd_car_r
+        jb      .espace
+        cmp     al, 80h
+        jb      lcd_car_r
+        push    bx
+        mov     bl, al
+        and     bx, 7Fh
+        mov     al, [cs:bx + cp437_lcd]
+        pop     bx
+        jmp     lcd_car_r
+.espace:
         mov     al, ' '
 ; lcd_car_r / lcd_cmd_r : donnee / commande AL, delai LCD_D. Preservent tout.
 lcd_car_r:
@@ -1212,6 +1225,110 @@ lcd_attente:
 .d:     loop    .d
         pop     cx
         ret
+
+; lcd_cgram : charge les 8 caracteres programmables du LCD (codes 0-7) : e aigu, e grave,
+; e circonflexe, a grave, a circonflexe, c cedille, u grave, o circonflexe. Preserve tout.
+lcd_cgram:
+        push    ax
+        push    cx
+        push    si
+        mov     al, 40h                 ; adresse CGRAM 0
+        call    lcd_cmd_r
+        mov     si, lcd_glyphes
+        mov     cx, 64
+.g:     mov     al, [cs:si]
+        call    lcd_car_r
+        inc     si
+        loop    .g
+        mov     al, 80h                 ; retour en DDRAM
+        call    lcd_cmd_r
+        pop     si
+        pop     cx
+        pop     ax
+        ret
+
+lcd_glyphes:
+        db      02h, 04h, 0Eh, 11h, 1Fh, 10h, 0Eh, 00h   ; 0 : e aigu
+        db      08h, 04h, 0Eh, 11h, 1Fh, 10h, 0Eh, 00h   ; 1 : e grave
+        db      04h, 0Ah, 0Eh, 11h, 1Fh, 10h, 0Eh, 00h   ; 2 : e circonflexe
+        db      08h, 04h, 0Eh, 01h, 0Fh, 11h, 0Fh, 00h   ; 3 : a grave
+        db      04h, 0Ah, 0Eh, 01h, 0Fh, 11h, 0Fh, 00h   ; 4 : a circonflexe
+        db      00h, 00h, 0Eh, 10h, 10h, 11h, 0Eh, 04h   ; 5 : c cedille
+        db      08h, 04h, 11h, 11h, 11h, 13h, 0Dh, 00h   ; 6 : u grave
+        db      04h, 0Ah, 0Eh, 11h, 11h, 11h, 0Eh, 00h   ; 7 : o circonflexe
+
+; page de codes 437 (80h-FFh) -> octet du LCD : 0-7 = CGRAM, sinon ASCII ou ROM A00
+cp437_lcd:
+        db      043h, 075h, 000h, 004h, 061h, 003h, 061h, 005h, 002h, 065h, 001h, 069h, 069h, 069h, 041h, 041h   ; 80h
+        db      045h, 061h, 041h, 007h, 06Fh, 06Fh, 075h, 006h, 079h, 04Fh, 055h, 063h, 04Ch, 059h, 050h, 066h   ; 90h
+        db      061h, 069h, 06Fh, 075h, 06Eh, 04Eh, 061h, 06Fh, 03Fh, 02Dh, 02Dh, 02Fh, 02Fh, 021h, 03Ch, 03Eh   ; A0h
+        db      0FFh, 0FFh, 0FFh, 07Ch, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 07Ch, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh   ; B0h
+        db      02Bh, 02Bh, 02Bh, 02Bh, 02Dh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 03Dh, 02Bh, 02Bh   ; C0h
+        db      02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 0FFh, 05Fh, 07Ch, 07Ch, 02Dh   ; D0h
+        db      0E0h, 0E2h, 047h, 0F7h, 0F6h, 0E5h, 0E4h, 074h, 04Fh, 0F2h, 0F4h, 064h, 0F3h, 06Fh, 0E3h, 06Eh   ; E0h
+        db      03Dh, 02Bh, 03Eh, 03Ch, 07Ch, 07Ch, 0FDh, 07Eh, 0DFh, 0A5h, 0A5h, 0E8h, 06Eh, 032h, 0FFh, 020h   ; F0h
+
+; uart_tx_cp437 : AL (page de codes 437 du DOS) vers le terminal : 00h-7Fh tels quels,
+; 80h-FFh en UTF-8 (2 ou 3 octets, comme Solution-01) : le terminal doit etre en UTF-8.
+; Preserve tout.
+uart_tx_cp437:
+        test    al, 80h
+        jnz     .ext
+        jmp     uart_tx
+.ext:   push    ax
+        push    bx
+        push    cx
+        mov     bl, al
+        and     bx, 007Fh
+        shl     bx, 1
+        mov     bx, [cs:bx + cp437_utf]
+        cmp     bx, 0800h
+        jae     .trois
+        mov     ax, bx                  ; 2 octets : 110xxxxx 10xxxxxx
+        mov     cl, 6
+        shr     ax, cl
+        or      al, 0C0h
+        call    uart_tx
+        jmp     .dernier
+.trois: mov     ax, bx                  ; 3 octets : 1110xxxx 10xxxxxx 10xxxxxx
+        mov     cl, 12
+        shr     ax, cl
+        or      al, 0E0h
+        call    uart_tx
+        mov     ax, bx
+        mov     cl, 6
+        shr     ax, cl
+        and     al, 3Fh
+        or      al, 80h
+        call    uart_tx
+.dernier:
+        mov     al, bl
+        and     al, 3Fh
+        or      al, 80h
+        call    uart_tx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; page de codes 437 : point de code Unicode de 80h-FFh
+cp437_utf:
+        dw      000C7h, 000FCh, 000E9h, 000E2h, 000E4h, 000E0h, 000E5h, 000E7h   ; 80h-87h
+        dw      000EAh, 000EBh, 000E8h, 000EFh, 000EEh, 000ECh, 000C4h, 000C5h   ; 88h-8Fh
+        dw      000C9h, 000E6h, 000C6h, 000F4h, 000F6h, 000F2h, 000FBh, 000F9h   ; 90h-97h
+        dw      000FFh, 000D6h, 000DCh, 000A2h, 000A3h, 000A5h, 020A7h, 00192h   ; 98h-9Fh
+        dw      000E1h, 000EDh, 000F3h, 000FAh, 000F1h, 000D1h, 000AAh, 000BAh   ; A0h-A7h
+        dw      000BFh, 02310h, 000ACh, 000BDh, 000BCh, 000A1h, 000ABh, 000BBh   ; A8h-AFh
+        dw      02591h, 02592h, 02593h, 02502h, 02524h, 02561h, 02562h, 02556h   ; B0h-B7h
+        dw      02555h, 02563h, 02551h, 02557h, 0255Dh, 0255Ch, 0255Bh, 02510h   ; B8h-BFh
+        dw      02514h, 02534h, 0252Ch, 0251Ch, 02500h, 0253Ch, 0255Eh, 0255Fh   ; C0h-C7h
+        dw      0255Ah, 02554h, 02569h, 02566h, 02560h, 02550h, 0256Ch, 02567h   ; C8h-CFh
+        dw      02568h, 02564h, 02565h, 02559h, 02558h, 02552h, 02553h, 0256Bh   ; D0h-D7h
+        dw      0256Ah, 02518h, 0250Ch, 02588h, 02584h, 0258Ch, 02590h, 02580h   ; D8h-DFh
+        dw      003B1h, 000DFh, 00393h, 003C0h, 003A3h, 003C3h, 000B5h, 003C4h   ; E0h-E7h
+        dw      003A6h, 00398h, 003A9h, 003B4h, 0221Eh, 003C6h, 003B5h, 02229h   ; E8h-EFh
+        dw      02261h, 000B1h, 02265h, 02264h, 02320h, 02321h, 000F7h, 02248h   ; F0h-F7h
+        dw      000B0h, 02219h, 000B7h, 0221Ah, 0207Fh, 000B2h, 025A0h, 000A0h   ; F8h-FFh
 
 lignes_ddram:
         db      LIGNE1, LIGNE2, LIGNE3, LIGNE4
