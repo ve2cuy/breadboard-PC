@@ -60,7 +60,7 @@ bloc de 16 ports :
 | O0 | 15 | 00h–0Fh | **LCD (occupé)** : 00h = commande, 01h = donnée (RS = A0) |
 | O1 | 14 | 10h–1Fh | **8255 (U7, occupé)** : 10h = PA, 11h = PB, 12h = PC, 13h = contrôle (A0–A1) |
 | O2 | 13 | 20h–2Fh | **8259A (U13)** : 20h = ICW1/OCW2/OCW3 (A0 = 0), 21h = ICW2-4/OCW1 (masque) — comme le PC |
-| O3 | 12 | 30h–3Fh | **2e 8255 (U12, occupé)** : 30h = PA, 31h = PB, 32h = PC, 33h = contrôle (au schéma : port A en mode 2 vers l'ATmega U17) |
+| O3 | 12 | 30h–3Fh | **2e 8255 (U12, occupé)** : 30h = PA, 31h = PB, 32h = PC, 33h = contrôle (clavier, UART logiciel, lecteur SD) |
 | O4 | 11 | 40h–4Fh | **8253-2 (U15)** : 40h–42h = compteurs 0–2, 43h = mode (A0–A1) |
 | O5 | 10 | 50h–5Fh | libre |
 | O6 | 9 | 60h–6Fh | **verrou du port 61h (U16)** : bit 0 = GATE2, bit 1 = haut-parleur (écriture seule) |
@@ -241,45 +241,31 @@ touche peut encore se perdre de temps en temps. **Décision (2026-11-14) : la
 diode ne sera pas posée** ; le 8259 (U13, ci-dessous) signale le début de
 chaque trame du clavier et de chaque octet de l'UART par une interruption.
 
-## UART par ATmega328P (U17) — au schéma, pas encore câblé
+## Lecteur de carte SD (J9) — au schéma, pas encore câblé
 
-Au schéma (le BIOS 1.1 utilise encore l'UART logiciel) : un **ATmega328P** sur
-**quartz de 16 MHz** (Y2, C5 et C6 de 22 pF ; puce validée sur plaquette)
-devient l'UART du montage, derrière **U12 en mode 2** (comme le pont STM32 de
-Solution-01). L'ATmega ne peut pas suivre un cycle du bus du 8088 (~375 ns =
-3 instructions) : le port A de U12 sert de boîte aux lettres bidirectionnelle,
-avec sa poignée de main et son interruption.
+Dans l'esprit des émulateurs de disquette d'époque (Gotek, HxC) : un module
+lecteur microSD sur **U12**, le protocole SPI produit **bit par bit par le
+8088**, et le BIOS lit la carte (FAT16 ou FAT32) pour démarrer sur une image de
+disquette `.IMG`. Aucun microcontrôleur.
 
-| U12 (8255, mode 2, mot C2h) | Signal | ATmega328P (U17) |
+| Signal du module (J9) | U12 (8255, mode 0, mot 82h inchangé) | Sens |
 |---|---|---|
-| PA0–PA5 (4, 3, 2, 1, 40, 39) | AVR_D0–D5 | PD2–PD7 (4, 5, 6, 11, 12, 13) |
-| PA6, PA7 (38, 37) | AVR_D6, D7 | PB0, PB1 (14, 15) |
-| PC7 = ~OBF (10) | « le 8088 a écrit un octet » | PC0 (23) |
-| PC6 = ~ACK (11) | l'AVR prend l'octet (tirage 10 kΩ, R10) | PC1 (24) |
-| PC4 = ~STB (13) | l'AVR dépose un octet (tirage 10 kΩ, R11) | PC2 (25) |
-| PC5 = IBF (12) | tampon d'entrée du 8255 plein | PC3 (26) |
-| PC0 (14) | AVR_CMD : 1 = commande, 0 = donnée | PC4 (27) |
-| PC3 = INTRA (17) | **IRQ4** (IR4 du 8259, directement) | — |
+| 1 CS | **PC4** (broche 13) ; R10 10 kΩ au +5 V (carte désélectionnée pendant le RESET, 8255 en entrée) | sortie |
+| 2 SCK | **PC5** (broche 12) | sortie |
+| 3 MOSI | **PC6** (broche 11) | sortie |
+| 4 MISO | **PB3** (broche 21) ; R9 10 kΩ au +5 V (niveau défini sans carte) | entrée |
+| 5 VCC | **+5 V** (le régulateur AMS1117 du module fait le 3,3 V de la carte) | |
+| 6 GND | masse | |
 
-| ATmega328P | Rôle |
-|---|---|
-| PD0 / PD1 (2, 3) | RXD / TXD : **J5** (UART_RX, UART_TX ; R4 tire RX au +5 V) |
-| XTAL1, XTAL2 (9, 10) | quartz 16 MHz (Y2) et 22 pF (C5, C6) vers la masse |
-| PC5 (28) / PB2 (16) | RTS / CTS : J8 (optionnel ; CTS tiré à la masse par R12) ; PB2 (SS) sera à revoir pour un lecteur SD |
-| PB3, PB4, PB5 (17, 18, 19) | MOSI, MISO, SCK : **J7 (ISP 2×3)** ; libres ensuite pour un lecteur de carte SD |
-| AREF (21) | libre |
-| RESET (1) | tirage 10 kΩ (R9) ; diode D1 (1N4148) vers ~RESET (U14 C) : le RESET du montage remet l'AVR à zéro sans gêner l'ISP |
-| VCC, AVCC / GND | +5 V / masse, C4 100 nF |
+Le 74LVC125 du module abaisse CS, SCK et MOSI à 3,3 V ; MISO sort en 3,3 V,
+assez pour une entrée du 8255 (seuil 2,2 V). Le clavier (PB0, PB1) et l'UART
+logiciel (PA7, PB2) ne changent pas. Débit attendu du SPI logiciel : ~60 µs par
+octet, ~15 Ko/s (une disquette d'XT : 25 à 40 Ko/s).
 
-L'**UART logiciel est retiré** du schéma : PA7 (TX) et PB2 (RX) de U12 ne vont
-plus à J5, et la porte B de U14 (UART_RX → IR4) est libre (entrée à la masse).
-Le clavier PS/2 garde PB0 et PB1 (groupe B en mode 0, entrée). Fusibles prévus :
-lfuse FFh (quartz externe), hfuse D9h, efuse FDh. Débits à 16 MHz (U2X) : 9600,
-19200, 38400 (0,2 %), 57600 (−0,8 %), 115200 (2,1 %). OUT1 de la 8253 reste libre.
-Micrologiciel : `arduino/atmega_uart/` (PlatformIO, C ; `make flash PUCE=ok` grave
-au TL866CS le code et les fusibles) ; étape 1 = clignotement d'une DEL sur PB5
-(broche 19), validée sur la plaquette. À suivre : micrologiciel
-(`arduino/atmega_uart/`), simulateur, BIOS 1.2 (mode 2, détection, IRQ4).
+L'ATmega328P proposé comme UART a été **abandonné** au profit de l'esprit
+vintage (le projet du micrologiciel de clignotement reste dans
+`arduino/atmega_uart/`) ; une vraie puce UART d'époque (8250, 16450, 6850)
+pourra venir plus tard.
 
 ## 8259A (U13) : interruptions du clavier et de l'UART
 
@@ -726,6 +712,7 @@ un module.
 
 ## État
 
+- 2026-11-16 : schéma : lecteur microSD (J9) sur U12 (PC4 = CS, PC5 = SCK, PC6 = MOSI, PB3 = MISO, R9/R10 10 kΩ), SPI par le 8088 ; ATmega328P retiré (esprit vintage), UART logiciel rétabli.
 - 2026-11-15 : BIOS 1.2 : écran d'accueil ANSI en couleur sur le terminal au passage de la console UART à ON (inspiré de l'accueil de z/OS, sans LOGON). Gravé.
 - 2026-11-15 : ATmega328P sur **quartz 16 MHz** (validé sur plaquette, clignotement) ; schéma : Y2 + C5/C6, AVR_CMD → PC4, CTS → PB2, OUT1 de la 8253 libre.
 - 2026-11-15 : schéma : UART par **ATmega328P** (U17, RC interne 8 MHz) derrière U12 en mode 2 (PA0–7, poignée de main PC4–PC7, INTRA → IRQ4), OUT1 de la 8253 → référence d'horloge, ISP J7, RTS/CTS J8 ; UART logiciel retiré du schéma. À valider ; BIOS inchangé.
