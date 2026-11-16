@@ -1,3 +1,8 @@
 *.bin
 .history
 build/
+
+# Archives d'installation et images de disque dur produites (jamais dans git)
+PC-DOS/*.zip
+PC-DOS/*.7z
+PC-DOS/*_C.IMG

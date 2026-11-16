@@ -676,6 +676,21 @@ V_IMG_LBA       equ     V_IMG_COUR + 8
 V_PROGRES       equ     0C5Ch           ; 1 = demarrage depuis la carte en cours (progression)
 V_LUS           equ     0C5Eh           ; (dw) secteurs lus pendant le demarrage
 V_IMG_NB        equ     8F2h            ; images dans la table
+; disque dur C: (1er .IMG de plus de 1,44 Mo) : entree de repertoire (format de T_IMG),
+; geometrie, table des parametres pointee par INT 41h
+V_HD_NB         equ     8F3h            ; 1 = un fichier de disque dur a ete trouve
+V_HD_ACTIF      equ     0C70h           ; 1 = C: monte
+V_HD_TETES      equ     0C72h           ; (dw)
+V_HD_SPT        equ     0C74h           ; (dw)
+V_HD_CYL        equ     0C76h           ; (dw)
+V_HD_SECT       equ     0C78h           ; (dd) secteurs de l'image
+V_HD_LBA        equ     0C7Ch           ; (dd) premier secteur de l'image sur la carte
+HD_TABLE        equ     0C80h           ; (16 o) table des parametres du disque fixe (INT 41h)
+V_BOOT_C        equ     0C90h           ; 1 = demarrer depuis C:
+V_DISQUE        equ     0C92h           ; tops IRQ0 restants de pause du LED Show (acces disque)
+V_HD_ENT        equ     0C94h           ; (20 o) entree du fichier de C:
+HD_TETES_DEF    equ     16              ; image sans table de partitions : 16 tetes, 63 secteurs
+HD_SPT_DEF      equ     63
 V_FAT_CACHE     equ     8ECh            ; (dd) secteur de FAT dans SD_TAMPON (FFFFFFFFh : aucun)
 V_IMG_CHOIX     equ     8F0h            ; ligne choisie (0 = ROM)
 V_IMG_HAUT      equ     8F1h            ; premiere ligne visible
@@ -702,6 +717,7 @@ img_formats_fin:
 ; V_IMG_NB. Detruit AX, BX, CX, DX, SI, DI.
 img_liste:
         mov     byte [es:V_IMG_NB], 0
+        mov     byte [es:V_HD_NB], 0
         mov     ax, [es:V_FAT_RACINE]
         mov     dx, [es:V_FAT_RACINE + 2]
         mov     cx, [es:V_FAT_RACN]
@@ -728,6 +744,18 @@ img_liste:
         jne     .suiv_ds
         cmp     byte [si + 10], 'G'
         jne     .suiv_ds
+        cmp     word [si + 1Eh], 16h    ; plus de 1 474 560 o (00168000h) : disque dur
+        ja      .disque
+        jb      .disquette
+        cmp     word [si + 1Ch], 8000h
+        jbe     .disquette
+.disque:
+        cmp     byte [es:V_HD_NB], 0    ; le premier seulement
+        jne     .suiv_ds
+        mov     byte [es:V_HD_NB], 1
+        mov     di, V_HD_ENT
+        jmp     .copie
+.disquette:
         mov     al, [es:V_IMG_NB]
         cmp     al, IMG_MAX
         jae     .suiv_ds
@@ -735,6 +763,8 @@ img_liste:
         mul     bl
         add     ax, T_IMG
         mov     di, ax
+        inc     byte [es:V_IMG_NB]
+.copie:
         push    si
         mov     cx, 11                  ; nom
         rep     movsb
@@ -747,7 +777,6 @@ img_liste:
         stosw
         mov     ax, [si + 14h]
         stosw
-        inc     byte [es:V_IMG_NB]
 .suiv_ds:
         pop     ds
         add     si, 32
@@ -758,8 +787,10 @@ img_liste:
         pop     cx
         add     ax, 1
         adc     dx, 0
-        loop    .secteur
-        ret
+        dec     cx                      ; (boucle trop longue pour LOOP)
+        jz      .fini
+        jmp     .secteur
+.fini:  ret
 .fin_ds:
         pop     ds
 .fin:   pop     dx
@@ -869,6 +900,18 @@ img_ouvre:
         shr     ax, 1
         jmp     .a
 .a_fin: mov     bx, ax                  ; BX = amas
+        call    fat_contigu
+        jc      .r
+        mov     [es:V_IMG_LBA], ax
+        mov     [es:V_IMG_LBA + 2], dx
+        mov     byte [es:V_IMG_COUR], 1
+        clc
+.r:     ret
+
+; fat_contigu : fichier de l'entree ES:DI (format T_IMG : 1er amas en +15) de BX amas (>= 1) :
+; chaque amas doit etre suivi du suivant. CF = 0 et DX:AX = premier secteur sur la carte ;
+; CF = 1 et AL = 2 fragmente, 3 erreur de lecture. Detruit BX, CX, SI.
+fat_contigu:
         mov     word [es:V_FAT_CACHE], 0FFFFh
         mov     word [es:V_FAT_CACHE + 2], 0FFFFh
         mov     ax, [es:di + 15]        ; premier amas
@@ -911,10 +954,107 @@ img_ouvre:
         pop     dx
         pop     ax
         call    fat_amas_lba
-        mov     [es:V_IMG_LBA], ax
-        mov     [es:V_IMG_LBA + 2], dx
-        mov     byte [es:V_IMG_COUR], 1
         clc
+        ret
+
+; hd_ouvre : monte C: (V_HD_ENT) : secteurs = taille / 512 ; geometrie d'apres la 1re
+; partition de l'image (tete et secteur de fin), sinon 16 tetes x 63 secteurs ; cylindres
+; = secteurs / (tetes x secteurs), 1024 au plus ; fichier d'un seul tenant ; table INT 41h.
+; CF = 1 si refus. Detruit AX, BX, CX, DX, SI, DI.
+hd_ouvre:
+        mov     byte [es:V_HD_ACTIF], 0
+        mov     ax, [es:V_HD_ENT + 11]  ; taille / 512
+        mov     dx, [es:V_HD_ENT + 13]
+        mov     cx, 9
+.s:     shr     dx, 1
+        rcr     ax, 1
+        loop    .s
+        mov     [es:V_HD_SECT], ax
+        mov     [es:V_HD_SECT + 2], dx
+        mov     word [es:V_HD_TETES], HD_TETES_DEF
+        mov     word [es:V_HD_SPT], HD_SPT_DEF
+        mov     ax, [es:V_HD_ENT + 15]  ; secteur 0 de l'image : table de partitions ?
+        mov     dx, [es:V_HD_ENT + 17]
+        call    fat_amas_lba
+        call    sd_tampon
+        jc      .err
+        push    ds
+        mov     ax, SD_TAMPON
+        mov     ds, ax
+        cmp     word [510], 0AA55h
+        jne     .geo
+        cmp     byte [1C2h], 0          ; type de la 1re partition
+        je      .geo
+        mov     al, [1C3h]              ; tete de fin
+        mov     bl, [1C4h]              ; secteur de fin (bits 0-5)
+        and     bl, 3Fh
+        jz      .geo
+        pop     ds
+        xor     ah, ah
+        inc     ax
+        mov     [es:V_HD_TETES], ax
+        xor     bh, bh
+        mov     [es:V_HD_SPT], bx
+        push    ds
+.geo:   pop     ds
+        mov     ax, [es:V_HD_TETES]     ; cylindres = secteurs / (tetes x spt)
+        mul     word [es:V_HD_SPT]
+        mov     bx, ax
+        mov     ax, [es:V_HD_SECT]
+        mov     dx, [es:V_HD_SECT + 2]
+        cmp     dx, bx                  ; quotient > 65535 : borne
+        jae     .max
+        div     bx
+        cmp     ax, 1024
+        jbe     .cyl
+.max:   mov     ax, 1024
+.cyl:   or      ax, ax
+        jz      .err
+        mov     [es:V_HD_CYL], ax
+        mov     cl, [es:V_FAT_SPC]      ; amas = secteurs / SPC (arrondi), 65535 au plus
+        xor     ch, ch
+        dec     cx
+        mov     ax, [es:V_HD_SECT]
+        mov     dx, [es:V_HD_SECT + 2]
+        add     ax, cx
+        adc     dx, 0
+        inc     cx
+.a:     shr     cx, 1
+        jz      .a_fin
+        shr     dx, 1
+        rcr     ax, 1
+        jmp     .a
+.a_fin: or      dx, dx
+        jnz     .err
+        mov     bx, ax
+        mov     di, V_HD_ENT
+        call    fat_contigu
+        jc      .err
+        mov     [es:V_HD_LBA], ax
+        mov     [es:V_HD_LBA + 2], dx
+        mov     di, HD_TABLE            ; table des parametres du disque fixe (INT 41h)
+        mov     ax, [es:V_HD_CYL]
+        mov     [es:di], ax             ; cylindres
+        mov     al, [es:V_HD_TETES]
+        mov     [es:di + 2], al         ; tetes
+        mov     word [es:di + 3], 0
+        mov     word [es:di + 5], 0FFFFh ; precompensation : aucune
+        mov     byte [es:di + 7], 0
+        mov     byte [es:di + 8], 0
+        cmp     al, 8
+        jbe     .ctrl
+        mov     byte [es:di + 8], 08h   ; plus de 8 tetes
+.ctrl:  mov     word [es:di + 9], 0
+        mov     byte [es:di + 11], 0
+        mov     ax, [es:V_HD_CYL]
+        mov     [es:di + 12], ax        ; cylindre de parcage
+        mov     al, [es:V_HD_SPT]
+        mov     [es:di + 14], al
+        mov     byte [es:di + 15], 0
+        mov     byte [es:V_HD_ACTIF], 1
+        clc
+        ret
+.err:   stc
         ret
 
 ; img_vers : copie le bloc courant vers le bloc DI (IMG_A ou IMG_B). Detruit AX, CX, SI, DI.
@@ -974,6 +1114,9 @@ sd_choisir:
         mov     byte [es:V_IMG_ACTIF], 0
         mov     byte [es:V_IMGB_ACTIF], 0
         mov     byte [es:V_PROGRES], 0
+        mov     byte [es:V_HD_ACTIF], 0
+        mov     byte [es:V_HD_NB], 0
+        mov     byte [es:V_BOOT_C], 0
         mov     si, txt_sd_lecture
         call    lcd_ecran
         call    sd_init
@@ -981,8 +1124,13 @@ sd_choisir:
         call    fat_ouvre
         jc      .rom
         call    img_liste
-        cmp     byte [es:V_IMG_NB], 0
-        je      .rom
+        cmp     byte [es:V_HD_NB], 0    ; disque dur C: : monte quel que soit le choix
+        je      .sans_c
+        call    hd_ouvre
+.sans_c:
+        mov     al, [es:V_IMG_NB]
+        add     al, [es:V_HD_ACTIF]
+        jz      .rom
         mov     byte [es:V_IMG_CHOIX], 0
         mov     byte [es:V_IMG_HAUT], 0
 .dessine:
@@ -1005,7 +1153,9 @@ sd_choisir:
         jmp     .bouge
 .bas:   cmp     ah, 50h
         jne     .touche
-        cmp     bl, [es:V_IMG_NB]
+        mov     al, [es:V_IMG_NB]       ; derniere ligne : les images, puis C:
+        add     al, [es:V_HD_ACTIF]
+        cmp     bl, al
         jae     .touche
         inc     bl
 .bouge: mov     [es:V_IMG_CHOIX], bl
@@ -1025,6 +1175,13 @@ sd_choisir:
         mov     al, [es:V_IMG_CHOIX]
         or      al, al
         jz      .rom_carte
+        cmp     al, [es:V_IMG_NB]
+        jbe     .disquette
+        mov     byte [es:V_BOOT_C], 1   ; C: : demarrage depuis le disque dur (A: = ROM)
+        mov     byte [es:V_PROGRES], 1
+        mov     word [es:V_LUS], 0
+        jmp     .fin
+.disquette:
         dec     al
         call    img_ouvre
         jc      .refus
@@ -1100,13 +1257,23 @@ img_ligne:
         mov     si, txt_img_rom
         jmp     tx_chaine
 .image: cmp     al, [es:V_IMG_NB]
-        ja      .vide
+        jbe     .disquette
+        cmp     byte [es:V_HD_ACTIF], 0
+        je      .vide
+        dec     al
+        cmp     al, [es:V_IMG_NB]
+        jne     .vide
+        mov     si, txt_img_c           ; "C: NOM.IMG     nnM"
+        call    tx_chaine
+        mov     si, V_HD_ENT
+        jmp     .nom
+.disquette:
         dec     al
         mov     bl, IMG_T
         mul     bl
         add     ax, T_IMG
         mov     si, ax
-        mov     cx, 8                   ; nom en clair
+.nom:   mov     cx, 8                   ; nom en clair
 .n:     mov     al, [es:si]
         inc     si
         cmp     al, ' '
@@ -1120,15 +1287,22 @@ img_ligne:
         inc     si
         call    tx_car
         loop    .e
-        mov     di, V_LIGNE + 14        ; taille en Ko, alignee
+        mov     di, V_LIGNE + 14        ; taille en Ko (en Mo pour C:), alignee
         mov     ax, [es:si]
         mov     dx, [es:si + 2]
-        mov     cx, 10
+        mov     cx, 10                  ; Ko
+        mov     bl, 'K'
+        cmp     si, V_HD_ENT + 11
+        jne     .k
+        mov     cx, 20                  ; C: : Mo, 2 colonnes plus loin ("C:" avant le nom)
+        mov     bl, 'M'
+        mov     di, V_LIGNE + 16
 .k:     shr     dx, 1
         rcr     ax, 1
         loop    .k
+        push    bx
         call    tx_dec32
-        mov     al, 'K'
+        pop     ax                      ; AL = unite
         jmp     tx_car
 .vide:  ret
 
@@ -1150,6 +1324,7 @@ txt_sd_lecture: db  'Carte SD...         '
                 db  '                    '
 txt_img_titre:  db  'Demarrer : Entree   '
 txt_img_rom:    db  'ROM PC-DOS 2.1', 0
+txt_img_c:      db  'C:', 0
 txt_img_err:    dw  txt_img_e1, txt_img_e2, txt_img_e3
 txt_img_e1:     db  'Taille inconnue !   '
 txt_img_e2:     db  'Image fragmentee !  '
@@ -1321,10 +1496,19 @@ int13_sd:
         mov     ah, 04h
         jmp     .err
 
-; sd_voyant / sd_voyant_eteint : voyant d'acces a la carte = DEL PC7 de U7 (la plus a
-; gauche), par mise a 1/0 d'un bit (BSR) : les autres DEL ne bougent pas. Preserve tout.
+;-----------------------------------------------------------------------------
+; Voyants d'acces : disquettes A:/B: de la carte = DEL PC7 de U7 (la plus a gauche),
+; disque dur C: = DEL PC6 (sa voisine). Avec les animations en arriere-plan, le LED
+; Show est suspendu pendant les acces et encore DISQUE_PAUSE tops IRQ0 (~1 s) apres
+; le dernier (V_DISQUE, decompte par irq_temps) : le bargraphe s'eteint au premier
+; acces, puis seul le voyant bouge. Pas pendant la progression du demarrage (elle se
+; sert du bargraphe). Les voyants : mise a 1/0 d'un bit (BSR). Preservent tout.
+;-----------------------------------------------------------------------------
+DISQUE_PAUSE    equ     73              ; ~1 s a 72,83 Hz
+
 sd_voyant:
         push    ax
+        call    disque_pause
         mov     al, 0Fh                 ; BSR : PC7 = 1
         out     PPI_CTRL, al
         pop     ax
@@ -1333,7 +1517,42 @@ sd_voyant_eteint:
         push    ax
         mov     al, 0Eh                 ; BSR : PC7 = 0
         out     PPI_CTRL, al
+        call    disque_pause
         pop     ax
+        ret
+hd_voyant:
+        push    ax
+        call    disque_pause
+        mov     al, 0Dh                 ; BSR : PC6 = 1
+        out     PPI_CTRL, al
+        pop     ax
+        ret
+hd_voyant_eteint:
+        push    ax
+        mov     al, 0Ch                 ; BSR : PC6 = 0
+        out     PPI_CTRL, al
+        call    disque_pause
+        pop     ax
+        ret
+
+; disque_pause : (re)lance la pause du LED Show ; au debut d'une pause, eteint les 24 DEL.
+; Detruit AX.
+disque_pause:
+        push    ds
+        mov     ax, DSEG
+        mov     ds, ax
+        cmp     byte [V_TACHE_ON], 0    ; sans 8253 : pas d'animation en arriere-plan
+        je      .fin
+        cmp     byte [V_PROGRES], 0     ; progression du demarrage sur le bargraphe
+        jne     .fin
+        cmp     byte [V_DISQUE], 0
+        mov     byte [V_DISQUE], DISQUE_PAUSE
+        jne     .fin
+        xor     al, al                  ; debut de pause : bargraphe eteint
+        out     PPI_PA, al
+        out     PPI_PB, al
+        out     PPI_PC, al
+.fin:   pop     ds
         ret
 
 ; progres_affiche : (demarrage depuis la carte) ligne 4 du LCD "Lecture A:  nnn Ko" et
@@ -1377,8 +1596,224 @@ progres_affiche:
         out     PPI_PB, al
         ret
 
-txt_lecture:    db  'Lecture A: ', 0
+txt_lecture:    db  'Lecture : ', 0
 txt_ko:         db  ' Ko', 0
+
+; -----------------------------------------------------------------------------
+; INT 13h, disque dur C: (DL = 80h) = image de la carte (V_HD_ACTIF). Appele depuis int13h.
+; -----------------------------------------------------------------------------
+int13_hd:
+        cmp     ah, 02h
+        je      .lire
+        cmp     ah, 03h
+        je      .ecrire
+        cmp     ah, 04h
+        je      .verifier
+        cmp     ah, 08h
+        je      .params
+        cmp     ah, 15h
+        je      .type
+        cmp     ah, 01h
+        je      .etat
+        cmp     ah, 00h                 ; reinit., recherche, test, recalibrage, diagnostic
+        je      .ok
+        cmp     ah, 0Ch
+        je      .ok
+        cmp     ah, 0Dh
+        je      .ok
+        cmp     ah, 10h
+        je      .ok
+        cmp     ah, 11h
+        je      .ok
+        cmp     ah, 14h
+        je      .ok
+        mov     ah, 01h                 ; 41h (extensions) et autres : non
+.err:   mov     [bp + R_AX + 1], ah
+        mov     [es:V_DSTAT], ah
+        jmp     bios_cf1
+.ok:    mov     byte [bp + R_AX + 1], 0
+        mov     byte [es:V_DSTAT], 0
+        jmp     bios_cf0
+.etat:  mov     al, [es:V_DSTAT]
+        mov     [bp + R_AX], al
+        jmp     .ok
+.type:  mov     byte [bp + R_AX + 1], 03h   ; disque fixe ; CX:DX = secteurs
+        mov     ax, [es:V_HD_SECT + 2]
+        mov     [bp + R_CX], ax
+        mov     ax, [es:V_HD_SECT]
+        mov     [bp + R_DX], ax
+        jmp     bios_cf0
+.params:
+        mov     word [bp + R_AX], 0
+        mov     ax, [es:V_HD_CYL]       ; CH = cylindre max (8 bits bas), CL = spt + bits 8-9
+        dec     ax
+        mov     ch, al
+        mov     cl, ah
+        ror     cl, 1
+        ror     cl, 1
+        and     cl, 0C0h
+        or      cl, [es:V_HD_SPT]
+        mov     [bp + R_CX], cx
+        mov     ah, [es:V_HD_TETES]
+        dec     ah
+        mov     al, 1                   ; un disque
+        mov     [bp + R_DX], ax
+        jmp     bios_cf0
+.verifier:
+        call    hd_chs
+        jc      .err
+        jmp     .ok
+.lire:  call    hd_chs                  ; DX:AX = premier secteur sur la carte
+        jc      .err
+        mov     cx, [bp + R_BX]
+        mov     di, cx
+        and     di, 0Fh
+        shr     cx, 1
+        shr     cx, 1
+        shr     cx, 1
+        shr     cx, 1
+        add     cx, [bp + R_ES]
+        mov     es, cx
+        mov     cl, [bp + R_AX]
+        xor     ch, ch
+        call    hd_voyant
+.l:     push    cx
+        push    ax
+        push    dx
+        push    di
+        call    sd_lire
+        pop     di
+        pop     dx
+        pop     ax
+        pop     cx
+        jc      .err_es
+        mov     bx, es
+        add     bx, 32
+        mov     es, bx
+        add     ax, 1
+        adc     dx, 0
+        loop    .l
+        mov     ax, DSEG
+        mov     es, ax
+        call    hd_voyant_eteint
+        cmp     byte [es:V_PROGRES], 0  ; demarrage depuis C: : progression
+        je      .ok
+        mov     al, [bp + R_AX]
+        xor     ah, ah
+        add     [es:V_LUS], ax
+        call    progres_affiche
+        jmp     .ok
+.err_es:
+        mov     ax, DSEG
+        mov     es, ax
+        call    hd_voyant_eteint
+        mov     ah, 04h
+        jmp     .err
+.ecrire:
+        call    hd_chs
+        jc      .err
+        mov     cx, [bp + R_BX]
+        mov     si, cx
+        and     si, 0Fh
+        shr     cx, 1
+        shr     cx, 1
+        shr     cx, 1
+        shr     cx, 1
+        add     cx, [bp + R_ES]
+        mov     ds, cx
+        mov     cl, [bp + R_AX]
+        xor     ch, ch
+        call    hd_voyant
+.w:     push    cx
+        push    ax
+        push    dx
+        push    si
+        call    sd_ecrire
+        pop     si
+        pop     dx
+        pop     ax
+        pop     cx
+        jc      .err_ds
+        mov     bx, ds
+        add     bx, 32
+        mov     ds, bx
+        add     ax, 1
+        adc     dx, 0
+        loop    .w
+        mov     ax, cs
+        mov     ds, ax
+        call    hd_voyant_eteint
+        jmp     .ok
+.err_ds:
+        mov     ax, cs
+        mov     ds, ax
+        call    hd_voyant_eteint
+        mov     ah, 04h
+        jmp     .err
+
+; hd_chs : AL = nombre, CH = cylindre (bits 0-7), CL = secteur (bits 0-5) + cylindre (bits
+; 8-9 en 6-7), DH = tete -> DX:AX = premier secteur sur la carte ; CF = 1 et AH = 04h hors
+; du disque (01h : nombre nul). Detruit BX, CX.
+hd_chs:
+        or      al, al
+        jz      .inval
+        push    ax                      ; [sp] = nombre
+        mov     bl, cl
+        and     bl, 3Fh                 ; BL = secteur
+        jz      .hors
+        xor     bh, bh
+        cmp     bx, [es:V_HD_SPT]
+        ja      .hors
+        mov     al, dh                  ; tete
+        xor     ah, ah
+        cmp     ax, [es:V_HD_TETES]
+        jae     .hors
+        mov     al, cl                  ; cylindre = CH + bits 6-7 de CL x 256
+        rol     al, 1
+        rol     al, 1
+        and     al, 03h
+        mov     ah, al
+        mov     al, ch
+        cmp     ax, [es:V_HD_CYL]
+        jae     .hors
+        mov     cl, dh                  ; tete (avant MUL, qui ecrase DX)
+        xor     ch, ch
+        mul     word [es:V_HD_TETES]    ; (cylindre x tetes + tete) x spt + secteur - 1
+        add     ax, cx
+        mul     word [es:V_HD_SPT]
+        dec     bx
+        add     ax, bx
+        adc     dx, 0
+        pop     bx                      ; BL = nombre : dernier secteur dans le disque ?
+        push    ax
+        push    dx
+        xor     bh, bh
+        add     ax, bx
+        adc     dx, 0
+        cmp     dx, [es:V_HD_SECT + 2]
+        ja      .hors2
+        jb      .dedans
+        cmp     ax, [es:V_HD_SECT]
+        ja      .hors2
+.dedans:
+        pop     dx
+        pop     ax
+        add     ax, [es:V_HD_LBA]
+        adc     dx, [es:V_HD_LBA + 2]
+        clc
+        ret
+.hors2: pop     dx
+        pop     ax
+        mov     ah, 04h
+        stc
+        ret
+.hors:  pop     ax
+        mov     ah, 04h
+        stc
+        ret
+.inval: mov     ah, 01h
+        stc
+        ret
 
 ; img_chs : AL = nombre, CH = cylindre, CL = secteur, DH = tete -> DX:AX = premier secteur
 ; sur la carte ; CF = 1 et AH = 04h hors de l'image, 01h si nombre nul. Detruit BX, CX.

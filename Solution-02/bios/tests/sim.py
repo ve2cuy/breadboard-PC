@@ -811,7 +811,7 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 1.5 - VE2CUY 2026\r\n"
+BANNIERE = (b"\r\nSolution-02 BIOS 1.6 - VE2CUY 2026\r\n"
             b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info"
             b"  5) UART:ON/OFF (console)  6) BASIC\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
@@ -914,12 +914,12 @@ def scenario_sysinfo(image, pic=True, pit=True):
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 1.5" and pret(c):
+        if l[0] == "SOLUTION-02 BIOS 1.6" and pret(c):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
     pas = Etapes([(au_menu, texte('4')), (pret, texte(' '))])
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic, pit=pit)
-    attendu = ["SOLUTION-02 BIOS 1.5", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
+    attendu = ["SOLUTION-02 BIOS 1.6", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
@@ -1042,7 +1042,7 @@ def carte_dos(fragmente=False):
 
 
 def scenario_sd_boot(image):
-    """BIOS 1.5 : Load DOS avec une carte : choix de PCDOS21.IMG (fleche bas, Entree), le DOS
+    """BIOS 1.6 : Load DOS avec une carte : choix de PCDOS21.IMG (fleche bas, Entree), le DOS
     demarre depuis la carte, puis 'dir > liste.txt' ecrit dans l'image (A:), relue sur la carte."""
     import gen_sd
     carte, img = carte_dos()
@@ -1076,7 +1076,7 @@ def scenario_sd_boot(image):
     if copie != img:
         ok = False
         print("    attendu : l'autre image intacte")
-    return verifier("BIOS 1.5 : demarrage sur une image de la carte SD, ecriture dans l'image", lcd, etat, None, ok)
+    return verifier("BIOS 1.6 : demarrage sur une image de la carte SD, ecriture dans l'image", lcd, etat, None, ok)
 
 
 def scenario_sd_fragmentee(image):
@@ -1092,7 +1092,7 @@ def scenario_sd_fragmentee(image):
     pas = Etapes([(au_menu, texte('1')), (lambda c: c["lcd"].lignes() == choix, appui(0x72, True) + appui(0x72, True)),
                   (lambda c: c["lcd"].lignes()[3].startswith(">COPIE"), texte('\r'))])
     lcd, etat, uc = lancer(image, fini=msg, entrees=pas, max_instr=40_000_000, sd=carte)
-    return verifier("BIOS 1.5 : image fragmentee refusee", lcd, etat, None, bool(vu.get("msg")))
+    return verifier("BIOS 1.6 : image fragmentee refusee", lcd, etat, None, bool(vu.get("msg")))
 
 
 def scenario_basic(image):
@@ -1167,6 +1167,47 @@ def scenario_accents(image):
     return verifier("accents (page de codes 437) : UTF-8 sur le terminal, CGRAM sur le LCD", lcd, etat, MENU, ok)
 
 
+def scenario_disque_c(image):
+    """Disque dur C: = DISQUEC.IMG (20 Mo, FAT16, HELLO.TXT) sur la carte, avec DOS33.IMG : la
+    liste du Load DOS montre C: ; DOS 3.3 demarre depuis la carte, DIR C: montre HELLO.TXT,
+    'dir > c:liste.txt' ecrit dans l'image du disque (relue sur la carte)."""
+    import gen_sd
+    import gen_hdd
+    ici = os.path.dirname(os.path.abspath(__file__))
+    dos33 = open(os.path.join(ici, '..', '..', '..', 'PC-DOS', 'Dos33-d1.IMG'), 'rb').read()
+    hd = gen_hdd.disque(20, [('HELLO.TXT', b'Bonjour du disque C:\r\n')])
+    secteurs, nb = gen_sd.carte_fat32([('DOS33.IMG', dos33), ('DISQUEC.IMG', hd)])
+    carte = CarteSD(secteurs, nb)
+    tx = lambda c: bytes(c["ppi2"].tx)
+    vu = {}
+
+    def liste(c):
+        l = c["lcd"].lignes()
+        if l[1].startswith(">ROM") and l[2].startswith(" DOS33.IMG") and l[3].startswith(" C:DISQUEC.IMG"):
+            vu["liste"] = l
+            return tx(c).endswith(b"19M\r\n")       # 20 643 840 o = 19,7 Mo
+        return False
+    cmds = [(au_menu, texte('1')), (liste, Rafale(b"\x1b[B")),
+            (lambda c: c["lcd"].lignes()[2].startswith(">DOS33"), b"\r"),
+            (lambda c: tx(c).rstrip().endswith(b":") and b"new date" in tx(c)[-80:], b"\r"),
+            (lambda c: tx(c).rstrip().endswith(b":") and b"new time" in tx(c)[-80:], b"\r"),
+            (lambda c: invite(c, 1), b"dir c:\r"), (lambda c: invite(c, 2), b"dir > c:liste.txt\r")]
+    pas = Etapes(cmds)
+
+    def fini(c):
+        return pas.faites == len(pas.etapes) and invite(c, 3)
+    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, dos=True, max_instr=400_000_000, sd=carte)
+    t = tx({"ppi2": etat["ppi2"]})
+    relu = gen_sd.lire_fichier(carte.s, 'DISQUEC.IMG')
+    noms = gen_hdd.racine(relu) if relu else []
+    print("--- liste : %s" % vu.get("liste"))
+    print("    racine de C: apres : %s ; fin : %r" % (noms, t[-250:]))
+    ok = "liste" in vu and b"HELLO    TXT" in t and 'LISTE   TXT' in noms
+    if not ok:
+        print("    attendu : C: dans la liste, HELLO.TXT par DIR C:, LISTE.TXT ecrit sur C:")
+    return verifier("disque dur C: (image de la carte) sous DOS 3.3 : DIR, ecriture", lcd, etat, None, ok)
+
+
 def scenario_nav_pave(image):
     """Maj + fleche dont le prefixe E0 est perdu (le BIOS voit la touche 8 du pave), puis
     Maj + 8 du pave : la fenetre du LCD doit remonter (Maj inverse Verr Num), sans '8'."""
@@ -1221,7 +1262,7 @@ def scenario_partout(image):
     terminal -> Info sur le LCD et sur TX ; une touche du terminal -> retour au menu."""
     tx = lambda c: bytes(c["ppi2"].tx)
     on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON "
-    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 1.5" and c["lcd"].lignes()[3].startswith("8259")
+    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 1.6" and c["lcd"].lignes()[3].startswith("8259")
     vu = {}
 
     def menu_vu(c):
@@ -1238,7 +1279,7 @@ def scenario_partout(image):
     print("--- UART TX apres la banniere : %r" % t)
     import gen_accueil                         # ecran d'accueil ANSI, puis le menu
     attendu = gen_accueil.octets() + MENU_TX + (
-               b"\r\nSOLUTION-02 BIOS 1.5\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n") + MENU_TX
+               b"\r\nSOLUTION-02 BIOS 1.6\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n") + MENU_TX
     ok = t == attendu
     if not ok:
         print("    attendu : %r" % attendu)
@@ -1473,6 +1514,7 @@ def main():
         ("basic", lambda: scenario_basic(image)),
         ("navpave", lambda: scenario_nav_pave(image)),
         ("accents", lambda: scenario_accents(image)),
+        ("disquec", lambda: scenario_disque_c(image)),
         ("diagsd", lambda: scenario_diag_sd(image)),
         ("sdboot", lambda: scenario_sd_boot(image)),
         ("sdfrag", lambda: scenario_sd_fragmentee(image)),

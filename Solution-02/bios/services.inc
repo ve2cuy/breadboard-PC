@@ -156,6 +156,20 @@ dos_charger:
         mov     word [es:60h], 0607h
         mov     word [es:63h], 3D4h
         mov     byte [es:84h], LIGNES - 1
+        push    ds                      ; disque dur C: : 1 disque fixe (BDA 0040:0075),
+        mov     ax, DSEG                ; INT 41h -> sa table de parametres
+        mov     ds, ax
+        cmp     byte [V_HD_ACTIF], 0
+        pop     ds
+        je      .sans_c
+        mov     byte [es:75h], 1
+        push    es
+        xor     ax, ax
+        mov     es, ax
+        mov     word [es:41h * 4], HD_TABLE
+        mov     word [es:41h * 4 + 2], DSEG
+        pop     es
+.sans_c:
         push    ds
         mov     ax, DSEG
         mov     ds, ax
@@ -344,7 +358,11 @@ irq_temps:
         je      .retour
         cmp     byte [es:V_PROGRES], 0  ; progression du demarrage sur le bargraphe
         jne     .retour
-        cli
+        cmp     byte [es:V_DISQUE], 0   ; acces disque recent : LED Show en pause
+        je      .tache
+        dec     byte [es:V_DISQUE]
+        jmp     .retour
+.tache: cli
         cmp     byte [es:V_TACHE_OCC], 0
         jne     .retour_sti
         dec     byte [es:V_TACHE_ATT]
@@ -1412,19 +1430,26 @@ int19h:
         mov     sp, 7C00h
         sti
         mov     si, 3                   ; 3 essais
-.essai: xor     ax, ax
+.essai: mov     ax, DSEG                ; A:, ou C: si choisi au Load DOS
+        mov     es, ax
+        xor     dx, dx
+        cmp     byte [es:V_BOOT_C], 0
+        je      .lecteur
+        mov     dl, 80h
+.lecteur:
+        xor     ax, ax
         mov     es, ax
         mov     bx, 7C00h
         mov     ax, 0201h
         mov     cx, 0001h
-        xor     dx, dx
+        push    dx
         int     13h
+        pop     dx
         jnc     .ok
         dec     si
         jnz     .essai
         jmp     menu                    ; (n'arrive pas : le disque est en ROM)
-.ok:    xor     dx, dx
-        jmp     0000h:7C00h
+.ok:    jmp     0000h:7C00h             ; DL = lecteur d'amorcage
 
 ; =============================================================================
 ; INT 13h - disquette A: en ROM (180 Ko : 40 cylindres, 1 tete, 9 secteurs), ou image
@@ -1432,7 +1457,12 @@ int19h:
 ; =============================================================================
 int13h:
         BIOS_ENTREE
-        cmp     dl, 1                   ; A: (ROM ou image de la carte SD) ou B: (RAM ou image)
+        cmp     dl, 80h                 ; C: = image de disque dur de la carte
+        jne     .pas_c
+        cmp     byte [es:V_HD_ACTIF], 0
+        je      .absent
+        jmp     int13_hd
+.pas_c: cmp     dl, 1                   ; A: (ROM ou image de la carte SD) ou B: (RAM ou image)
         ja      .absent
         je      .lb
         cmp     byte [es:V_IMG_ACTIF], 0
