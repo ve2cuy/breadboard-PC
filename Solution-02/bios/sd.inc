@@ -658,14 +658,24 @@ sd_ecrire:
 T_IMG           equ     0B00h           ; table : IMG_MAX x 20 o (nom 11, taille dd, amas dd, 1 libre)
 IMG_MAX         equ     16
 IMG_T           equ     20
-V_IMG_ACTIF     equ     8E0h            ; 1 = A: est une image de la carte
-V_IMG_SPT       equ     8E1h
-V_IMG_TETES     equ     8E2h
-V_IMG_CYL       equ     8E3h
-V_IMG_TYPE      equ     8E4h            ; type de lecteur (INT 13h AH=08h, BL)
-V_IMG_NB        equ     8E5h            ; images dans la table
-V_IMG_SECT      equ     8E6h            ; (dw) secteurs de l'image
-V_IMG_LBA       equ     8E8h            ; (dd) premier secteur de l'image sur la carte
+; un bloc de 12 octets par lecteur : +0 actif, +1 secteurs/piste, +2 tetes, +3 cylindres,
+; +4 type (INT 13h AH=08h), +6 (dw) secteurs, +8 (dd) premier secteur sur la carte.
+; int13_sd copie le bloc du lecteur demande dans le bloc courant (V_IMG_COUR).
+IMG_BLOC        equ     12
+IMG_A           equ     8E0h            ; A: (image choisie au Load DOS)
+IMG_B           equ     0C40h           ; B: (image DOS 2.x de la carte, au demarrage depuis la ROM)
+V_IMG_COUR      equ     0C50h           ; bloc courant
+V_IMG_ACTIF     equ     IMG_A           ; 1 = A: est une image de la carte
+V_IMGB_ACTIF    equ     IMG_B           ; 1 = B: est une image de la carte (sinon : disque en RAM)
+V_IMG_SPT       equ     V_IMG_COUR + 1
+V_IMG_TETES     equ     V_IMG_COUR + 2
+V_IMG_CYL       equ     V_IMG_COUR + 3
+V_IMG_TYPE      equ     V_IMG_COUR + 4
+V_IMG_SECT      equ     V_IMG_COUR + 6
+V_IMG_LBA       equ     V_IMG_COUR + 8
+V_PROGRES       equ     0C5Ch           ; 1 = demarrage depuis la carte en cours (progression)
+V_LUS           equ     0C5Eh           ; (dw) secteurs lus pendant le demarrage
+V_IMG_NB        equ     8F2h            ; images dans la table
 V_FAT_CACHE     equ     8ECh            ; (dd) secteur de FAT dans SD_TAMPON (FFFFFFFFh : aucun)
 V_IMG_CHOIX     equ     8F0h            ; ligne choisie (0 = ROM)
 V_IMG_HAUT      equ     8F1h            ; premiere ligne visible
@@ -903,15 +913,67 @@ img_ouvre:
         call    fat_amas_lba
         mov     [es:V_IMG_LBA], ax
         mov     [es:V_IMG_LBA + 2], dx
-        mov     byte [es:V_IMG_ACTIF], 1
+        mov     byte [es:V_IMG_COUR], 1
         clc
         ret
+
+; img_vers : copie le bloc courant vers le bloc DI (IMG_A ou IMG_B). Detruit AX, CX, SI, DI.
+img_vers:
+        mov     si, V_IMG_COUR
+        mov     cx, IMG_BLOC / 2
+.c:     mov     ax, [es:si]
+        mov     [es:di], ax
+        add     si, 2
+        add     di, 2
+        loop    .c
+        ret
+
+; img_dos2_b : (demarrage depuis la ROM, carte lue) la 1re image dont le secteur d'amorce
+; porte l'OEM 'IBM  2.' (PC-DOS 2.x) devient B:. Detruit AX, BX, CX, DX, SI, DI.
+img_dos2_b:
+        xor     cx, cx                  ; CL = image
+.i:     cmp     cl, [es:V_IMG_NB]
+        jae     .fin
+        push    cx
+        mov     al, cl
+        mov     bl, IMG_T
+        mul     bl
+        add     ax, T_IMG
+        mov     di, ax
+        mov     ax, [es:di + 15]        ; premier amas -> secteur d'amorce de l'image
+        mov     dx, [es:di + 17]
+        call    fat_amas_lba
+        call    sd_tampon
+        pop     cx
+        jc      .suiv
+        push    ds
+        mov     ax, SD_TAMPON
+        mov     ds, ax
+        cmp     word [3], 'IB'
+        jne     .non
+        cmp     word [5], 'M '
+        jne     .non
+        cmp     word [7], ' 2'
+.non:   pop     ds
+        jne     .suiv
+        push    cx
+        mov     al, cl
+        call    img_ouvre
+        pop     cx
+        jc      .suiv
+        mov     di, IMG_B
+        jmp     img_vers
+.suiv:  inc     cl
+        jmp     .i
+.fin:   ret
 
 ; sd_choisir : (Load DOS) carte presente avec des images : choix sur le LCD (et le
 ; terminal) : ROM puis les images ; fleches haut/bas, Entree, Echap. CF = 1 : Echap.
 ; Sans carte ni image : A: = ROM, CF = 0. ES = DSEG, DS = CS.
 sd_choisir:
         mov     byte [es:V_IMG_ACTIF], 0
+        mov     byte [es:V_IMGB_ACTIF], 0
+        mov     byte [es:V_PROGRES], 0
         mov     si, txt_sd_lecture
         call    lcd_ecran
         call    sd_init
@@ -962,10 +1024,19 @@ sd_choisir:
 .entree:
         mov     al, [es:V_IMG_CHOIX]
         or      al, al
-        jz      .rom
+        jz      .rom_carte
         dec     al
         call    img_ouvre
-        jnc     .fin
+        jc      .refus
+        mov     di, IMG_A               ; A: = l'image ; progression pendant le demarrage
+        call    img_vers
+        mov     byte [es:V_PROGRES], 1
+        mov     word [es:V_LUS], 0
+        jmp     .fin
+.rom_carte:
+        call    img_dos2_b              ; ROM : B: = image DOS 2.x de la carte, s'il y en a une
+        jmp     .fin
+.refus:
         mov     bl, al                  ; message 1 s, puis la liste
         xor     bh, bh
         shl     bx, 1
@@ -1089,6 +1160,25 @@ txt_img_e3:     db  'Erreur de lecture ! '
 ; BIOS_ENTREE en place, ES = DSEG, DS = CS ; AH = fonction).
 ; -----------------------------------------------------------------------------
 int13_sd:
+        push    ax                      ; bloc du lecteur (A: ou B:) -> bloc courant
+        push    cx
+        push    si
+        push    di
+        mov     si, IMG_A
+        or      dl, dl
+        jz      .bloc
+        mov     si, IMG_B
+.bloc:  mov     di, V_IMG_COUR
+        mov     cx, IMG_BLOC / 2
+.cp:    mov     ax, [es:si]
+        mov     [es:di], ax
+        add     si, 2
+        add     di, 2
+        loop    .cp
+        pop     di
+        pop     si
+        pop     cx
+        pop     ax
         cmp     ah, 02h
         je      .lire
         cmp     ah, 03h
@@ -1156,6 +1246,7 @@ int13_sd:
         mov     es, cx
         mov     cl, [bp + R_AX]
         xor     ch, ch
+        call    sd_voyant
 .l:     push    cx
         push    ax
         push    dx
@@ -1174,10 +1265,18 @@ int13_sd:
         loop    .l
         mov     ax, DSEG
         mov     es, ax
+        call    sd_voyant_eteint
+        cmp     byte [es:V_PROGRES], 0  ; demarrage depuis la carte : progression
+        je      .ok
+        mov     al, [bp + R_AX]
+        xor     ah, ah
+        add     [es:V_LUS], ax
+        call    progres_affiche
         jmp     .ok
 .err_es:
         mov     ax, DSEG
         mov     es, ax
+        call    sd_voyant_eteint
         mov     ah, 04h                 ; secteur introuvable
         jmp     .err
 .ecrire:
@@ -1194,6 +1293,7 @@ int13_sd:
         mov     ds, cx
         mov     cl, [bp + R_AX]
         xor     ch, ch
+        call    sd_voyant
 .w:     push    cx
         push    ax
         push    dx
@@ -1212,12 +1312,73 @@ int13_sd:
         loop    .w
         mov     ax, cs
         mov     ds, ax
+        call    sd_voyant_eteint
         jmp     .ok
 .err_ds:
         mov     ax, cs
         mov     ds, ax
+        call    sd_voyant_eteint
         mov     ah, 04h
         jmp     .err
+
+; sd_voyant / sd_voyant_eteint : voyant d'acces a la carte = DEL PC7 de U7 (la plus a
+; gauche), par mise a 1/0 d'un bit (BSR) : les autres DEL ne bougent pas. Preserve tout.
+sd_voyant:
+        push    ax
+        mov     al, 0Fh                 ; BSR : PC7 = 1
+        out     PPI_CTRL, al
+        pop     ax
+        ret
+sd_voyant_eteint:
+        push    ax
+        mov     al, 0Eh                 ; BSR : PC7 = 0
+        out     PPI_CTRL, al
+        pop     ax
+        ret
+
+; progres_affiche : (demarrage depuis la carte) ligne 4 du LCD "Lecture A:  nnn Ko" et
+; bargraphe : une DEL de plus tous les 8 Ko lus (24 DEL = 192 Ko, puis il recommence).
+; Les animations sont suspendues pendant ce temps (V_PROGRES, voir irq_temps). ES = DSEG.
+; Detruit AX, BX, CX, DX, SI, DI.
+progres_affiche:
+        call    tx_init
+        mov     si, txt_lecture
+        call    tx_chaine
+        mov     ax, [es:V_LUS]
+        shr     ax, 1                   ; Ko
+        push    ax
+        xor     dx, dx
+        call    tx_dec32
+        mov     si, txt_ko
+        call    tx_chaine
+        mov     al, LIGNE4
+        call    tx_sortie_lcd
+        pop     ax
+        mov     cl, 3
+        shr     ax, cl                  ; DEL = Ko / 8, modulo 25
+        mov     bl, 25
+        div     bl
+        mov     al, ah
+        xor     bx, bx                  ; DL:BH:BL = rangee, DEL allumees depuis la gauche
+        xor     dl, dl
+        or      al, al
+        jz      .sort
+.b:     stc
+        rcr     dl, 1
+        rcr     bh, 1
+        rcr     bl, 1
+        dec     al
+        jnz     .b
+.sort:  mov     al, dl
+        out     PPI_PC, al
+        mov     al, bh
+        out     PPI_PA, al
+        mov     al, bl
+        out     PPI_PB, al
+        ret
+
+txt_lecture:    db  'Lecture A: ', 0
+txt_ko:         db  ' Ko', 0
 
 ; img_chs : AL = nombre, CH = cylindre, CL = secteur, DH = tete -> DX:AX = premier secteur
 ; sur la carte ; CF = 1 et AH = 04h hors de l'image, 01h si nombre nul. Detruit BX, CX.

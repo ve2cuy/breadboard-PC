@@ -6,7 +6,17 @@ NASM_DEF = $(if $(UART_N),-DUART_N=$(UART_N))
 
 all: $(IMAGE)
 
-$(IMAGE): bios.asm clavier_us.inc accueil.inc services.inc sd.inc ../../PC-DOS/pcdos2_1.img
+BASIC_BIN = build/basic_s02.bin
+BASIC_SRC = basic_s02.asm $(wildcard ../../Solution-01/lib/basic*.asm) ../../Solution-01/lib/basic_tokens.inc
+$(BASIC_BIN): $(BASIC_SRC)
+	@mkdir -p build
+	$(NASM) -f bin -i ../../Solution-01/ -l build/basic_s02.lst -o $@ basic_s02.asm
+
+# disquette de la ROM (PC-DOS 2.1 reduit) : python tests/gen_dos_rom.py
+../../PC-DOS/pcdos2_1_rom.img: tests/gen_dos_rom.py ../../PC-DOS/pcdos2_1.img
+	python tests/gen_dos_rom.py
+
+$(IMAGE): bios.asm clavier_us.inc accueil.inc services.inc sd.inc $(BASIC_BIN) ../../PC-DOS/pcdos2_1_rom.img
 	@mkdir -p build
 	$(NASM) -f bin $(NASM_DEF) -l build/bios.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
@@ -14,7 +24,7 @@ $(IMAGE): bios.asm clavier_us.inc accueil.inc services.inc sd.inc ../../PC-DOS/p
 # ROM de diagnostic du 8255 : ecritures en rafale continue en 10h-13h (CS#/WR# visibles)
 DIAG = build/solution-02-diag-8255.bin
 diag: $(DIAG)
-$(DIAG): bios.asm clavier_us.inc accueil.inc services.inc sd.inc
+$(DIAG): bios.asm clavier_us.inc accueil.inc services.inc sd.inc $(BASIC_BIN)
 	@mkdir -p build
 	$(NASM) -f bin $(NASM_DEF) -DDIAG_8255 -l build/diag-8255.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
@@ -22,7 +32,7 @@ $(DIAG): bios.asm clavier_us.inc accueil.inc services.inc sd.inc
 # ROM de diagnostic du 2e 8255 (U12) : PC et PA clignotent, PB et trames PS/2 au LCD
 DIAG2 = build/solution-02-diag-u12.bin
 diag2: $(DIAG2)
-$(DIAG2): bios.asm clavier_us.inc accueil.inc services.inc sd.inc
+$(DIAG2): bios.asm clavier_us.inc accueil.inc services.inc sd.inc $(BASIC_BIN)
 	@mkdir -p build
 	$(NASM) -f bin $(NASM_DEF) -DDIAG_U12 -l build/diag-u12.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
@@ -30,7 +40,7 @@ $(DIAG2): bios.asm clavier_us.inc accueil.inc services.inc sd.inc
 # ROM de diagnostic du lecteur SD (J9 sur U12) : carte, capacite, FAT, images .IMG (LCD et UART)
 DIAGSD = build/solution-02-diag-sd.bin
 diagsd: $(DIAGSD)
-$(DIAGSD): bios.asm clavier_us.inc accueil.inc services.inc sd.inc
+$(DIAGSD): bios.asm clavier_us.inc accueil.inc services.inc sd.inc $(BASIC_BIN)
 	@mkdir -p build
 	$(NASM) -f bin $(NASM_DEF) -DDIAG_SD -l build/diag-sd.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"

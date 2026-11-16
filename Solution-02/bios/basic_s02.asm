@@ -1,0 +1,226 @@
+; =============================================================================
+; basic_s02.asm - le BASIC "GW-BASIC-like" de Solution-01 (Solution-01/lib/basic*.asm,
+; inchange) pour Solution-02. Assemble a part (make : build/basic_s02.bin) avec
+;   nasm -f bin -i ../../Solution-01/ -o build/basic_s02.bin basic_s02.asm
+; et place par bios.asm en F000:8000 (BASIC_ORG). Le BIOS l'appelle par un CALL proche
+; a BASIC_ORG avec SS = 1000h (VAR_SEG du BASIC), DS = CS.
+;
+; Couche d'adaptation (le BASIC est compile avec BASIC_TEST : sans l'UART ni le pont
+; STM32 de Solution-01) :
+;   uart_tx_byte      -> INT 10h AH=0Eh : tampon d'ecran 24 x 80, fenetre du LCD et, si la
+;                        console UART est a ON, le terminal
+;   uart_rx_available -> INT 16h AH=01h (clavier PS/2 et touches du terminal)
+;   uart_rx_byte      -> INT 16h AH=00h (touches etendues ignorees)
+;   rtc_get / rtc_set -> heure : compteur de tops du BDA (INT 1Ah, avance par IRQ0) ;
+;                        date gardee en RAM (DSEG:0C60h), 1980-01-01 au depart
+;   fs_*              -> pas de disque (pont absent) : etat 9 = "Device unavailable"
+; =============================================================================
+        bits    16
+        cpu     8086
+BASIC_ORG       equ     8000h
+        org     BASIC_ORG
+
+%define BASIC_TEST
+%include "include/hardware.inc"
+
+DSEG_S02        equ     7F00h           ; donnees du BIOS de Solution-02
+RTC_DATE        equ     0C60h           ; (DSEG) annee (mot), mois, jour ; 0 = jamais reglee
+
+entree:
+        jmp     basic_run
+
+; ---- console ---------------------------------------------------------------------
+uart_tx_byte:
+        push    ax
+        push    bx
+        mov     ah, 0Eh
+        xor     bx, bx
+        int     10h
+        pop     bx
+        pop     ax
+        ret
+
+; uart_rx_available : CF = 0 et AL = 1 si une touche attend ; CF = 1 et AL = 0 sinon.
+uart_rx_available:
+        push    bx
+        mov     bl, ah
+        mov     ah, 01h
+        int     16h
+        mov     ah, bl
+        jz      .rien
+        or      al, al                  ; touche etendue (AL = 0) : la retirer, l'ignorer
+        jnz     .oui
+        push    ax
+        mov     ah, 00h
+        int     16h
+        pop     ax
+.rien:  pop     bx
+        mov     al, 0
+        stc
+        ret
+.oui:   pop     bx
+        mov     al, 1
+        clc
+        ret
+
+; uart_rx_byte : AL = caractere (attend une touche ; les touches etendues sont ignorees).
+uart_rx_byte:
+        push    bx
+        mov     bl, ah
+.t:     mov     ah, 00h
+        int     16h
+        or      al, al
+        jz      .t
+        mov     ah, bl
+        pop     bx
+        ret
+
+; ---- horloge ------------------------------------------------------------------------
+; rtc_get : 8 octets en ES:DI : annee (mot), mois, jour, heures, minutes, secondes,
+; centiemes. Heure = tops du BDA (18,2065 par seconde). CF = 0. Preserve tout.
+rtc_get:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    ds
+        mov     ax, DSEG_S02
+        mov     ds, ax
+        mov     ax, [RTC_DATE]
+        or      ax, ax
+        jnz     .date
+        mov     ax, 1980                ; jamais reglee
+        mov     word [RTC_DATE], ax
+        mov     word [RTC_DATE + 2], 0101h
+.date:  cld
+        stosw                           ; annee
+        mov     ax, [RTC_DATE + 2]
+        stosw                           ; mois, jour
+        pop     ds
+        mov     ah, 00h
+        int     1Ah                     ; CX:DX = tops depuis minuit
+        mov     ax, dx
+        mov     dx, cx
+        mov     bx, 10                  ; secondes x 10 = tops x 10 / 18,2 (= tops x 100 / 182)
+        call    mul32_16                ; DX:AX x 10
+        mov     bx, 182
+        call    div32_16                ; DX:AX = dixiemes... (tops x 10 / 182 = secondes)
+        push    bx                      ; reste (en 182e de seconde)
+        mov     bx, 3600
+        div     bx                      ; AX = heures, DX = secondes de l'heure
+        stosb
+        mov     ax, dx
+        xor     dx, dx
+        mov     bx, 60
+        div     bx
+        stosb                           ; minutes
+        mov     al, dl
+        stosb                           ; secondes
+        pop     ax                      ; centiemes = reste x 100 / 182
+        mov     bl, 100
+        mul     bl
+        mov     bl, 182
+        div     bl
+        stosb
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        clc
+        ret
+
+; rtc_set : 7 octets en DS:SI (annee mot, mois, jour, heures, minutes, secondes) :
+; date en RAM, heure -> compteur de tops (INT 1Ah AH=01h). Preserve tout.
+rtc_set:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    es
+        mov     ax, DSEG_S02
+        mov     es, ax
+        lodsw
+        mov     [es:RTC_DATE], ax
+        lodsw
+        mov     [es:RTC_DATE + 2], ax
+        lodsb                           ; heures
+        mov     bl, 60
+        mul     bl                      ; AX = heures x 60
+        mov     bl, [si]                ; + minutes
+        xor     bh, bh
+        add     ax, bx
+        mov     bx, 60
+        mul     bx                      ; DX:AX = minutes x 60
+        mov     bl, [si + 1]            ; + secondes
+        xor     bh, bh
+        add     ax, bx
+        adc     dx, 0
+        mov     bx, 182                 ; tops = secondes x 182 / 10
+        call    mul32_16
+        mov     bx, 10
+        call    div32_16
+        mov     cx, dx
+        mov     dx, ax
+        mov     ah, 01h
+        int     1Ah
+        pop     es
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; mul32_16 : DX:AX = DX:AX x BX (le resultat doit tenir sur 32 bits). Detruit CX.
+mul32_16:
+        push    ax
+        mov     ax, dx
+        mul     bx                      ; poids fort x BX
+        mov     cx, ax
+        pop     ax
+        mul     bx                      ; poids faible x BX
+        add     dx, cx
+        ret
+
+; div32_16 : DX:AX = DX:AX / BX, BX = reste. Detruit CX.
+div32_16:
+        push    ax
+        mov     ax, dx
+        xor     dx, dx
+        div     bx
+        mov     cx, ax                  ; quotient fort
+        pop     ax
+        div     bx
+        mov     bx, dx                  ; reste
+        mov     dx, cx
+        ret
+
+; ---- disque : pas de pont ici ------------------------------------------------------
+FS_INDISPONIBLE equ     9               ; -> ERR_DUN "Device unavailable" (basic_disk.asm)
+FS_MODE_READ    equ     0               ; (valeurs de Solution-01/lib/bridge.asm)
+FS_MODE_WRITE   equ     1
+FS_MODE_APPEND  equ     2
+FS_USB_ON       equ     25h
+FS_USB_OFF      equ     26h
+fs_cmd0:
+fs_close:
+fs_delete:
+fs_dir_first:
+fs_dir_next:
+fs_format:
+fs_free:
+fs_open:
+fs_read:
+fs_sec_read:
+fs_sec_write:
+fs_write:
+        mov     al, FS_INDISPONIBLE
+        clc
+        ret
+
+%include "lib/basic.asm"

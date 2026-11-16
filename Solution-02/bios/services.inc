@@ -138,6 +138,14 @@ dos_charger:
         rep     stosw
         mov     word [es:10h], EQUIPEMENT
         mov     word [es:13h], RAM_KO
+        push    ds
+        mov     ax, DSEG
+        mov     ds, ax
+        cmp     byte [V_IMGB_ACTIF], 0  ; B: = image de la carte : le disque en RAM est
+        pop     ds                      ; inutile, sa place va au DOS
+        je      .memoire
+        mov     word [es:13h], RAM_KO_SANS_B
+.memoire:
         mov     word [es:1Ah], 1Eh      ; file du clavier du BDA (vide ; la vraie est en DSEG)
         mov     word [es:1Ch], 1Eh
         mov     word [es:80h], 1Eh
@@ -148,7 +156,14 @@ dos_charger:
         mov     word [es:60h], 0607h
         mov     word [es:63h], 3D4h
         mov     byte [es:84h], LIGNES - 1
+        push    ds
+        mov     ax, DSEG
+        mov     ds, ax
+        cmp     byte [V_IMGB_ACTIF], 0
+        pop     ds
+        jne     .sans_ram
         call    disque_b_prepare
+.sans_ram:
         mov     ax, DSEG
         mov     es, ax
         call    ecran_init
@@ -327,6 +342,8 @@ irq_temps:
         int     1Ch
 .anim:  cmp     byte [es:V_TACHE_ON], 0
         je      .retour
+        cmp     byte [es:V_PROGRES], 0  ; progression du demarrage sur le bargraphe
+        jne     .retour
         cli
         cmp     byte [es:V_TACHE_OCC], 0
         jne     .retour_sti
@@ -1298,13 +1315,15 @@ int19h:
 ; =============================================================================
 int13h:
         BIOS_ENTREE
-        cmp     dl, 1                   ; A: (ROM ou image de la carte SD) ou B: (RAM)
+        cmp     dl, 1                   ; A: (ROM ou image de la carte SD) ou B: (RAM ou image)
         ja      .absent
-        jb      .a
-        jmp     .b
-.a:     cmp     byte [es:V_IMG_ACTIF], 0
+        je      .lb
+        cmp     byte [es:V_IMG_ACTIF], 0
         je      .b
         jmp     int13_sd                ; A: = image .IMG de la carte (sd.inc)
+.lb:    cmp     byte [es:V_IMGB_ACTIF], 0
+        je      .b
+        jmp     int13_sd                ; B: = image DOS 2.x de la carte
 .b:
         cmp     ah, 02h
         je      .lire
@@ -1487,7 +1506,11 @@ int16h:
         cmp     ah, 05h
         je      .pousse
         jmp     bios_sortie
-.lire:  call    ecran_suit_h            ; curseur montre avant d'attendre
+.lire:  cmp     byte [es:V_PROGRES], 0  ; 1re attente du clavier : fin de la progression
+        je      .lire1                  ; (le LCD reprend la fenetre, les DEL leurs animations)
+        mov     byte [es:V_PROGRES], 0
+        call    ecran_redessine
+.lire1: call    ecran_suit_h            ; curseur montre avant d'attendre
         call    kbd_attend
         mov     [bp + R_AX], ax
         jmp     .bloque

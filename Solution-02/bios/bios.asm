@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 1.3 (VE2CUY, 2026)
+; Solution-02 - BIOS 1.4 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -8,7 +8,8 @@
 ;   80000h-FFFFFh  ROM 256 Ko   (CE# = NAND(A19, M)) - A18 non relie a la ROM :
 ;                  l'image apparait deux fois (80000h-BFFFFh et C0000h-FFFFFh).
 ;   Ce BIOS occupe les 64 derniers Ko de la ROM (decalage 30000h) : F000:0000.
-;   Les 192 premiers Ko contiennent la disquette de PC-DOS 2.1 (180 Ko, decalage 0 :
+;   Les 192 premiers Ko contiennent la disquette de PC-DOS 2.1 reduite (pcdos2_1_rom.img,
+;   tests/gen_dos_rom.py : demarrage, EDLIN, CHKDSK, FORMAT, MASM, LINK ; 180 Ko, decalage 0 :
 ;   C000:0000), lecteur A: en lecture seule (INT 13h).
 ;   Haut de la RAM (7F000h-7FFFFh, DSEG) : donnees du BIOS (ecran 24x80, variables,
 ;   pile du menu) ; 5F000h-7EFFFh : lecteur B: (disque virtuel de 128 Ko) ; le DOS voit
@@ -39,14 +40,16 @@
 ; Deroulement :
 ;   1) ecran d'ouverture (~2 s), verification rapide des 4 Ko de DSEG (sinon : test
 ;      complet de la RAM), banniere sur l'UART ;
-;   MENU (touches 1-5 du clavier PS/2) :
+;   MENU (touches 1-6 du clavier PS/2 ou du terminal) :
 ;      1) Load DOS    : choix de l'image si une carte SD est la (J9 : .IMG de la racine,
 ;                       ou la ROM), vecteurs, BDA, ecran 24x80, amorce A: (INT 19h)
 ;      2) Test memory : le test complet ci-dessous, puis retour au menu
 ;      3) LED Show    : ecran des animations (qui tournent en ARRIERE-PLAN par IRQ0 avec
 ;                       la 8253, partout, meme sous DOS) + terminal clavier/UART (Echap)
 ;      4) Info        : processeur (8088 ou V20), memoire, 8259 et 8253
-;      5) UART:ON/OFF : console sur l'UART dans TOUS les modes (ON : ecrans du BIOS et
+;      6) BASIC       : le BASIC "GW-BASIC-like" de Solution-01 (basic_s02.asm, F000:8000),
+;                       ecran 24 x 80 / LCD / terminal ; SYSTEM ramene au menu
+;      5) UART:ON/OFF : (ON au demarrage) console sur l'UART dans TOUS les modes (ON : ecrans du BIOS et
 ;                       INT 10h teletype recopies sur TX ; octets recus par IRQ4 ->
 ;                       touches, comme le clavier PS/2, fleches ANSI)
 ;   Ctrl + Alt + Suppr (sous DOS) : retour au demarrage.
@@ -85,6 +88,7 @@ LIGNE4          equ     54h
 DSEG            equ     7F00h
 DSEG_SP         equ     1000h           ; pile du menu : DSEG:1000h (premier PUSH en 7FFFEh)
 RAM_KO          equ     380             ; memoire annoncee au DOS (INT 12h) : sous le disque B:
+RAM_KO_SANS_B   equ     508             ; ... quand B: est une image de la carte (pas de disque en RAM)
 ECRAN           equ     0               ; tampon d'ecran 24 x 80 en DSEG:0000
 LIGNES          equ     24
 COLS            equ     80
@@ -150,7 +154,7 @@ B_SECT          equ     256             ; secteurs presents (le DOS en croit 320
 B_AMAS_MAX      equ     314             ; dernier amas d'un 160 Ko
 B_AMAS_BON      equ     250             ; dernier amas dans les 128 Ko (secteur 255)
 %ifndef DISQUE_IMG
-%define DISQUE_IMG "../../PC-DOS/pcdos2_1.img"
+%define DISQUE_IMG "../../PC-DOS/pcdos2_1_rom.img"
 %endif
 
 LCD_D           equ     40              ; delai apres une ecriture au LCD (ecran du DOS)
@@ -766,12 +770,21 @@ menu:
         mov     si, txt_menu
         call    lcd_ecran
         call    menu_uart
-        call    ecran_uart              ; console UART : le menu aussi sur le terminal
-        cmp     byte [es:V_MELODIE], 0  ; melodie, une fois apres le demarrage
-        jne     .touche
+        cmp     byte [es:V_MELODIE], 0  ; 1er menu apres le demarrage : ecran d'accueil sur le
+        jne     .pas_premier            ; terminal (console a ON par defaut) et melodie
+        cmp     byte [es:V_UCON], 0
+        je      .sans_accueil
+        call    uart_calme
+        mov     si, txt_accueil
+        call    uart_texte
+.sans_accueil:
+        call    ecran_uart
         mov     byte [es:V_MELODIE], 1
         mov     si, melodie
         call    son_melodie
+        jmp     .touche
+.pas_premier:
+        call    ecran_uart              ; console UART : le menu aussi sur le terminal
 .touche:
         call    kbd_attend
         cmp     al, '1'
@@ -782,6 +795,8 @@ menu:
         je      led_show
         cmp     al, '4'
         je      sysinfo
+        cmp     al, '6'
+        je      .basic
         cmp     al, '5'
         jne     .touche
         xor     byte [es:V_UCON], 1     ; console du DOS sur l'UART : ON <-> OFF
@@ -793,12 +808,26 @@ menu:
         call    uart_texte
         call    ecran_uart
         jmp     .touche
+.basic: jmp     basic_lance
 .dos:   call    sd_choisir              ; carte SD : choix de l'image (ou la ROM)
         jnc     .charge
         jmp     menu                    ; Echap
 .charge:
         jmp     dos_charger
 .ram:   jmp     ram_test
+
+; ---- 6) BASIC : le BASIC de Solution-01 (basic_s02.asm, en F000:8000) -------------
+; Ecran 24 x 80 du DOS (fenetre du LCD, Maj + fleches) ; E/S par INT 10h/16h/1Ah. Le
+; BASIC veut SS = son segment (1000h, 10000h-1FFFFh, libre hors DOS). SYSTEM -> menu.
+basic_lance:
+        call    ecran_init
+        cli
+        mov     ax, 1000h
+        mov     ss, ax
+        xor     sp, sp
+        sti
+        call    BASIC_ORG
+        jmp     menu                    ; (le menu refait la pile en DSEG)
 
 ; menu_uart : ligne 4 du menu selon V_UCON. Detruit AX, BX, CX, SI.
 menu_uart:
@@ -844,12 +873,14 @@ vars_init:
         mov     [es:V_NAV], al
         mov     [es:V_PIC], al
         mov     [es:V_EVT], al
-        mov     [es:V_UCON], al         ; console UART : OFF au demarrage
+        mov     byte [es:V_UCON], 1     ; console UART : ON au demarrage
         mov     [es:V_IRQ7], ax
         mov     [es:V_KBD_N], al
         mov     [es:V_TACHE_ON], al
         mov     [es:V_MELODIE], al
         mov     [es:V_IMG_ACTIF], al    ; A: = ROM tant qu'aucune image n'est choisie
+        mov     [es:V_IMGB_ACTIF], al   ; B: = disque virtuel en RAM
+        mov     [es:V_PROGRES], al
         mov     [es:V_SD_TYPE], al
         call    pit_init
         jmp     tache_init
@@ -1987,7 +2018,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 1.3'
+txt_ouv1:   db  'SOLUTION-02 BIOS 1.4'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2000,7 +2031,7 @@ txt_ram_ok: db  'MEMOIRE 512 Ko : OK '
 txt_echec:  db  'RAM DEFAUT  CPT 0000'
 txt_pile_ok:db  'PILE OK  Touche=menu'
 txt_pile_err:db 'PILE ERR            '
-txt_menu:   db  '1) Load DOS         '
+txt_menu:   db  '1) Load DOS 6) BASIC'
             db  '2) Test memory      '
             db  '3) LED Show         '
 txt_menu4_off:
@@ -2011,7 +2042,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 1.3'
+txt_sys:    db  'SOLUTION-02 BIOS 1.4'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2023,9 +2054,9 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 1.3 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 1.4 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info'
-            db  '  5) UART:ON/OFF (console)', 13, 10, 0
+            db  '  5) UART:ON/OFF (console)  6) BASIC', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
 fleches_ansi:
             db  48h, 'A', 50h, 'B', 4Dh, 'C', 4Bh, 'D', 0
@@ -2103,6 +2134,12 @@ ta_fin:
 ; =============================================================================
 ; Vecteur de reset en F000:FFF0
 ; =============================================================================
+BASIC_ORG       equ     8000h           ; le BASIC (build/basic_s02.bin, assemble a part)
+%if $ - $$ > BASIC_ORG
+%error "le BIOS depasse F000:8000 (place du BASIC)"
+%endif
+        times   BASIC_ORG - ($ - $$) db 0FFh
+        incbin  "build/basic_s02.bin"
         times   0FFF0h - ($ - $$) db 0FFh
 reset:
         jmp     0F000h:debut

@@ -32,18 +32,21 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 1.3 :
+Contenu de la ROM et de la RAM avec le BIOS 1.4 :
 
 | Adresses | Contenu |
 |---|---|
 | 00000h–003FFh | table des vecteurs d'interruption (remplie par « Load DOS ») |
 | 00400h–004FFh | zone de données du BIOS (BDA) : équipement, mémoire, mode vidéo |
-| 00500h–5EFFFh | DOS et programmes (**380 Ko** annoncés par INT 12h) |
+| 00500h–5EFFFh | DOS et programmes (**380 Ko** annoncés par INT 12h ; **508 Ko** quand B: est l'image DOS 2.1 de la carte) |
+| 10000h–1FFFFh | (hors DOS) segment du **BASIC** (menu 6) : programme, variables, pile |
 | 5F000h–7EFFFh | **lecteur B:** : disque virtuel de 128 Ko (conservé après Ctrl + Alt + Suppr) |
 | 7F000h–7FFFFh | données du BIOS (DSEG = 7F00h) : écran 24 × 80, variables, files, copie du LCD, pile des animations (900h–AFFh), pile du menu |
-| C0000h–ECFFFh | **disquette PC-DOS 2.1** (180 Ko : 40 cylindres, 1 tête, 9 secteurs) = décalage 0 de l'image |
+| C0000h–ECFFFh | **disquette PC-DOS 2.1 réduite** (180 Ko : 40 cylindres, 1 tête, 9 secteurs) = décalage 0 de l'image |
 | ED000h–EFFFFh | libre (FFh) |
-| F0000h–FFFFFh | BIOS |
+| F0000h–F7FFFh | BIOS |
+| F8000h–FFFEFh | **BASIC** (basic_s02.asm : le BASIC de Solution-01, ~25 Ko) |
+| FFFF0h | RESET |
 
 La broche PGM (WE#) de la ROM est au +5 V : une écriture du DOS ou d'un
 programme dans la zone de la ROM (par exemple en B8000h, la mémoire vidéo d'un
@@ -325,13 +328,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 1.3
+## BIOS 1.4
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.3`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.4`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -368,17 +371,17 @@ type IBM PC). Déroulement :
      sans 8259 ou sans 8253, pas de son.
 
 ```
-1) Load DOS
+1) Load DOS 6) BASIC
 2) Test memory
 3) LED Show
-4) Info  5) UART:OFF
+4) Info  5) UART:ON
 ```
 
-La touche **5** bascule la **console sur l'UART** (`UART:OFF` ↔ `UART:ON`, OFF
-au démarrage et après Ctrl + Alt + Suppr ou le test de la RAM), **dans tous les
-modes** :
+La **console sur l'UART** est à **ON au démarrage** (et après Ctrl + Alt +
+Suppr ou le test de la RAM) ; la touche **5** la bascule (`UART:ON` ↔
+`UART:OFF`). Elle vaut **dans tous les modes** :
 
-- au passage à ON, un **écran d'accueil en couleur** (séquences ANSI : écran
+- au premier menu après le démarrage (et à chaque passage à ON), un **écran d'accueil en couleur** (séquences ANSI : écran
   effacé, titre en blanc, adresses du dépôt en rouge, logo « 88 // PC » en vert,
   slogans), inspiré de l'accueil de z/OS ([medias/Z88.png](../medias/Z88.png)),
   sans la section LOGON ; il est généré par `tests/gen_accueil.py`
@@ -427,6 +430,29 @@ carte fraîchement formatée), `Erreur de lecture !`. INT 13h AH=08h rend la
 géométrie et le type de lecteur (BL) de l'image ; AH=05h (formatage), 16h, 17h,
 18h répondent « fait ». Débit du SPI logiciel : ~40 ms par secteur (réception
 déroulée, ~12 Ko/s).
+
+**Progression et voyant** : pendant le démarrage depuis une image de la carte
+(jusqu'à la première attente d'une touche par le DOS), la ligne 4 du LCD montre
+`Lecture A: nnn Ko` et le **bargraphe se remplit** (une DEL de plus tous les
+8 Ko, il recommence après 24) ; les animations reprennent ensuite. En tout
+temps, la DEL **PC7** (la plus à gauche) s'allume pendant chaque accès à la
+carte, comme le voyant d'un lecteur de disquette (commandée par mise à 1/0
+d'un seul bit : les animations continuent).
+
+**B: = image DOS 2.1 de la carte** : si l'on choisit `ROM PC-DOS 2.1` et que la
+carte porte une image PC-DOS 2.x (secteur d'amorce OEM `IBM  2.`, la première
+trouvée), elle devient **B:** (lecture-écriture) à la place du disque virtuel en
+RAM, et le DOS reçoit **508 Ko** au lieu de 380. On a ainsi, à côté de la
+disquette réduite de la ROM, la disquette complète (BASICA, utilitaires, et
+DEBUG si on l'y ajoute).
+
+**Disquette de la ROM** (`PC-DOS/pcdos2_1_rom.img`, fabriquée par
+`tests/gen_dos_rom.py` à partir de `pcdos2_1.img`) : IBMBIO.COM, IBMDOS.COM,
+COMMAND.COM, EDLIN.COM, CHKDSK.COM, FORMAT.COM de PC-DOS 2.1, **MASM.EXE**
+(Microsoft MACRO Assembler 1.00, 1981) et **LINK.EXE** (Object Linker 1.08)
+de `PC-DOS/MASM/` (MASM1.EXE, LINK1.EXE : les versions pour DOS 1.1/2.x) ;
+11 Ko libres. Pas de DEBUG : aucun DEBUG pour DOS 2.x dans le dépôt, et il ne
+tiendrait pas (il manquerait 2 amas) ; le mettre sur l'image de la carte (B:).
 
 Le BIOS remplit la table des vecteurs (256 vecteurs vers un `IRET`, puis les
 siens), la zone de données (BDA : 2 lecteurs de disquette, vidéo 80 colonnes,
@@ -579,6 +605,20 @@ qu'un octet reçu pendant la lecture d'une trame du clavier (et inversement).
 Sans 8259 : scrutation, une touche frappée pendant l'envoi d'un caractère ou le
 changement d'animation peut être perdue.
 
+### 6) BASIC
+
+Le **BASIC « GW-BASIC-like » de Solution-01** (`Solution-01/lib/basic*.asm`,
+inchangé), assemblé à part par `basic_s02.asm` (`build/basic_s02.bin`,
+F000:8000) avec une couche d'adaptation : affichage par **INT 10h** (écran
+24 × 80, fenêtre du LCD avec Maj + flèches, et le terminal si la console est à
+ON), clavier par **INT 16h** (clavier PS/2 et terminal), heure de **TIME$** et
+**TIMER** tirée du compteur de tops du BDA (IRQ0), date en RAM. Son segment est
+10000h (libre hors DOS). Bannière `VE2CUY 86 BASIC Version 1.0 (inspired by
+GW-BASIC)`, puis `Ok` ; **SYSTEM** ramène au menu. Limites : pas de disque
+(`LOAD`, `SAVE`, `FILES`… : *Device unavailable* ; le pont STM32 de Solution-01
+n'existe pas ici), et le rappel de la dernière commande (flèche haut) ne
+marche pas depuis le terminal (les touches étendues sont ignorées).
+
 ### 4) Info (SysInfo)
 
 Version du BIOS, processeur (**8088** ou **NEC V20**, reconnu par
@@ -630,7 +670,7 @@ ACMD41 ; contenu creux fabriqué par `tests/gen_sd.py` : SDHC de 64 Mo en FAT32,
 MBR et partition en 2048, images d'un seul tenant ou fragmentées),
 le port 61h, les interruptions matérielles
 servies entre deux instructions quand IF = 1 (pas juste après STI), et
-l'aiguillage des interruptions logicielles du mode réel. 21 scénarios : démarrage et
+l'aiguillage des interruptions logicielles du mode réel. 23 scénarios : démarrage et
 menu (pile, bannière UART) ; Test memory avec RAM saine puis retour au menu ;
 cellule 7B3FFh défectueuse, RAM absente (test complet d'office), ligne A15
 coupée, puce de 128 Ko ; LED Show (24 DEL vues allumées et éteintes) en
@@ -640,7 +680,7 @@ Info avec 8259 et 8253, **sans 8259** (repli sur la scrutation) et **sans
 8253** ; **console UART hors DOS** (menu et Info recopiés sur TX, menu piloté
 au terminal) ; **son** (mélodie de démarrage : diviseurs 5096, 4045, 3401,
 2548 et port 61h à 3 puis 0 pour chaque note, la dernière plus longue) ; **Load DOS** :
-PC-DOS 2.1 démarre depuis la ROM, date et heure (Entrée), `DIR`, Maj + ↑ ×3 et
+PC-DOS 2.1 (disquette réduite : MASM, LINK…) démarre depuis la ROM, date et heure (Entrée), `DIR`, Maj + ↑ ×3 et
 Maj + →, saisie longue, Ctrl + Alt + Suppr, avec vérification qu'aucune trame
 du clavier n'est perdue avant Ctrl + Alt + Suppr, qu'aucun vecteur non géré
 n'est appelé et qu'aucun `OUT` du DOS n'atteint le LCD ou les 8255 ; **frappe
@@ -649,7 +689,9 @@ suivante (IRQ1) ; **console UART** : menu 5 (`UART:ON`), Load DOS, date,
 heure, `DIR` tapés au terminal, flèche gauche ANSI (`ESC [ D` d'un trait) et
 Échap seul, avec la sortie du DOS vérifiée sur TX ; **temps** : `TIME` après
 `DIR` donne une heure qui a avancé, et les DEL changent sous DOS ; **lecteur
-B:** : `COPY SORT.EXE B:` puis `DIR B:` (125 952 octets libres) ; **carte
+B:** : `COPY EDLIN.COM B:` puis `DIR B:` (122 880 octets libres) ; **BASIC**
+(menu 6, `PRINT 2+3` au terminal, `SYSTEM`) ; **ROM + carte** : B: = l'image
+PC-DOS 2.1 de la carte (`DIR B:` montre BASICA.COM) et 508 Ko pour le DOS ; **carte
 SD** : Load DOS, choix de `PCDOS21.IMG` (flèche bas au terminal, Entrée), le DOS
 démarre depuis la carte, `dir > liste.txt` écrit dans l'image (relue sur la
 carte), l'autre image intacte ; **image fragmentée** refusée. La ROM de
@@ -661,7 +703,7 @@ Commandes (depuis `bios/`) :
 
 ```sh
 make            # build/solution-02-bios.bin (image de 256 Ko)
-make test       # simulateur tests/sim.py (21 scénarios, ~25 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
+make test       # simulateur tests/sim.py (23 scénarios, ~30 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
 make diag       # ROM de diagnostic du 8255 U7 (écritures en rafale) ; graver : make flash PUCE=ok GRAVER=diag
 make diag2      # ROM de diagnostic de U12 (PC/PA clignotent, PB et trames PS/2 au LCD) ; GRAVER=diag2
 make flash PUCE=ok   # graver la W29C020C (TL866CS, minipro sous WSL) — insérer la puce d'abord
@@ -754,6 +796,7 @@ un module.
 ## État
 
 - 2026-11-16 : schéma : lecteur microSD (J9) sur U12 (PC4 = CS, PC5 = SCK, PC6 = MOSI, PB3 = MISO, R9/R10 10 kΩ), SPI par le 8088 ; ATmega328P retiré (esprit vintage), UART logiciel rétabli.
+- 2026-11-16 : BIOS 1.4 : console UART à ON au démarrage (accueil ANSI au premier menu) ; progression du démarrage depuis la carte (LCD et bargraphe) et voyant d'accès (PC7) ; **BASIC** de Solution-01 au menu (6) ; disquette de la ROM réduite (démarrage, EDLIN, CHKDSK, FORMAT, MASM 1.00, LINK 1.08) ; B: = image DOS 2.1 de la carte au démarrage depuis la ROM (508 Ko pour le DOS). Simulé (23 scénarios), gravé.
 - 2026-11-16 : BIOS 1.3 : démarrage sur une **image `.IMG` de la carte SD** (choix au Load DOS, A: en lecture-écriture dans l'image, 160 Ko à 1,44 Mo), réception SPI déroulée. Simulé (21 scénarios + diagnostic SD), gravé.
 - 2026-11-16 : ROM de diagnostic SD (`make diagsd`) validée sur le montage : la carte et ses 4 images sont reconnues.
 - 2026-11-15 : BIOS 1.2 : écran d'accueil ANSI en couleur sur le terminal au passage de la console UART à ON (inspiré de l'accueil de z/OS, sans LOGON). Gravé.

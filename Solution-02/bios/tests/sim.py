@@ -85,6 +85,13 @@ class PPI:
 
     def ecrire(self, port, val):
         if port == 0x13:
+            if not val & 0x80:                 # BSR : un bit de PC (voyant de la carte SD, PC7)
+                if self.ctrl != 0x80:
+                    self.erreurs.append("BSR %02Xh avant le mot de controle" % val)
+                bit = (val >> 1) & 7
+                self.ports[2] = (self.ports[2] & ~(1 << bit)) | ((val & 1) << bit)
+                self.bsr = getattr(self, 'bsr', 0) + 1
+                return
             self.ctrl = val
             if val != 0x80:
                 self.erreurs.append("mot de controle %02Xh (80h attendu)" % val)
@@ -594,6 +601,8 @@ class Etapes:
         ppi2, n = ctx["ppi2"], ctx["etat"]["n"]
         if self.faites >= len(self.etapes) or ppi2.attente or n < self.libre:
             return
+        if ppi2.dernier_tx is not None and n - ppi2.dernier_tx < 4000:
+            return                            # l'UART emet (interruptions masquees) : attendre
         cond, action = self.etapes[self.faites]
         if cond(ctx):
             self.faites += 1
@@ -612,7 +621,9 @@ class Etapes:
             self.libre = t + 60000
 
 
-MENU = ["1) Load DOS         ", "2) Test memory      ", "3) LED Show         ", "4) Info  5) UART:OFF"]
+MENU = ["1) Load DOS 6) BASIC", "2) Test memory      ", "3) LED Show         ", "4) Info  5) UART:ON "]
+MENU_OFF = MENU[:3] + ["4) Info  5) UART:OFF"]
+MENU_TX = b"\r\n1) Load DOS 6) BASIC\r\n2) Test memory\r\n3) LED Show\r\n4) Info  5) UART:ON\r\n"
 
 
 def au_menu(ctx):
@@ -789,15 +800,17 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 1.3 - VE2CUY 2026\r\n"
+BANNIERE = (b"\r\nSolution-02 BIOS 1.4 - VE2CUY 2026\r\n"
             b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info"
-            b"  5) UART:ON/OFF (console)\r\n")
+            b"  5) UART:ON/OFF (console)  6) BASIC\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
 echec_ram = lambda ctx: ctx["lcd"].lignes()[0].endswith("CPT 0003")
 
 
 def scenario_menu(image):
-    lcd, etat, uc = lancer(image, fini=au_menu)
+    import gen_accueil
+    attendu_tx = BANNIERE + gen_accueil.octets() + MENU_TX
+    lcd, etat, uc = lancer(image, fini=lambda c: au_menu(c) and bytes(c["ppi2"].tx).endswith(MENU_TX))
     p2 = etat["ppi2"]
     ok = True
     ss, sp = uc.reg_read(UC_X86_REG_SS), uc.reg_read(UC_X86_REG_SP)
@@ -805,9 +818,9 @@ def scenario_menu(image):
     if ss != 0x7F00 or sp < 0x0F00:
         ok = False
         print("    attendu: pile en 7F00:1000 (ou presque)")
-    if bytes(p2.tx) != BANNIERE:
+    if bytes(p2.tx) != attendu_tx:
         ok = False
-        print("    attendu: %r" % BANNIERE)
+        print("    attendu: banniere, accueil ANSI et menu sur l'UART (console a ON par defaut)")
     return verifier("demarrage : ecran d'ouverture, DSEG, banniere, menu", lcd, etat, MENU, ok)
 
 
@@ -863,20 +876,22 @@ def scenario_terminal(image):
             vu["lignes"] = l
         return vu["lignes"] is not None
 
-    pas = Etapes([(au_menu, texte('3')), (lance, CLAVIER), (lance, b"Hi"), (ecrit, texte('\x1b'))])
+    hors = lambda c: c["lcd"].lignes() == MENU_OFF
+    pas = Etapes([(au_menu, texte('5')), (hors, texte('3')), (lance, CLAVIER), (lance, b"Hi"), (ecrit, texte('\x1b'))])
 
     def fini(c):
         ecrit(c)
-        return vu["lignes"] is not None and c["lcd"].lignes() == MENU
+        return vu["lignes"] is not None and c["lcd"].lignes() == MENU_OFF
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas)
     p2 = etat["ppi2"]
-    recu = bytes(p2.tx)[len(BANNIERE):]
+    t = bytes(p2.tx)
+    recu = t[t.rfind(MENU_TX) + len(MENU_TX):]     # apres le menu (console passee a OFF)
     print("--- LED Show : lignes vues %s ; UART TX apres la banniere : %r" % (vu["lignes"], recu))
     ok = bool(vu["lignes"]) and vu["lignes"][2] == "Ab                  " and vu["lignes"][3] == "Hi                  "
     if recu != TX_ATTENDU:
         ok = False
         print("    attendu: %r" % TX_ATTENDU)
-    return verifier("menu 3) terminal clavier + UART, Echap = retour au menu", lcd, etat, MENU, ok)
+    return verifier("menu 3) terminal clavier + UART (console OFF), Echap = retour au menu", lcd, etat, MENU_OFF, ok)
 
 
 def scenario_sysinfo(image, pic=True, pit=True):
@@ -888,12 +903,12 @@ def scenario_sysinfo(image, pic=True, pit=True):
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 1.3" and pret(c):
+        if l[0] == "SOLUTION-02 BIOS 1.4" and pret(c):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
     pas = Etapes([(au_menu, texte('4')), (pret, texte(' '))])
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic, pit=pit)
-    attendu = ["SOLUTION-02 BIOS 1.3", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
+    attendu = ["SOLUTION-02 BIOS 1.4", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
@@ -905,7 +920,8 @@ def scenario_sysinfo(image, pic=True, pit=True):
 
 def scenario_anticipe(image):
     """DOS : des touches frappees PENDANT l'affichage de DIR (le DOS ne lit pas le clavier)
-    doivent arriver a l'invite suivante : avec le 8259, IRQ1 les met dans la file."""
+    doivent arriver a l'invite suivante : avec le 8259, IRQ1 les met dans la file. Console
+    UART a OFF (touche 5) : sinon l'envoi de DIR sur l'UART occupe tout l'affichage."""
     ecran = lambda c: "\n".join(ecran_dos(c["uc"]))
     vu = {}
 
@@ -916,7 +932,8 @@ def scenario_anticipe(image):
             return True
         return False
     pas = Etapes([
-        (au_menu, texte('1')),
+        (au_menu, texte('5')),
+        (lambda c: c["lcd"].lignes() == MENU_OFF, texte('1')),
         (lambda c: "Enter new date" in ecran(c), texte('\r')),
         (lambda c: "Enter new time" in ecran(c), texte('\r')),
         (lambda c: ecran(c).count("A>") >= 1, texte('dir\r')),
@@ -951,8 +968,7 @@ def scenario_console(image):
             return True
         return False
     pas = Etapes([
-        (au_menu, texte('5')),
-        (on, texte('1')),
+        (au_menu, texte('1')),
         (lambda c: b"Enter new date" in tx(c), b"\r"),
         (lambda c: b"Enter new time" in tx(c), b"\r"),
         (lambda c: tx(c).count(b"A>") >= 1, b"dir\r"),
@@ -1015,7 +1031,7 @@ def carte_dos(fragmente=False):
 
 
 def scenario_sd_boot(image):
-    """BIOS 1.3 : Load DOS avec une carte : choix de PCDOS21.IMG (fleche bas, Entree), le DOS
+    """BIOS 1.4 : Load DOS avec une carte : choix de PCDOS21.IMG (fleche bas, Entree), le DOS
     demarre depuis la carte, puis 'dir > liste.txt' ecrit dans l'image (A:), relue sur la carte."""
     import gen_sd
     carte, img = carte_dos()
@@ -1029,7 +1045,7 @@ def scenario_sd_boot(image):
             return True
         return False
     on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON " and b"5) UART:ON\r\n" in tx(c)
-    pas = Etapes([(au_menu, texte('5')), (on, texte('1')), (liste, Rafale(b"\x1b[B")),
+    pas = Etapes([(au_menu, texte('1')), (liste, Rafale(b"\x1b[B")),
                   (lambda c: c["lcd"].lignes()[2].startswith(">PCDOS21"), b"\r"),
                   (lambda c: b"Enter new date" in tx(c), b"\r"),
                   (lambda c: b"Enter new time" in tx(c), b"\r"),
@@ -1049,7 +1065,7 @@ def scenario_sd_boot(image):
     if copie != img:
         ok = False
         print("    attendu : l'autre image intacte")
-    return verifier("BIOS 1.3 : demarrage sur une image de la carte SD, ecriture dans l'image", lcd, etat, None, ok)
+    return verifier("BIOS 1.4 : demarrage sur une image de la carte SD, ecriture dans l'image", lcd, etat, None, ok)
 
 
 def scenario_sd_fragmentee(image):
@@ -1065,7 +1081,52 @@ def scenario_sd_fragmentee(image):
     pas = Etapes([(au_menu, texte('1')), (lambda c: c["lcd"].lignes() == choix, appui(0x72, True) + appui(0x72, True)),
                   (lambda c: c["lcd"].lignes()[3].startswith(">COPIE"), texte('\r'))])
     lcd, etat, uc = lancer(image, fini=msg, entrees=pas, max_instr=40_000_000, sd=carte)
-    return verifier("BIOS 1.3 : image fragmentee refusee", lcd, etat, None, bool(vu.get("msg")))
+    return verifier("BIOS 1.4 : image fragmentee refusee", lcd, etat, None, bool(vu.get("msg")))
+
+
+def scenario_basic(image):
+    """Menu 6 : le BASIC de Solution-01 (banniere, Ok), PRINT 2+3 tape au terminal, SYSTEM -> menu."""
+    tx = lambda c: bytes(c["ppi2"].tx)
+    pas = Etapes([(au_menu, texte('6')), (lambda c: tx(c).endswith(b"Ok\r\n"), b"PRINT 2+3\r"),
+                  (lambda c: tx(c).count(b"Ok\r\n") >= 2, b"SYSTEM\r")])
+
+    def fini(c):
+        return pas.faites == 3 and au_menu(c)
+    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, max_instr=60_000_000)
+    t = tx({"ppi2": etat["ppi2"]})
+    i = t.find(b"VE2CUY 86 BASIC")
+    print("--- UART : %r" % t[i:i + 200])
+    ok = i >= 0 and b"PRINT 2+3\r\n 5 \r\nOk\r\n" in t
+    if not ok:
+        print("    attendu : banniere du BASIC, ' 5 ' apres PRINT 2+3, puis Ok")
+    return verifier("menu 6) BASIC (Solution-01) : PRINT 2+3, SYSTEM", lcd, etat, MENU, ok)
+
+
+def scenario_rom_b(image):
+    """Demarrage depuis la ROM avec une carte : l'image PC-DOS 2.x de la carte devient B:
+    (DIR B: montre la disquette complete), et le DOS a 508 Ko (pas de disque en RAM)."""
+    import gen_sd
+    ici = os.path.dirname(os.path.abspath(__file__))
+    img = open(os.path.join(ici, '..', '..', '..', 'PC-DOS', 'pcdos2_1.img'), 'rb').read()
+    secteurs, nb = gen_sd.carte_fat32([('PCDOS21.IMG', img)])
+    carte = CarteSD(secteurs, nb)
+    choix = lambda c: c["lcd"].lignes()[1] == ">ROM PC-DOS 2.1     "
+    cmds = [(lambda c: invite(c, 1), b"dir b:\r")]
+    pas_dos = [(au_menu, texte('1')), (choix, b"\r"),
+               (lambda c: b"Enter new date" in bytes(c["ppi2"].tx), b"\r"),
+               (lambda c: b"Enter new time" in bytes(c["ppi2"].tx), b"\r")] + cmds
+    pas = Etapes(pas_dos)
+
+    def fini(c):
+        return pas.faites == len(pas.etapes) and invite(c, 2)
+    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, dos=True, max_instr=300_000_000, sd=carte)
+    t = bytes(etat["ppi2"].tx)
+    memoire = struct.unpack('<H', bytes(uc.mem_read(0x413, 2)))[0]
+    print("--- INT 12h (BDA) : %d Ko ; fin : %r" % (memoire, t[-300:]))
+    ok = b"BASICA   COM    26112" in t and memoire == 508
+    if not ok:
+        print("    attendu : DIR B: = l'image de la carte (BASICA.COM), 508 Ko pour le DOS")
+    return verifier("ROM + carte : B: = image PC-DOS 2.1 de la carte, 508 Ko", lcd, etat, None, ok)
 
 
 def scenario_son(image):
@@ -1091,32 +1152,31 @@ def scenario_partout(image):
     terminal -> Info sur le LCD et sur TX ; une touche du terminal -> retour au menu."""
     tx = lambda c: bytes(c["ppi2"].tx)
     on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON "
-    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 1.3" and c["lcd"].lignes()[3].startswith("8259")
+    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 1.4" and c["lcd"].lignes()[3].startswith("8259")
     vu = {}
 
     def menu_vu(c):
-        return b"1) Load DOS\r\n2) Test memory" in tx(c)
+        return MENU_TX in tx(c)
 
     def fini(c):
         if info(c):
             vu["info"] = True
         return vu.get("info") and au_menu_on(c) and tx(c).count(b"4) Info  5) UART:ON\r\n") >= 2
-    pas = Etapes([(au_menu, texte('5')), (lambda c: on(c) and menu_vu(c), b"4"),
+    pas = Etapes([(lambda c: au_menu(c) and menu_vu(c), b"4"),
                   (lambda c: info(c) and b"8259+8253 OK I7 0000" in tx(c), b" ")])
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas, max_instr=40_000_000)
     t = bytes(etat["ppi2"].tx)[len(BANNIERE):]
     print("--- UART TX apres la banniere : %r" % t)
     import gen_accueil                         # ecran d'accueil ANSI, puis le menu
-    attendu = gen_accueil.octets() + (b"\r\n1) Load DOS\r\n2) Test memory\r\n3) LED Show\r\n4) Info  5) UART:ON\r\n"
-               b"\r\nSOLUTION-02 BIOS 1.3\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n"
-               b"\r\n1) Load DOS\r\n2) Test memory\r\n3) LED Show\r\n4) Info  5) UART:ON\r\n")
+    attendu = gen_accueil.octets() + MENU_TX + (
+               b"\r\nSOLUTION-02 BIOS 1.4\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n") + MENU_TX
     ok = t == attendu
     if not ok:
         print("    attendu : %r" % attendu)
     return verifier("console UART hors DOS : menu et Info sur TX, touches du terminal", lcd, etat, MENU_ON, ok)
 
 
-MENU_ON = MENU[:3] + ["4) Info  5) UART:ON "]
+MENU_ON = MENU
 au_menu_on = lambda c: c["lcd"].lignes() == MENU_ON
 
 
@@ -1125,7 +1185,7 @@ def scenario_dos_uart(image, titre, commandes, verif, max_instr=300_000_000, inv
     [(condition sur l'ecran du DOS, octets tapes au terminal)] ; verif(ecran, etat) -> ok."""
     tx = lambda c: bytes(c["ppi2"].tx)
     on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON " and b"5) UART:ON\r\n" in bytes(c["ppi2"].tx)  # menu envoye
-    pas = Etapes([(au_menu, texte('5')), (on, texte('1')),
+    pas = Etapes([(au_menu, texte('1')),
                   (lambda c: b"Enter new date" in tx(c), b"\r"),
                   (lambda c: b"Enter new time" in tx(c), b"\r")] + commandes)
 
@@ -1176,14 +1236,14 @@ def scenario_temps(image):
 
 
 def scenario_disque_b(image):
-    """Lecteur B: (disque virtuel de 128 Ko) : DIR B:, COPY SORT.EXE B:, DIR B:."""
-    cmds = [(lambda c: invite(c, 1), b"dir b:\r"), (lambda c: invite(c, 2), b"copy sort.exe b:\r"),
+    """Lecteur B: (disque virtuel de 128 Ko) : DIR B:, COPY EDLIN.COM B:, DIR B:."""
+    cmds = [(lambda c: invite(c, 1), b"dir b:\r"), (lambda c: invite(c, 2), b"copy edlin.com b:\r"),
             (lambda c: invite(c, 3), b"dir b:\r")]
 
     def verif(ecran, etat):
         e = "\n".join(ecran)
         ok = True
-        for attendu in ("1 File(s) copied", "SORT     EXE     1408", "125952 bytes free"):
+        for attendu in ("1 File(s) copied", "EDLIN    COM     4608", "122880 bytes free"):
             if attendu not in e:
                 ok = False
                 print("    attendu dans l'ecran : %r" % attendu)
@@ -1286,7 +1346,7 @@ def scenario_dos(image):
     if "Version 2.10" not in vu.get("accueil", ""):
         ok = False
         print("    attendu avant DIR : 'Version 2.10'")
-    for attendu in ("BASICA   COM    26112", "23 File(s)", "bytes free"):
+    for attendu in ("MASM     EXE    67840", "LINK     EXE    41216", "6 File(s)", "bytes free"):
         if attendu not in texte_ecran:
             ok = False
             print("    attendu dans l'ecran : %r" % attendu)
@@ -1341,9 +1401,11 @@ def main():
         ("sans8254", lambda: scenario_sysinfo(image, pit=False)),
         ("partout", lambda: scenario_partout(image)),
         ("son", lambda: scenario_son(image)),
+        ("basic", lambda: scenario_basic(image)),
         ("diagsd", lambda: scenario_diag_sd(image)),
         ("sdboot", lambda: scenario_sd_boot(image)),
         ("sdfrag", lambda: scenario_sd_fragmentee(image)),
+        ("romb", lambda: scenario_rom_b(image)),
         ("dos", lambda: scenario_dos(image)),
         ("anticipe", lambda: scenario_anticipe(image)),
         ("console", lambda: scenario_console(image)),
