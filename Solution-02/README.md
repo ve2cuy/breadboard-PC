@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 2.0 :
+Contenu de la ROM et de la RAM avec le BIOS 2.1 :
 
 | Adresses | Contenu |
 |---|---|
@@ -328,13 +328,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 2.0
+## BIOS 2.1
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 2.0`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 2.1`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -905,6 +905,7 @@ un module.
 
 ## État
 
+- 2026-11-16 : BIOS 2.1 : BOOT "NOM.IMG" du BASIC corrigé (INT 19h hors Load DOS : DS = CS pour la table des vecteurs). À graver.
 - 2026-11-16 : BIOS 2.0 : fichiers du BASIC sur la disquette A: (FAT12 : SAVE, LOAD, FILES, KILL, OPEN…), flèche haut au BASIC, BOOT "NOM.IMG" (INT 13h AH=F0h) ; curseur dans le BDA et recopié au terminal (retour arrière de FreeDOS). Gravé.
 - 2026-11-16 : BIOS 1.9 : le changement de A: s'ouvre aussi quand le DOS attend en interrogeant INT 16h AH=01h (sinon jamais) ; image FreeDOS avec `STACKS=0,0` (clavier PS/2 et UART corrects sous FreeDOS). Gravé.
 - 2026-11-16 : BIOS 1.8 : la barre oblique inverse s'affiche au LCD (CGRAM 4 ; la ROM A00 a le yen en 5Ch), â → a. Gravé.

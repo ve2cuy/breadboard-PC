@@ -1549,6 +1549,8 @@ int19h:
         pop     ds
         pop     ax
         jne     .pret
+        push    cs                      ; dos_charger (ivt_init) lit ses tables en DS = CS
+        pop     ds
         jmp     dos_charger
 .pret:  cli
         xor     ax, ax
