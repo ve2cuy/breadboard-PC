@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 1.4 (VE2CUY, 2026)
+; Solution-02 - BIOS 1.5 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -1565,6 +1565,26 @@ clavier_decode:
         mov     ah, [si + clavier_xt]
         or      ah, ah
         jz      .n_rien
+        test    bh, CLV_MAJS | CLV_FAUX ; Maj + touche de deplacement du pave : la fonction
+        jz      .pas_pave               ; de curseur (Maj inverse Verr Num, comme le PC) ;
+        push    di                      ; aussi une fleche dont le prefixe E0 a ete perdu
+        mov     di, pave_curseur
+.pv:    cmp     byte [cs:di], 0
+        je      .pv_non
+        cmp     al, [cs:di]
+        je      .pv_oui
+        inc     di
+        jmp     .pv
+.pv_oui:
+        pop     di
+        mov     al, bh                  ; Maj factice gardee : la navigation (Maj + fleche)
+        and     al, CLV_FAUX            ; la reconnait meme si l'appui de Maj a ete perdu
+        or      bl, al
+        xor     al, al                  ; ASCII 0, AH = code XT de la fleche (48h, 50h...)
+        jmp     .alt
+.pv_non:
+        pop     di
+.pas_pave:
         mov     al, [si + clavier_normal]
         test    bl, CLV_MAJS
         jz      .lettre
@@ -1597,6 +1617,11 @@ clavier_decode:
         pop     bx
         stc
         ret
+
+; touches de deplacement du pave numerique (jeu 2) : 1 Fin, 4 gauche, 7 Debut, 0 Inser,
+; . Suppr, 2 bas, 6 droite, 8 haut, 3 Page suiv., 9 Page prec.
+pave_curseur:
+        db      69h, 6Bh, 6Ch, 70h, 71h, 72h, 74h, 75h, 7Ah, 7Dh, 0
 
 ; touches etendues (E0 xx) : code jeu 2, code XT, ASCII
 clavier_etendu:
@@ -2018,7 +2043,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 1.4'
+txt_ouv1:   db  'SOLUTION-02 BIOS 1.5'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2042,7 +2067,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 1.4'
+txt_sys:    db  'SOLUTION-02 BIOS 1.5'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2054,7 +2079,7 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 1.4 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 1.5 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x

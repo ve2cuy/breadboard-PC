@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 1.4 :
+Contenu de la ROM et de la RAM avec le BIOS 1.5 :
 
 | Adresses | Contenu |
 |---|---|
@@ -328,13 +328,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 1.4
+## BIOS 1.5
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.4`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.5`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -511,6 +511,11 @@ curseur quand elle est dans la fenêtre.
 
 Le prochain affichage ramène la fenêtre sur la ligne du curseur ; la colonne
 choisie reste jusqu'à la prochaine attente du clavier qui suit un affichage.
+**Maj inverse Verr Num**, comme sur un PC : Maj + une touche de déplacement du
+pavé numérique (8 2 4 6, 7 1 9 3, 0 .) donne la fonction de curseur (flèche,
+Début, Fin, Page…, Inser, Suppr) et non le chiffre. La navigation marche donc
+aussi avec les flèches du pavé, et quand le préfixe E0 d'une flèche est perdu
+(le BIOS 1.4 et avant écrivait alors « 8 », « 2 »… à l'invite).
 La Maj est aussi reconnue par le « relâchement factice » (E0 F0 12h ou
 E0 F0 59h) que le clavier envoie juste avant la flèche : la navigation marche
 même si l'appui de Maj a été perdu (montage sans diode).
@@ -670,7 +675,7 @@ ACMD41 ; contenu creux fabriqué par `tests/gen_sd.py` : SDHC de 64 Mo en FAT32,
 MBR et partition en 2048, images d'un seul tenant ou fragmentées),
 le port 61h, les interruptions matérielles
 servies entre deux instructions quand IF = 1 (pas juste après STI), et
-l'aiguillage des interruptions logicielles du mode réel. 23 scénarios : démarrage et
+l'aiguillage des interruptions logicielles du mode réel. 24 scénarios : démarrage et
 menu (pile, bannière UART) ; Test memory avec RAM saine puis retour au menu ;
 cellule 7B3FFh défectueuse, RAM absente (test complet d'office), ligne A15
 coupée, puce de 128 Ko ; LED Show (24 DEL vues allumées et éteintes) en
@@ -690,7 +695,8 @@ heure, `DIR` tapés au terminal, flèche gauche ANSI (`ESC [ D` d'un trait) et
 Échap seul, avec la sortie du DOS vérifiée sur TX ; **temps** : `TIME` après
 `DIR` donne une heure qui a avancé, et les DEL changent sous DOS ; **lecteur
 B:** : `COPY EDLIN.COM B:` puis `DIR B:` (122 880 octets libres) ; **BASIC**
-(menu 6, `PRINT 2+3` au terminal, `SYSTEM`) ; **ROM + carte** : B: = l'image
+(menu 6, `PRINT 2+3` au terminal, `SYSTEM`) ; **Maj + flèche sans E0** puis
+Maj + 8 du pavé : la fenêtre remonte, aucun chiffre ; **ROM + carte** : B: = l'image
 PC-DOS 2.1 de la carte (`DIR B:` montre BASICA.COM) et 508 Ko pour le DOS ; **carte
 SD** : Load DOS, choix de `PCDOS21.IMG` (flèche bas au terminal, Entrée), le DOS
 démarre depuis la carte, `dir > liste.txt` écrit dans l'image (relue sur la
@@ -703,7 +709,7 @@ Commandes (depuis `bios/`) :
 
 ```sh
 make            # build/solution-02-bios.bin (image de 256 Ko)
-make test       # simulateur tests/sim.py (23 scénarios, ~30 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
+make test       # simulateur tests/sim.py (24 scénarios, ~30 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
 make diag       # ROM de diagnostic du 8255 U7 (écritures en rafale) ; graver : make flash PUCE=ok GRAVER=diag
 make diag2      # ROM de diagnostic de U12 (PC/PA clignotent, PB et trames PS/2 au LCD) ; GRAVER=diag2
 make flash PUCE=ok   # graver la W29C020C (TL866CS, minipro sous WSL) — insérer la puce d'abord
@@ -796,6 +802,7 @@ un module.
 ## État
 
 - 2026-11-16 : schéma : lecteur microSD (J9) sur U12 (PC4 = CS, PC5 = SCK, PC6 = MOSI, PB3 = MISO, R9/R10 10 kΩ), SPI par le 8088 ; ATmega328P retiré (esprit vintage), UART logiciel rétabli.
+- 2026-11-16 : BIOS 1.5 : Maj + touche de déplacement du pavé = fonction de curseur (Maj inverse Verr Num) : corrige les chiffres reçus pendant la navigation Maj + flèches (préfixe E0 perdu). Simulé (24 scénarios).
 - 2026-11-16 : BIOS 1.4 : console UART à ON au démarrage (accueil ANSI au premier menu) ; progression du démarrage depuis la carte (LCD et bargraphe) et voyant d'accès (PC7) ; **BASIC** de Solution-01 au menu (6) ; disquette de la ROM réduite (démarrage, EDLIN, CHKDSK, FORMAT, MASM 1.00, LINK 1.08) ; B: = image DOS 2.1 de la carte au démarrage depuis la ROM (508 Ko pour le DOS). Simulé (23 scénarios), gravé.
 - 2026-11-16 : BIOS 1.3 : démarrage sur une **image `.IMG` de la carte SD** (choix au Load DOS, A: en lecture-écriture dans l'image, 160 Ko à 1,44 Mo), réception SPI déroulée. Simulé (21 scénarios + diagnostic SD), gravé.
 - 2026-11-16 : ROM de diagnostic SD (`make diagsd`) validée sur le montage : la carte et ses 4 images sont reconnues.
