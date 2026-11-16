@@ -755,6 +755,9 @@ menu:
         call    kbd_bloque              ; (scrutation) clavier bloque hors des attentes
         call    it_init                 ; vecteurs, 8259 (clavier et UART par IRQ)
         sti
+%ifdef DIAG_SD
+        jmp     diag_sd                 ; ROM de diagnostic du lecteur SD (make diagsd)
+%endif
         xor     al, al                  ; DEL eteintes
         out     PPI_PA, al
         out     PPI_PB, al
@@ -2075,6 +2078,7 @@ txt_a9:     db  'Vu-metre        '
 
 %include "clavier_us.inc"
 %include "accueil.inc"
+%include "sd.inc"
 %include "services.inc"
 
 motifs:     dw  55AAh, 0AA55h, 0000h, 0FFFFh

@@ -6,7 +6,7 @@ NASM_DEF = $(if $(UART_N),-DUART_N=$(UART_N))
 
 all: $(IMAGE)
 
-$(IMAGE): bios.asm clavier_us.inc accueil.inc services.inc ../../PC-DOS/pcdos2_1.img
+$(IMAGE): bios.asm clavier_us.inc accueil.inc services.inc sd.inc ../../PC-DOS/pcdos2_1.img
 	@mkdir -p build
 	$(NASM) -f bin $(NASM_DEF) -l build/bios.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
@@ -14,7 +14,7 @@ $(IMAGE): bios.asm clavier_us.inc accueil.inc services.inc ../../PC-DOS/pcdos2_1
 # ROM de diagnostic du 8255 : ecritures en rafale continue en 10h-13h (CS#/WR# visibles)
 DIAG = build/solution-02-diag-8255.bin
 diag: $(DIAG)
-$(DIAG): bios.asm clavier_us.inc accueil.inc services.inc
+$(DIAG): bios.asm clavier_us.inc accueil.inc services.inc sd.inc
 	@mkdir -p build
 	$(NASM) -f bin $(NASM_DEF) -DDIAG_8255 -l build/diag-8255.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
@@ -22,9 +22,17 @@ $(DIAG): bios.asm clavier_us.inc accueil.inc services.inc
 # ROM de diagnostic du 2e 8255 (U12) : PC et PA clignotent, PB et trames PS/2 au LCD
 DIAG2 = build/solution-02-diag-u12.bin
 diag2: $(DIAG2)
-$(DIAG2): bios.asm clavier_us.inc accueil.inc services.inc
+$(DIAG2): bios.asm clavier_us.inc accueil.inc services.inc sd.inc
 	@mkdir -p build
 	$(NASM) -f bin $(NASM_DEF) -DDIAG_U12 -l build/diag-u12.lst -o $@ bios.asm
+	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
+
+# ROM de diagnostic du lecteur SD (J9 sur U12) : carte, capacite, FAT, images .IMG (LCD et UART)
+DIAGSD = build/solution-02-diag-sd.bin
+diagsd: $(DIAGSD)
+$(DIAGSD): bios.asm clavier_us.inc accueil.inc services.inc sd.inc
+	@mkdir -p build
+	$(NASM) -f bin $(NASM_DEF) -DDIAG_SD -l build/diag-sd.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
 
 test: $(IMAGE)
@@ -33,7 +41,7 @@ test: $(IMAGE)
 clean:
 	rm -rf build
 
-.PHONY: all test clean flash diag diag2
+.PHONY: all test clean flash diag diag2 diagsd
 
 # Graver la ROM (TL866CS + minipro sous WSL, comme Solution-01). Inserer la puce d'abord.
 FLASH_CHIP ?= W29C020C
@@ -42,11 +50,13 @@ USB_BUSID  ?= 1-2
 MINIPRO_DIR ?= ~/minipro
 MINIPRO     = MINIPRO_HOME=$(MINIPRO_DIR) $(MINIPRO_DIR)/minipro
 
-# image a graver : la ROM normale, ou un diagnostic (make flash PUCE=ok GRAVER=diag|diag2)
+# image a graver : la ROM normale, ou un diagnostic (make flash PUCE=ok GRAVER=diag|diag2|diagsd)
 ifeq ($(GRAVER),diag)
 FLASH_IMAGE = $(DIAG)
 else ifeq ($(GRAVER),diag2)
 FLASH_IMAGE = $(DIAG2)
+else ifeq ($(GRAVER),diagsd)
+FLASH_IMAGE = $(DIAGSD)
 else
 FLASH_IMAGE = $(IMAGE)
 endif

@@ -11,6 +11,7 @@ Materiel modelise (Solution02.kicad_sch) :
 
 Usage : python tests/sim.py build/solution-02-bios.bin   (lance tous les scenarios)
 """
+import os
 import struct
 import sys
 from unicorn import *
@@ -100,6 +101,102 @@ class PPI:
         return self.allumees == [0xFF] * 3 and self.eteintes == [0xFF] * 3
 
 
+class CarteSD:
+    """Carte SDHC sur le SPI de U12 : PC4 = CS, PC5 = SCK, PC6 = MOSI, PB3 = MISO (mode 0 :
+    la carte lit MOSI au front montant, change MISO au front descendant). Commandes CMD0, 8,
+    9, 16, 17, 24, 55, 58 et ACMD41 (prete au 3e essai). `secteurs` : {lba: 512 octets}
+    (creux) ; `presente=False` : MISO reste a 1 (tirage R9)."""
+    def __init__(self, secteurs=None, nb=131072, presente=True):
+        self.s = secteurs if secteurs is not None else {}
+        self.nb, self.presente = nb, presente
+        self.cs, self.sck = 1, 0
+        self.k, self.entree, self.cour = 8, 0, 0xFF
+        self.sortie, self.cmd = [], []
+        self.idle, self.app, self.essais41 = True, False, 0
+        self.ecr = None
+        self.commandes = []                   # (n de commande, argument)
+        self.ecrits = []                      # secteurs ecrits
+
+    def port_c(self, v):
+        cs, sck, mosi = (v >> 4) & 1, (v >> 5) & 1, (v >> 6) & 1
+        if cs != self.cs:
+            self.k = 8
+        if not cs and sck and not self.sck and self.presente:
+            if self.k == 8:                   # debut d'un octet : la carte presente le suivant
+                self.k = 0
+                self.cour = self.sortie.pop(0) if self.sortie else 0xFF
+            self.entree = ((self.entree << 1) | mosi) & 0xFF
+            self.k += 1
+            if self.k == 8:
+                self._octet(self.entree)
+        self.cs, self.sck = cs, sck
+
+    def miso(self):
+        if self.cs or not self.presente:
+            return 1
+        i = self.k - 1 if self.sck else self.k
+        return (self.cour >> (7 - i)) & 1 if 0 <= i < 8 else 1
+
+    def _octet(self, b):
+        if self.ecr is not None:
+            e = self.ecr
+            if e['etat'] == 'jeton':
+                if b == 0xFE:
+                    e['etat'] = 'donnees'
+            elif e['etat'] == 'donnees':
+                e['d'].append(b)
+                if len(e['d']) == 514:        # 512 + CRC
+                    self.s[e['lba']] = bytes(e['d'][:512])
+                    self.ecrits.append(e['lba'])
+                    self.ecr = None
+                    self.sortie = [0x05, 0x00, 0x00, 0x00]
+            return
+        if not self.cmd and (b & 0xC0) != 0x40:
+            return
+        self.cmd.append(b)
+        if len(self.cmd) < 6:
+            return
+        c, arg = self.cmd[0] & 0x3F, int.from_bytes(bytes(self.cmd[1:5]), 'big')
+        self.cmd = []
+        self.commandes.append((c, arg))
+        r1 = 0x01 if self.idle else 0x00
+        app, self.app = self.app, False
+        if c == 0:
+            self.idle, self.essais41 = True, 0
+            rep = [0x01]
+        elif c == 8:
+            rep = [r1, 0x00, 0x00, 0x01, arg & 0xFF]
+        elif c == 55:
+            self.app = True
+            rep = [r1]
+        elif c == 41 and app:
+            self.essais41 += 1
+            if self.essais41 >= 3:
+                self.idle = False
+            rep = [0x01 if self.idle else 0x00]
+        elif c == 58:
+            rep = [r1, 0xC0, 0xFF, 0x80, 0x00]
+        elif c == 9:
+            csize = self.nb // 1024 - 1
+            csd = bytearray(16)
+            csd[0] = 0x40
+            csd[7], csd[8], csd[9] = (csize >> 16) & 0x3F, (csize >> 8) & 0xFF, csize & 0xFF
+            rep = [0x00, 0xFF, 0xFE] + list(csd) + [0xFF, 0xFF]
+        elif c == 16:
+            rep = [r1]
+        elif c == 17:
+            if arg >= self.nb:
+                rep = [0x20]
+            else:
+                rep = [0x00, 0xFF, 0xFF, 0xFE] + list(self.s.get(arg, bytes(512))) + [0xFF, 0xFF]
+        elif c == 24:
+            rep = [0x00]
+            self.ecr = {'lba': arg, 'etat': 'jeton', 'd': []}
+        else:
+            rep = [r1 | 0x04]
+        self.sortie = [0xFF] + rep
+
+
 class PPI2:
     """2e 8255 (U12) en 30h-33h : clavier PS/2 sur PB0 (horloge) / PB1 (donnees), UART logiciel
     TX = PA7 / RX = PB2, blocage du clavier par PC0 (diode de KBD_CLK vers PC0, si `diode`).
@@ -134,6 +231,8 @@ class PPI2:
         self.interrompues = 0
         self.trames = 0
         self.fin_ps2 = 0                      # fin de la derniere trame PS/2 (une a la fois)
+        self.sd = None                        # CarteSD sur PC4-PC6 / PB3
+        self.pc = 0
 
     def bit_uart(self):
         p = sorted(self.periodes)
@@ -162,12 +261,21 @@ class PPI2:
                 if val != 0x82:
                     self.erreurs.append("mot de controle de U12 %02Xh (82h attendu)" % val)
                 self._pc0(0, n)                # le mot de mode remet les sorties a 0
-            elif (val >> 1) & 7 == 0:          # BSR sur PC0
-                self._pc0(val & 1, n)
+                self.pc = 0
+            else:                              # BSR : un bit de PC
+                bit = (val >> 1) & 7
+                self.pc = (self.pc & ~(1 << bit)) | ((val & 1) << bit)
+                if bit == 0:
+                    self._pc0(val & 1, n)
+            if self.sd is not None:
+                self.sd.port_c(self.pc)
             return
         if self.ctrl != 0x82:
             self.erreurs.append("sortie en %02Xh avant le mot de controle de U12" % port)
         if port == 0x32:
+            self.pc = val
+            if self.sd is not None:
+                self.sd.port_c(val)
             self._pc0(val & 1, n)
             return
         if port != 0x30:
@@ -267,7 +375,8 @@ class PPI2:
         clk, data, rx = self._lignes(n)
         if self.trame and self.trame[1] == 'ps2':
             self.lues += 1
-        return 0xF8 | (rx << 2) | (data << 1) | clk
+        miso = self.sd.miso() if self.sd is not None else 1
+        return 0xF0 | (miso << 3) | (rx << 2) | (data << 1) | clk
 
 
 class PIC:
@@ -531,7 +640,7 @@ def empiler_int(uc, num, ip):
 
 
 def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entrees=None, dos=False,
-           diode=False, pic=True, pit=True):
+           diode=False, pic=True, pit=True, sd=None):
     """defaut(a) : la cellule a ne retient rien ; alias : la RAM ignore cette ligne d'adresse
     (une ecriture en a atteint aussi a ^ alias). fini(ctx) arrete la simulation ; entrees(ctx)
     est appelee a chaque lecture de PB de U12 (pour programmer des trames).
@@ -550,6 +659,7 @@ def lancer(image, defaut=None, alias=None, max_instr=80_000_000, fini=None, entr
     lcd = LCD()
     ppi = PPI()
     ppi2 = PPI2(diode)
+    ppi2.sd = sd
     pic8259 = PIC() if pic else None
     pit8254 = PIT() if pit else None
     etat = {"n": 0, "restaurer": [], "fin": None, "ppi": ppi, "ppi2": ppi2, "pic": pic8259, "pit": pit8254, "hp": [],
@@ -871,6 +981,30 @@ def scenario_console(image):
     return verifier("menu 5) console du DOS sur l'UART (sortie TX, entree IRQ4, ANSI)", lcd, etat, None, ok)
 
 
+def scenario_diag_sd(image):
+    """ROM de diagnostic du lecteur SD (make diagsd) : carte SDHC de 64 Mo en FAT32 avec
+    2 images ; puis sans carte."""
+    import gen_sd
+    ici = os.path.dirname(os.path.abspath(__file__))
+    img = open(os.path.join(ici, '..', '..', '..', 'PC-DOS', 'pcdos2_1.img'), 'rb').read()
+    secteurs, nb = gen_sd.carte_fat32([('PCDOS21.IMG', img), ('VIDE160.IMG', bytes(163840)), ('LISEZMOI.TXT', b'x' * 100)])
+    attendu = ["DIAG SD 01 01 00    ", "SDHC 64 Mo          ", "FAT32 part. 2048    ", "2 IMG PCDOS21.IMG   "]
+    carte = CarteSD(secteurs, nb)
+    lcd, etat, uc = lancer(image, fini=lambda c: c["lcd"].lignes() == attendu, sd=carte, max_instr=40_000_000)
+    t = bytes(etat["ppi2"].tx)
+    print("--- UART : %r" % t[t.find(b"--- Diag"):][:400])
+    print("    commandes SD : %s" % [c for c, a in carte.commandes][:20])
+    ok = b"  PCDOS21.IMG  180 Ko" in t and b"  VIDE160.IMG  160 Ko" in t
+    if not ok:
+        print("    attendu sur l'UART : les 2 images et leur taille")
+    ok1 = verifier("diagnostic SD : carte SDHC FAT32, 2 images", lcd, etat, attendu, ok)
+    vide = ["DIAG SD FF FF FF    ", "Pas de carte (et. 1)"]
+    lcd, etat, uc = lancer(image, fini=lambda c: c["lcd"].lignes()[:2] == vide, sd=CarteSD(presente=False),
+                           max_instr=20_000_000)
+    ok2 = verifier("diagnostic SD : sans carte", lcd, etat, vide + [None, None], True)
+    return ok1 and ok2
+
+
 def scenario_son(image):
     """Son : melodie de demarrage au premier menu (compteur 2 + port 61h), puis silence."""
     lcd, etat, uc = lancer(image, fini=lambda c: au_menu(c) and len(c["etat"]["hp"]) >= 9 and c["etat"]["n"] > 1_500_000,
@@ -1144,6 +1278,7 @@ def main():
         ("sans8254", lambda: scenario_sysinfo(image, pit=False)),
         ("partout", lambda: scenario_partout(image)),
         ("son", lambda: scenario_son(image)),
+        ("diagsd", lambda: scenario_diag_sd(image)),
         ("dos", lambda: scenario_dos(image)),
         ("anticipe", lambda: scenario_anticipe(image)),
         ("console", lambda: scenario_console(image)),
@@ -1152,7 +1287,7 @@ def main():
     ]
     echecs = 0
     for nom, f in scenarios:
-        if seul is None or seul == nom:
+        if seul == nom or (seul is None and nom not in ("diagsd",)):   # diagsd : ROM make diagsd
             echecs += not f()
     print("\n%d scenario(s) en echec" % echecs)
     sys.exit(1 if echecs else 0)
