@@ -1293,12 +1293,19 @@ int19h:
         jmp     0000h:7C00h
 
 ; =============================================================================
-; INT 13h - disquette A: en ROM (180 Ko : 40 cylindres, 1 tete, 9 secteurs)
+; INT 13h - disquette A: en ROM (180 Ko : 40 cylindres, 1 tete, 9 secteurs), ou image
+; .IMG de la carte SD choisie au Load DOS (int13_sd) ; B: disque virtuel en RAM
 ; =============================================================================
 int13h:
         BIOS_ENTREE
-        cmp     dl, 1                   ; A: (ROM) ou B: (RAM)
+        cmp     dl, 1                   ; A: (ROM ou image de la carte SD) ou B: (RAM)
         ja      .absent
+        jb      .a
+        jmp     .b
+.a:     cmp     byte [es:V_IMG_ACTIF], 0
+        je      .b
+        jmp     int13_sd                ; A: = image .IMG de la carte (sd.inc)
+.b:
         cmp     ah, 02h
         je      .lire
         cmp     ah, 00h

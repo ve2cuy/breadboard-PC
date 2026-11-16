@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 1.2 :
+Contenu de la ROM et de la RAM avec le BIOS 1.3 :
 
 | Adresses | Contenu |
 |---|---|
@@ -241,7 +241,7 @@ touche peut encore se perdre de temps en temps. **Décision (2026-11-14) : la
 diode ne sera pas posée** ; le 8259 (U13, ci-dessous) signale le début de
 chaque trame du clavier et de chaque octet de l'UART par une interruption.
 
-## Lecteur de carte SD (J9) — au schéma, pas encore câblé
+## Lecteur de carte SD (J9)
 
 Dans l'esprit des émulateurs de disquette d'époque (Gotek, HxC) : un module
 lecteur microSD sur **U12**, le protocole SPI produit **bit par bit par le
@@ -325,13 +325,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 1.2
+## BIOS 1.3
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.2`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.3`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -394,6 +394,39 @@ modes** :
 - sous DOS : voir « Console UART » plus bas.
 
 ### 1) Load DOS
+
+**Carte SD** (J9) : le BIOS initialise la carte (`Carte SD...`), lit la FAT
+(FAT16, ou FAT32 : 1er amas de la racine) et liste les images **`.IMG` de la
+racine** (16 au plus). S'il en trouve, il propose le choix :
+
+```
+Demarrer : Entree
+>ROM PC-DOS 2.1
+ PCDOS21.IMG  180K
+ DOS33.IMG    720K
+```
+
+**↑ / ↓** déplacent le choix (la liste défile), **Entrée** démarre, **Échap**
+revient au menu ; recopié sur le terminal quand la console UART est à ON
+(flèches ANSI). Sans carte, ou sans image, A: est la disquette en ROM, comme
+avant. L'image choisie devient **A:** pour INT 13h, en **lecture et écriture**
+(les écritures du DOS vont directement dans le fichier de la carte, comme un
+Gotek) :
+
+| Taille du fichier | Format | Secteurs/piste, faces, cylindres | DOS |
+|---|---|---|---|
+| 160 / 180 Ko | 5¼ simple face | 8 ou 9, 1, 40 | 1.0+ / 2.0+ |
+| 320 / 360 Ko | 5¼ double face | 8 ou 9, 2, 40 | 1.1+ / 2.0+ |
+| 720 Ko | 3½ DD | 9, 2, 80 | 3.2+ |
+| 1,2 Mo | 5¼ HD | 15, 2, 80 | 3.0+ |
+| 1,44 Mo | 3½ HD | 18, 2, 80 | 3.3+ |
+
+Refus (message 1 s, retour à la liste) : `Taille inconnue !`, `Image
+fragmentee !` (le fichier doit être **d'un seul tenant** : le copier sur une
+carte fraîchement formatée), `Erreur de lecture !`. INT 13h AH=08h rend la
+géométrie et le type de lecteur (BL) de l'image ; AH=05h (formatage), 16h, 17h,
+18h répondent « fait ». Débit du SPI logiciel : ~40 ms par secteur (réception
+déroulée, ~12 Ko/s).
 
 Le BIOS remplit la table des vecteurs (256 vecteurs vers un `IRET`, puis les
 siens), la zone de données (BDA : 2 lecteurs de disquette, vidéo 80 colonnes,
@@ -592,9 +625,12 @@ valable seulement si l'entrée est encore haute ; INT levée jusqu'à INTA ; IRQ
 parasite sinon) relié par le 74LS14 (IR1 = horloge inversée, IR4 = RX
 inversée), la **8253** (compteur 0, lecture verrouillée, OUT0 en onde carrée
 vers IR0 ; 8 périodes de PCLK par instruction ; diviseurs du compteur 2 notés),
+une **carte SD** sur le SPI de U12 (`CarteSD` : CMD0, 8, 9, 16, 17, 24, 55, 58,
+ACMD41 ; contenu creux fabriqué par `tests/gen_sd.py` : SDHC de 64 Mo en FAT32,
+MBR et partition en 2048, images d'un seul tenant ou fragmentées),
 le port 61h, les interruptions matérielles
 servies entre deux instructions quand IF = 1 (pas juste après STI), et
-l'aiguillage des interruptions logicielles du mode réel. 19 scénarios : démarrage et
+l'aiguillage des interruptions logicielles du mode réel. 21 scénarios : démarrage et
 menu (pile, bannière UART) ; Test memory avec RAM saine puis retour au menu ;
 cellule 7B3FFh défectueuse, RAM absente (test complet d'office), ligne A15
 coupée, puce de 128 Ko ; LED Show (24 DEL vues allumées et éteintes) en
@@ -613,14 +649,19 @@ suivante (IRQ1) ; **console UART** : menu 5 (`UART:ON`), Load DOS, date,
 heure, `DIR` tapés au terminal, flèche gauche ANSI (`ESC [ D` d'un trait) et
 Échap seul, avec la sortie du DOS vérifiée sur TX ; **temps** : `TIME` après
 `DIR` donne une heure qui a avancé, et les DEL changent sous DOS ; **lecteur
-B:** : `COPY SORT.EXE B:` puis `DIR B:` (125 952 octets libres). Réception
-UART sous DOS par INT 14h AH=02h : pas encore de scénario.
+B:** : `COPY SORT.EXE B:` puis `DIR B:` (125 952 octets libres) ; **carte
+SD** : Load DOS, choix de `PCDOS21.IMG` (flèche bas au terminal, Entrée), le DOS
+démarre depuis la carte, `dir > liste.txt` écrit dans l'image (relue sur la
+carte), l'autre image intacte ; **image fragmentée** refusée. La ROM de
+diagnostic a son scénario : `python tests/sim.py build/solution-02-diag-sd.bin
+diagsd` (carte à 2 images, puis sans carte). Réception UART sous DOS par INT
+14h AH=02h : pas encore de scénario.
 
 Commandes (depuis `bios/`) :
 
 ```sh
 make            # build/solution-02-bios.bin (image de 256 Ko)
-make test       # simulateur tests/sim.py (19 scénarios, ~20 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
+make test       # simulateur tests/sim.py (21 scénarios, ~25 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
 make diag       # ROM de diagnostic du 8255 U7 (écritures en rafale) ; graver : make flash PUCE=ok GRAVER=diag
 make diag2      # ROM de diagnostic de U12 (PC/PA clignotent, PB et trames PS/2 au LCD) ; GRAVER=diag2
 make flash PUCE=ok   # graver la W29C020C (TL866CS, minipro sous WSL) — insérer la puce d'abord
@@ -713,6 +754,8 @@ un module.
 ## État
 
 - 2026-11-16 : schéma : lecteur microSD (J9) sur U12 (PC4 = CS, PC5 = SCK, PC6 = MOSI, PB3 = MISO, R9/R10 10 kΩ), SPI par le 8088 ; ATmega328P retiré (esprit vintage), UART logiciel rétabli.
+- 2026-11-16 : BIOS 1.3 : démarrage sur une **image `.IMG` de la carte SD** (choix au Load DOS, A: en lecture-écriture dans l'image, 160 Ko à 1,44 Mo), réception SPI déroulée. Simulé (21 scénarios + diagnostic SD), gravé.
+- 2026-11-16 : ROM de diagnostic SD (`make diagsd`) validée sur le montage : la carte et ses 4 images sont reconnues.
 - 2026-11-15 : BIOS 1.2 : écran d'accueil ANSI en couleur sur le terminal au passage de la console UART à ON (inspiré de l'accueil de z/OS, sans LOGON). Gravé.
 - 2026-11-15 : ATmega328P sur **quartz 16 MHz** (validé sur plaquette, clignotement) ; schéma : Y2 + C5/C6, AVR_CMD → PC4, CTS → PB2, OUT1 de la 8253 libre.
 - 2026-11-15 : schéma : UART par **ATmega328P** (U17, RC interne 8 MHz) derrière U12 en mode 2 (PA0–7, poignée de main PC4–PC7, INTRA → IRQ4), OUT1 de la 8253 → référence d'horloge, ISP J7, RTS/CTS J8 ; UART logiciel retiré du schéma. À valider ; BIOS inchangé.

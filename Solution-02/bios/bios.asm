@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 1.2 (VE2CUY, 2026)
+; Solution-02 - BIOS 1.3 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -40,7 +40,8 @@
 ;   1) ecran d'ouverture (~2 s), verification rapide des 4 Ko de DSEG (sinon : test
 ;      complet de la RAM), banniere sur l'UART ;
 ;   MENU (touches 1-5 du clavier PS/2) :
-;      1) Load DOS    : vecteurs d'interruption, BDA, ecran 24x80, amorce A: (INT 19h)
+;      1) Load DOS    : choix de l'image si une carte SD est la (J9 : .IMG de la racine,
+;                       ou la ROM), vecteurs, BDA, ecran 24x80, amorce A: (INT 19h)
 ;      2) Test memory : le test complet ci-dessous, puis retour au menu
 ;      3) LED Show    : ecran des animations (qui tournent en ARRIERE-PLAN par IRQ0 avec
 ;                       la 8253, partout, meme sous DOS) + terminal clavier/UART (Echap)
@@ -792,7 +793,11 @@ menu:
         call    uart_texte
         call    ecran_uart
         jmp     .touche
-.dos:   jmp     dos_charger
+.dos:   call    sd_choisir              ; carte SD : choix de l'image (ou la ROM)
+        jnc     .charge
+        jmp     menu                    ; Echap
+.charge:
+        jmp     dos_charger
 .ram:   jmp     ram_test
 
 ; menu_uart : ligne 4 du menu selon V_UCON. Detruit AX, BX, CX, SI.
@@ -844,6 +849,8 @@ vars_init:
         mov     [es:V_KBD_N], al
         mov     [es:V_TACHE_ON], al
         mov     [es:V_MELODIE], al
+        mov     [es:V_IMG_ACTIF], al    ; A: = ROM tant qu'aucune image n'est choisie
+        mov     [es:V_SD_TYPE], al
         call    pit_init
         jmp     tache_init
 
@@ -1980,7 +1987,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 1.2'
+txt_ouv1:   db  'SOLUTION-02 BIOS 1.3'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2004,7 +2011,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 1.2'
+txt_sys:    db  'SOLUTION-02 BIOS 1.3'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2016,7 +2023,7 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 1.2 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 1.3 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x

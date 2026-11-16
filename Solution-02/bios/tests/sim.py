@@ -789,7 +789,7 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 1.2 - VE2CUY 2026\r\n"
+BANNIERE = (b"\r\nSolution-02 BIOS 1.3 - VE2CUY 2026\r\n"
             b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info"
             b"  5) UART:ON/OFF (console)\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
@@ -888,12 +888,12 @@ def scenario_sysinfo(image, pic=True, pit=True):
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 1.2" and pret(c):
+        if l[0] == "SOLUTION-02 BIOS 1.3" and pret(c):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
     pas = Etapes([(au_menu, texte('4')), (pret, texte(' '))])
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic, pit=pit)
-    attendu = ["SOLUTION-02 BIOS 1.2", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
+    attendu = ["SOLUTION-02 BIOS 1.3", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
@@ -1005,6 +1005,69 @@ def scenario_diag_sd(image):
     return ok1 and ok2
 
 
+def carte_dos(fragmente=False):
+    """Carte SDHC FAT32 : PCDOS21.IMG (180 Ko) et une 2e image (copie, fragmentee au besoin)."""
+    import gen_sd
+    ici = os.path.dirname(os.path.abspath(__file__))
+    img = open(os.path.join(ici, '..', '..', '..', 'PC-DOS', 'pcdos2_1.img'), 'rb').read()
+    secteurs, nb = gen_sd.carte_fat32([('PCDOS21.IMG', img), ('COPIE.IMG', img)], fragmente=fragmente)
+    return CarteSD(secteurs, nb), img
+
+
+def scenario_sd_boot(image):
+    """BIOS 1.3 : Load DOS avec une carte : choix de PCDOS21.IMG (fleche bas, Entree), le DOS
+    demarre depuis la carte, puis 'dir > liste.txt' ecrit dans l'image (A:), relue sur la carte."""
+    import gen_sd
+    carte, img = carte_dos()
+    tx = lambda c: bytes(c["ppi2"].tx)
+    choix = ["Demarrer : Entree   ", ">ROM PC-DOS 2.1     ", " PCDOS21.IMG  180K  ", " COPIE.IMG    180K  "]
+    vu = {}
+
+    def liste(c):
+        if c["lcd"].lignes() == choix and tx(c).endswith(b"COPIE.IMG    180K\r\n"):   # ecran envoye
+            vu["choix"] = True
+            return True
+        return False
+    on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON " and b"5) UART:ON\r\n" in tx(c)
+    pas = Etapes([(au_menu, texte('5')), (on, texte('1')), (liste, Rafale(b"\x1b[B")),
+                  (lambda c: c["lcd"].lignes()[2].startswith(">PCDOS21"), b"\r"),
+                  (lambda c: b"Enter new date" in tx(c), b"\r"),
+                  (lambda c: b"Enter new time" in tx(c), b"\r"),
+                  (lambda c: invite(c, 1), b"dir > liste.txt\r")])
+
+    def fini(c):
+        return pas.faites == len(pas.etapes) and invite(c, 2)
+    lcd, etat, uc = lancer(image, fini=fini, entrees=pas, dos=True, max_instr=300_000_000, sd=carte)
+    lus = sum(1 for c, a in carte.commandes if c == 17)
+    print("--- carte : %d secteurs lus, %d ecrits ; ecran de choix vu : %s" % (lus, len(carte.ecrits), vu.get("choix")))
+    contenu = gen_sd.lire_fichier(carte.s, 'PCDOS21.IMG')
+    ok = vu.get("choix") and b"Version 2.10" in tx({"ppi2": etat["ppi2"]}) and contenu is not None
+    ok = ok and b'LISTE   TXT' in contenu and len(carte.ecrits) > 0
+    if not ok:
+        print("    attendu : ecran de choix, demarrage depuis la carte, LISTE.TXT ecrit dans l'image")
+    copie = gen_sd.lire_fichier(carte.s, 'COPIE.IMG')
+    if copie != img:
+        ok = False
+        print("    attendu : l'autre image intacte")
+    return verifier("BIOS 1.3 : demarrage sur une image de la carte SD, ecriture dans l'image", lcd, etat, None, ok)
+
+
+def scenario_sd_fragmentee(image):
+    """Une image fragmentee est refusee (message), on revient a la liste."""
+    carte, img = carte_dos(fragmente=True)
+    choix = ["Demarrer : Entree   ", ">ROM PC-DOS 2.1     ", " PCDOS21.IMG  180K  ", " COPIE.IMG    180K  "]
+    vu = {}
+
+    def msg(c):
+        if c["lcd"].lignes()[0] == "Image fragmentee !  ":
+            vu["msg"] = True
+        return vu.get("msg") and c["lcd"].lignes()[0] == choix[0]
+    pas = Etapes([(au_menu, texte('1')), (lambda c: c["lcd"].lignes() == choix, appui(0x72, True) + appui(0x72, True)),
+                  (lambda c: c["lcd"].lignes()[3].startswith(">COPIE"), texte('\r'))])
+    lcd, etat, uc = lancer(image, fini=msg, entrees=pas, max_instr=40_000_000, sd=carte)
+    return verifier("BIOS 1.3 : image fragmentee refusee", lcd, etat, None, bool(vu.get("msg")))
+
+
 def scenario_son(image):
     """Son : melodie de demarrage au premier menu (compteur 2 + port 61h), puis silence."""
     lcd, etat, uc = lancer(image, fini=lambda c: au_menu(c) and len(c["etat"]["hp"]) >= 9 and c["etat"]["n"] > 1_500_000,
@@ -1028,7 +1091,7 @@ def scenario_partout(image):
     terminal -> Info sur le LCD et sur TX ; une touche du terminal -> retour au menu."""
     tx = lambda c: bytes(c["ppi2"].tx)
     on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON "
-    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 1.2" and c["lcd"].lignes()[3].startswith("8259")
+    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 1.3" and c["lcd"].lignes()[3].startswith("8259")
     vu = {}
 
     def menu_vu(c):
@@ -1045,7 +1108,7 @@ def scenario_partout(image):
     print("--- UART TX apres la banniere : %r" % t)
     import gen_accueil                         # ecran d'accueil ANSI, puis le menu
     attendu = gen_accueil.octets() + (b"\r\n1) Load DOS\r\n2) Test memory\r\n3) LED Show\r\n4) Info  5) UART:ON\r\n"
-               b"\r\nSOLUTION-02 BIOS 1.2\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n"
+               b"\r\nSOLUTION-02 BIOS 1.3\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n"
                b"\r\n1) Load DOS\r\n2) Test memory\r\n3) LED Show\r\n4) Info  5) UART:ON\r\n")
     ok = t == attendu
     if not ok:
@@ -1279,6 +1342,8 @@ def main():
         ("partout", lambda: scenario_partout(image)),
         ("son", lambda: scenario_son(image)),
         ("diagsd", lambda: scenario_diag_sd(image)),
+        ("sdboot", lambda: scenario_sd_boot(image)),
+        ("sdfrag", lambda: scenario_sd_fragmentee(image)),
         ("dos", lambda: scenario_dos(image)),
         ("anticipe", lambda: scenario_anticipe(image)),
         ("console", lambda: scenario_console(image)),

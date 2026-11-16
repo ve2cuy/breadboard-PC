@@ -245,9 +245,29 @@ sd_bloc:
         ret
 .donnees:
         pop     cx
-.d:     call    spi_ff
+        push    bx                      ; reception rapide : 8 bits deroules par octet
+        push    dx                      ; (OUT DX = 1 octet de code : le 8088 est limite
+        mov     dx, PPI2_PC             ;  par la lecture des instructions)
+        mov     bl, SD_REPOS            ; SCK = 0, MOSI = 1
+        mov     bh, SD_REPOS | SD_SCK   ; SCK = 1
+.d:
+%rep 8
+        mov     al, bl
+        out     dx, al
+        mov     al, bh
+        out     dx, al
+        in      al, PPI2_PB
+        and     al, SD_MISO
+        add     al, 0F8h                ; CF = MISO
+        rcl     ah, 1
+%endrep
+        mov     al, ah
         stosb
         loop    .d
+        mov     al, bl
+        out     dx, al                  ; SCK = 0
+        pop     dx
+        pop     bx
         call    spi_ff                  ; CRC (ignore)
         call    spi_ff
         call    sd_libere
@@ -582,6 +602,664 @@ tx_sortie:
         call    uart_tx
         mov     al, 10
         jmp     uart_tx
+
+; -----------------------------------------------------------------------------
+; sd_ecrire : ecrit le secteur DX:AX (512 o) depuis DS:SI. CF = 1 en cas d'erreur.
+; Detruit AX, BX, CX, DX, SI.
+; -----------------------------------------------------------------------------
+sd_ecrire:
+        push    ds
+        mov     bx, DSEG
+        mov     ds, bx
+        cmp     byte [V_SD_TYPE], 3
+        pop     ds
+        je      .bloc
+        mov     dh, dl                  ; SDSC : adresse en octets
+        mov     dl, ah
+        mov     ah, al
+        xor     al, al
+        shl     ax, 1
+        rcl     dx, 1
+.bloc:  mov     bx, ax
+        mov     al, 24                  ; CMD24 : WRITE_BLOCK
+        mov     ah, 01h
+        call    sd_cmd
+        or      al, al
+        jnz     .err
+        call    spi_ff                  ; un octet d'ecart
+        mov     al, 0FEh                ; jeton de debut
+        call    spi_octet
+        mov     cx, 512
+.d:     lodsb
+        call    spi_octet
+        loop    .d
+        call    spi_ff                  ; CRC (ignore par la carte en SPI)
+        call    spi_ff
+        call    spi_ff                  ; reponse : xxx00101 = acceptee
+        and     al, 1Fh
+        cmp     al, 05h
+        jne     .err
+        mov     cx, 0                   ; occupee (00h) jusqu'a FFh : ~6 s au plus
+.occ:   call    spi_ff
+        or      al, al
+        jnz     .fin
+        loop    .occ
+        jmp     .err
+.fin:   call    sd_libere
+        clc
+        ret
+.err:   call    sd_libere
+        stc
+        ret
+
+; -----------------------------------------------------------------------------
+; Images de disquette (.IMG) de la racine : table, choix au Load DOS, lecteur A:
+; -----------------------------------------------------------------------------
+T_IMG           equ     0B00h           ; table : IMG_MAX x 20 o (nom 11, taille dd, amas dd, 1 libre)
+IMG_MAX         equ     16
+IMG_T           equ     20
+V_IMG_ACTIF     equ     8E0h            ; 1 = A: est une image de la carte
+V_IMG_SPT       equ     8E1h
+V_IMG_TETES     equ     8E2h
+V_IMG_CYL       equ     8E3h
+V_IMG_TYPE      equ     8E4h            ; type de lecteur (INT 13h AH=08h, BL)
+V_IMG_NB        equ     8E5h            ; images dans la table
+V_IMG_SECT      equ     8E6h            ; (dw) secteurs de l'image
+V_IMG_LBA       equ     8E8h            ; (dd) premier secteur de l'image sur la carte
+V_FAT_CACHE     equ     8ECh            ; (dd) secteur de FAT dans SD_TAMPON (FFFFFFFFh : aucun)
+V_IMG_CHOIX     equ     8F0h            ; ligne choisie (0 = ROM)
+V_IMG_HAUT      equ     8F1h            ; premiere ligne visible
+
+; formats reconnus (taille en octets) : secteurs/piste, tetes, cylindres, type de lecteur
+img_formats:
+        dd      163840
+        db      8, 1, 40, 1             ; 160 Ko
+        dd      184320
+        db      9, 1, 40, 1             ; 180 Ko
+        dd      327680
+        db      8, 2, 40, 1             ; 320 Ko
+        dd      368640
+        db      9, 2, 40, 1             ; 360 Ko
+        dd      737280
+        db      9, 2, 80, 3             ; 720 Ko
+        dd      1228800
+        db      15, 2, 80, 2            ; 1,2 Mo
+        dd      1474560
+        db      18, 2, 80, 4            ; 1,44 Mo
+img_formats_fin:
+
+; img_liste : remplit T_IMG avec les .IMG de la racine (FAT16 : toute ; FAT32 : 1er amas).
+; V_IMG_NB. Detruit AX, BX, CX, DX, SI, DI.
+img_liste:
+        mov     byte [es:V_IMG_NB], 0
+        mov     ax, [es:V_FAT_RACINE]
+        mov     dx, [es:V_FAT_RACINE + 2]
+        mov     cx, [es:V_FAT_RACN]
+.secteur:
+        push    cx
+        push    ax
+        push    dx
+        call    sd_tampon
+        jc      .fin
+        xor     si, si
+.entree:
+        push    ds
+        mov     bx, SD_TAMPON
+        mov     ds, bx
+        mov     al, [si]
+        mov     ah, [si + 0Bh]
+        or      al, al
+        jz      .fin_ds
+        cmp     al, 0E5h
+        je      .suiv_ds
+        test    ah, 18h
+        jnz     .suiv_ds
+        cmp     word [si + 8], 'IM'
+        jne     .suiv_ds
+        cmp     byte [si + 10], 'G'
+        jne     .suiv_ds
+        mov     al, [es:V_IMG_NB]
+        cmp     al, IMG_MAX
+        jae     .suiv_ds
+        mov     bl, IMG_T
+        mul     bl
+        add     ax, T_IMG
+        mov     di, ax
+        push    si
+        mov     cx, 11                  ; nom
+        rep     movsb
+        pop     si
+        mov     ax, [si + 1Ch]          ; taille
+        stosw
+        mov     ax, [si + 1Eh]
+        stosw
+        mov     ax, [si + 1Ah]          ; premier amas (poids faible, puis fort)
+        stosw
+        mov     ax, [si + 14h]
+        stosw
+        inc     byte [es:V_IMG_NB]
+.suiv_ds:
+        pop     ds
+        add     si, 32
+        cmp     si, 512
+        jb      .entree
+        pop     dx
+        pop     ax
+        pop     cx
+        add     ax, 1
+        adc     dx, 0
+        loop    .secteur
+        ret
+.fin_ds:
+        pop     ds
+.fin:   pop     dx
+        pop     ax
+        pop     cx
+        ret
+
+; fat_entree : DX:AX = amas -> DX:AX = amas suivant (FAT16 : FFF8h et plus = fin -> rendu
+; 0FFFFFFFh). CF = 1 si erreur de lecture. Detruit BX, CX, SI.
+fat_entree:
+        mov     si, ax
+        cmp     byte [es:V_FAT_TYPE], 32
+        je      .f32
+        mov     cl, 8                   ; FAT16 : secteur = amas / 256, decalage = (amas % 256) x 2
+        mov     bx, ax
+        shr     ax, cl
+        xor     dx, dx
+        and     si, 0FFh
+        shl     si, 1
+        jmp     .lit
+.f32:   mov     cx, 7                   ; FAT32 : secteur = amas / 128, decalage = (amas % 128) x 4
+.d:     shr     dx, 1
+        rcr     ax, 1
+        loop    .d
+        and     si, 7Fh
+        shl     si, 1
+        shl     si, 1
+.lit:   add     ax, [es:V_FAT_LBA]
+        adc     dx, [es:V_FAT_LBA + 2]
+        cmp     ax, [es:V_FAT_CACHE]
+        jne     .charge
+        cmp     dx, [es:V_FAT_CACHE + 2]
+        je      .en_cache
+.charge:
+        mov     [es:V_FAT_CACHE], ax
+        mov     [es:V_FAT_CACHE + 2], dx
+        push    si
+        call    sd_tampon
+        pop     si
+        jnc     .en_cache
+        mov     word [es:V_FAT_CACHE], 0FFFFh
+        mov     word [es:V_FAT_CACHE + 2], 0FFFFh
+        ret
+.en_cache:
+        push    ds
+        mov     ax, SD_TAMPON
+        mov     ds, ax
+        mov     ax, [si]
+        mov     dx, [si + 2]
+        pop     ds
+        cmp     byte [es:V_FAT_TYPE], 32
+        je      .m32
+        xor     dx, dx
+        cmp     ax, 0FFF8h
+        jb      .ok
+        mov     dx, 0FFFh
+        mov     ax, 0FFFFh
+.ok:    clc
+        ret
+.m32:   and     dx, 0FFFh
+        clc
+        ret
+
+; img_ouvre : image n AL (0-based) de T_IMG -> lecteur A:. CF = 1 et AL = 1 taille inconnue,
+; 2 fichier fragmente, 3 erreur de lecture. Detruit AX, BX, CX, DX, SI, DI.
+img_ouvre:
+        mov     bl, IMG_T
+        mul     bl
+        add     ax, T_IMG
+        mov     di, ax                  ; ES:DI = entree
+        mov     si, img_formats         ; taille connue ?
+.f:     mov     ax, [cs:si]
+        cmp     ax, [es:di + 11]
+        jne     .fs
+        mov     ax, [cs:si + 2]
+        cmp     ax, [es:di + 13]
+        je      .format
+.fs:    add     si, 8
+        cmp     si, img_formats_fin
+        jb      .f
+        mov     al, 1
+        stc
+        ret
+.format:
+        mov     al, [cs:si + 4]
+        mov     [es:V_IMG_SPT], al
+        mov     al, [cs:si + 5]
+        mov     [es:V_IMG_TETES], al
+        mov     al, [cs:si + 6]
+        mov     [es:V_IMG_CYL], al
+        mov     al, [cs:si + 7]
+        mov     [es:V_IMG_TYPE], al
+        mov     ax, [es:di + 11]        ; secteurs = taille / 512
+        mov     dx, [es:di + 13]
+        mov     cx, 9
+.s:     shr     dx, 1
+        rcr     ax, 1
+        loop    .s
+        mov     [es:V_IMG_SECT], ax
+        mov     cl, [es:V_FAT_SPC]      ; amas necessaires = secteurs / SPC (arrondi)
+        xor     ch, ch
+        dec     cx
+        add     ax, cx
+        inc     cx
+.a:     shr     cx, 1
+        jz      .a_fin
+        shr     ax, 1
+        jmp     .a
+.a_fin: mov     bx, ax                  ; BX = amas
+        mov     word [es:V_FAT_CACHE], 0FFFFh
+        mov     word [es:V_FAT_CACHE + 2], 0FFFFh
+        mov     ax, [es:di + 15]        ; premier amas
+        mov     dx, [es:di + 17]
+        push    ax
+        push    dx
+.chaine:                                ; chaque amas doit etre suivi du suivant
+        dec     bx
+        jz      .contigu
+        push    bx
+        push    ax
+        push    dx
+        call    fat_entree
+        pop     cx                      ; CX:BX = amas courant
+        pop     bx
+        jc      .err_lecture
+        add     bx, 1
+        adc     cx, 0
+        cmp     ax, bx
+        jne     .fragmente
+        cmp     dx, cx
+        jne     .fragmente
+        pop     bx
+        jmp     .chaine
+.fragmente:
+        pop     bx
+        pop     dx
+        pop     ax
+        mov     al, 2
+        stc
+        ret
+.err_lecture:
+        pop     bx
+        pop     dx
+        pop     ax
+        mov     al, 3
+        stc
+        ret
+.contigu:
+        pop     dx
+        pop     ax
+        call    fat_amas_lba
+        mov     [es:V_IMG_LBA], ax
+        mov     [es:V_IMG_LBA + 2], dx
+        mov     byte [es:V_IMG_ACTIF], 1
+        clc
+        ret
+
+; sd_choisir : (Load DOS) carte presente avec des images : choix sur le LCD (et le
+; terminal) : ROM puis les images ; fleches haut/bas, Entree, Echap. CF = 1 : Echap.
+; Sans carte ni image : A: = ROM, CF = 0. ES = DSEG, DS = CS.
+sd_choisir:
+        mov     byte [es:V_IMG_ACTIF], 0
+        mov     si, txt_sd_lecture
+        call    lcd_ecran
+        call    sd_init
+        jc      .rom
+        call    fat_ouvre
+        jc      .rom
+        call    img_liste
+        cmp     byte [es:V_IMG_NB], 0
+        je      .rom
+        mov     byte [es:V_IMG_CHOIX], 0
+        mov     byte [es:V_IMG_HAUT], 0
+.dessine:
+        call    img_ecran
+        call    ecran_uart
+.touche:
+        call    kbd_attend
+        cmp     al, 27
+        je      .echap
+        cmp     al, 13
+        je      .entree
+        or      al, al
+        jnz     .touche
+        mov     bl, [es:V_IMG_CHOIX]
+        cmp     ah, 48h                 ; haut
+        jne     .bas
+        or      bl, bl
+        jz      .touche
+        dec     bl
+        jmp     .bouge
+.bas:   cmp     ah, 50h
+        jne     .touche
+        cmp     bl, [es:V_IMG_NB]
+        jae     .touche
+        inc     bl
+.bouge: mov     [es:V_IMG_CHOIX], bl
+        mov     al, [es:V_IMG_HAUT]     ; fenetre de 3 lignes
+        cmp     bl, al
+        jae     .b1
+        mov     al, bl
+.b1:    mov     ah, al
+        add     ah, 2
+        cmp     bl, ah
+        jbe     .b2
+        mov     al, bl
+        sub     al, 2
+.b2:    mov     [es:V_IMG_HAUT], al
+        jmp     .dessine
+.entree:
+        mov     al, [es:V_IMG_CHOIX]
+        or      al, al
+        jz      .rom
+        dec     al
+        call    img_ouvre
+        jnc     .fin
+        mov     bl, al                  ; message 1 s, puis la liste
+        xor     bh, bh
+        shl     bx, 1
+        mov     si, [cs:bx + txt_img_err - 2]
+        mov     al, 80h | LIGNE1
+        call    lcd_cmd
+        call    lcd_texte20
+        mov     cx, 5
+.p:     push    cx
+        DELAY   0
+        pop     cx
+        loop    .p
+        jmp     .dessine
+.rom:   mov     byte [es:V_IMG_ACTIF], 0
+.fin:   clc
+        ret
+.echap: stc
+        ret
+
+; img_ecran : titre et 3 lignes de la liste a partir de V_IMG_HAUT ('>' devant le choix).
+img_ecran:
+        mov     si, txt_img_titre
+        mov     al, 80h | LIGNE1
+        call    lcd_cmd
+        call    lcd_texte20
+        mov     cl, 0
+.l:     push    cx
+        mov     al, [es:V_IMG_HAUT]
+        add     al, cl
+        call    img_ligne
+        pop     cx
+        push    cx
+        mov     bl, cl
+        xor     bh, bh
+        mov     al, [cs:bx + lignes_234]
+        call    tx_sortie_lcd
+        pop     cx
+        inc     cl
+        cmp     cl, 3
+        jb      .l
+        ret
+
+lignes_234: db  LIGNE2, LIGNE3, LIGNE4
+
+; img_ligne : V_LIGNE = ligne n AL de la liste (0 = ROM). Detruit AX, BX, CX, DX, SI, DI.
+img_ligne:
+        push    ax
+        call    tx_init
+        pop     ax
+        mov     ah, ' '
+        cmp     al, [es:V_IMG_CHOIX]
+        jne     .marque
+        mov     ah, '>'
+.marque:
+        push    ax
+        mov     al, ah
+        call    tx_car
+        pop     ax
+        or      al, al
+        jnz     .image
+        mov     si, txt_img_rom
+        jmp     tx_chaine
+.image: cmp     al, [es:V_IMG_NB]
+        ja      .vide
+        dec     al
+        mov     bl, IMG_T
+        mul     bl
+        add     ax, T_IMG
+        mov     si, ax
+        mov     cx, 8                   ; nom en clair
+.n:     mov     al, [es:si]
+        inc     si
+        cmp     al, ' '
+        je      .n1
+        call    tx_car
+.n1:    loop    .n
+        mov     al, '.'
+        call    tx_car
+        mov     cx, 3
+.e:     mov     al, [es:si]
+        inc     si
+        call    tx_car
+        loop    .e
+        mov     di, V_LIGNE + 14        ; taille en Ko, alignee
+        mov     ax, [es:si]
+        mov     dx, [es:si + 2]
+        mov     cx, 10
+.k:     shr     dx, 1
+        rcr     ax, 1
+        loop    .k
+        call    tx_dec32
+        mov     al, 'K'
+        jmp     tx_car
+.vide:  ret
+
+; tx_sortie_lcd : V_LIGNE sur la ligne DDRAM AL du LCD seulement. Detruit AX, BX, CX, SI.
+tx_sortie_lcd:
+        or      al, 80h
+        call    lcd_cmd
+        push    ds
+        mov     ax, DSEG
+        mov     ds, ax
+        mov     si, V_LIGNE
+        call    lcd_texte20
+        pop     ds
+        ret
+
+txt_sd_lecture: db  'Carte SD...         '
+                db  '                    '
+                db  '                    '
+                db  '                    '
+txt_img_titre:  db  'Demarrer : Entree   '
+txt_img_rom:    db  'ROM PC-DOS 2.1', 0
+txt_img_err:    dw  txt_img_e1, txt_img_e2, txt_img_e3
+txt_img_e1:     db  'Taille inconnue !   '
+txt_img_e2:     db  'Image fragmentee !  '
+txt_img_e3:     db  'Erreur de lecture ! '
+
+; -----------------------------------------------------------------------------
+; INT 13h, lecteur A: = image de la carte (V_IMG_ACTIF). Appele depuis int13h (cadre
+; BIOS_ENTREE en place, ES = DSEG, DS = CS ; AH = fonction).
+; -----------------------------------------------------------------------------
+int13_sd:
+        cmp     ah, 02h
+        je      .lire
+        cmp     ah, 03h
+        je      .ecrire
+        cmp     ah, 04h
+        je      .verifier
+        cmp     ah, 08h
+        je      .params
+        cmp     ah, 01h
+        je      .etat
+        cmp     ah, 15h
+        je      .type
+        cmp     ah, 00h                 ; 00h reinit., 05h formatage (les secteurs existent),
+        je      .ok                     ; 16h changement, 17h/18h type de media : sans objet
+        cmp     ah, 05h
+        je      .ok
+        cmp     ah, 16h
+        je      .ok
+        cmp     ah, 17h
+        je      .ok
+        cmp     ah, 18h
+        je      .ok
+        mov     ah, 01h
+.err:   mov     [bp + R_AX + 1], ah
+        mov     [es:V_DSTAT], ah
+        jmp     bios_cf1
+.ok:    mov     byte [bp + R_AX + 1], 0
+        mov     byte [es:V_DSTAT], 0
+        jmp     bios_cf0
+.etat:  mov     al, [es:V_DSTAT]
+        mov     [bp + R_AX], al
+        jmp     .ok
+.type:  mov     byte [bp + R_AX + 1], 01h
+        jmp     bios_cf0
+.params:
+        mov     word [bp + R_AX], 0
+        mov     al, [es:V_IMG_TYPE]
+        xor     ah, ah
+        mov     [bp + R_BX], ax
+        mov     ah, [es:V_IMG_CYL]
+        dec     ah
+        mov     al, [es:V_IMG_SPT]
+        mov     [bp + R_CX], ax
+        mov     ah, [es:V_IMG_TETES]
+        dec     ah
+        mov     al, 2
+        mov     [bp + R_DX], ax
+        mov     word [bp + R_DI], dpt_180
+        mov     [bp + R_ES], cs
+        jmp     bios_cf0
+.verifier:
+        call    img_chs
+        jc      .err
+        jmp     .ok
+.lire:  call    img_chs                 ; DX:AX = premier secteur sur la carte
+        jc      .err
+        mov     cx, [bp + R_BX]         ; destination ES:BX normalisee
+        mov     di, cx
+        and     di, 0Fh
+        shr     cx, 1
+        shr     cx, 1
+        shr     cx, 1
+        shr     cx, 1
+        add     cx, [bp + R_ES]
+        mov     es, cx
+        mov     cl, [bp + R_AX]
+        xor     ch, ch
+.l:     push    cx
+        push    ax
+        push    dx
+        push    di
+        call    sd_lire
+        pop     di
+        pop     dx
+        pop     ax
+        pop     cx
+        jc      .err_es
+        mov     bx, es
+        add     bx, 32
+        mov     es, bx
+        add     ax, 1
+        adc     dx, 0
+        loop    .l
+        mov     ax, DSEG
+        mov     es, ax
+        jmp     .ok
+.err_es:
+        mov     ax, DSEG
+        mov     es, ax
+        mov     ah, 04h                 ; secteur introuvable
+        jmp     .err
+.ecrire:
+        call    img_chs
+        jc      .err
+        mov     cx, [bp + R_BX]         ; source ES:BX normalisee -> DS:SI
+        mov     si, cx
+        and     si, 0Fh
+        shr     cx, 1
+        shr     cx, 1
+        shr     cx, 1
+        shr     cx, 1
+        add     cx, [bp + R_ES]
+        mov     ds, cx
+        mov     cl, [bp + R_AX]
+        xor     ch, ch
+.w:     push    cx
+        push    ax
+        push    dx
+        push    si
+        call    sd_ecrire
+        pop     si
+        pop     dx
+        pop     ax
+        pop     cx
+        jc      .err_ds
+        mov     bx, ds
+        add     bx, 32
+        mov     ds, bx
+        add     ax, 1
+        adc     dx, 0
+        loop    .w
+        mov     ax, cs
+        mov     ds, ax
+        jmp     .ok
+.err_ds:
+        mov     ax, cs
+        mov     ds, ax
+        mov     ah, 04h
+        jmp     .err
+
+; img_chs : AL = nombre, CH = cylindre, CL = secteur, DH = tete -> DX:AX = premier secteur
+; sur la carte ; CF = 1 et AH = 04h hors de l'image, 01h si nombre nul. Detruit BX, CX.
+img_chs:
+        mov     bl, al                  ; BL = nombre
+        or      bl, bl
+        jz      .inval
+        cmp     dh, [es:V_IMG_TETES]
+        jae     .hors
+        cmp     ch, [es:V_IMG_CYL]
+        jae     .hors
+        and     cl, 3Fh
+        jz      .hors
+        cmp     cl, [es:V_IMG_SPT]
+        ja      .hors
+        mov     al, ch                  ; (cylindre x tetes + tete) x spt + secteur - 1
+        mul     byte [es:V_IMG_TETES]
+        add     al, dh
+        adc     ah, 0
+        mov     bh, cl
+        mov     cl, [es:V_IMG_SPT]
+        xor     ch, ch
+        mul     cx
+        dec     bh
+        add     al, bh
+        adc     ah, 0
+        mov     cx, ax                  ; dernier secteur dans l'image ?
+        add     cl, bl
+        adc     ch, 0
+        cmp     cx, [es:V_IMG_SECT]
+        ja      .hors
+        xor     dx, dx
+        add     ax, [es:V_IMG_LBA]
+        adc     dx, [es:V_IMG_LBA + 2]
+        clc
+        ret
+.inval: mov     ah, 01h
+        stc
+        ret
+.hors:  mov     ah, 04h
+        stc
+        ret
 
 %ifdef DIAG_SD
 ; =============================================================================
