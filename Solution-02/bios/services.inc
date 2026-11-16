@@ -180,6 +180,8 @@ dos_charger:
 .sans_ram:
         mov     ax, DSEG
         mov     es, ax
+        mov     byte [es:V_CHG_A], 0    ; demande de changement de A: faite au menu : oubliee
+        mov     byte [es:V_CHG_LIGNE], 0
         call    ecran_init
         call    kbd_bloque
         int     19h
@@ -358,11 +360,7 @@ irq_temps:
         je      .retour
         cmp     byte [es:V_PROGRES], 0  ; progression du demarrage sur le bargraphe
         jne     .retour
-        cmp     byte [es:V_DISQUE], 0   ; acces disque recent : LED Show en pause
-        je      .tache
-        dec     byte [es:V_DISQUE]
-        jmp     .retour
-.tache: cli
+        cli
         cmp     byte [es:V_TACHE_OCC], 0
         jne     .retour_sti
         dec     byte [es:V_TACHE_ATT]
@@ -557,6 +555,11 @@ ucon_entree:
         cmp     al, 1Bh
         je      .esc
 .simple:
+        cmp     al, 1Dh                 ; Ctrl+] : changement de la disquette de A:
+        jne     .simple2
+        mov     byte [es:V_CHG_A], 1
+        jmp     .fin
+.simple2:
         call    ucon_code
         jc      .fin
         call    file_ajoute
@@ -586,12 +589,30 @@ ucon_entree:
         call    ucon_table
         jc      .fin
         push    ax
-        call    ucon_suivant            ; '~' attendu
-        mov     bl, al
+        call    ucon_suivant            ; '~' attendu, ou ';' + modificateur (xterm :
+        jc      .p_fin                  ; 2 Maj, 3 Alt, 5 Ctrl, 7 Ctrl+Alt...) + '~'
+        xor     bh, bh
+        cmp     al, ';'
+        jne     .t1
+        call    ucon_suivant
+        jc      .p_fin
+        mov     bh, al
+        call    ucon_suivant
+        jc      .p_fin
+.t1:    mov     bl, al
         pop     ax
-        jc      .fin
         cmp     bl, '~'
         jne     .fin
+        cmp     ah, 52h                 ; Ctrl+Alt+Inser (ESC [ 2 ; 7 ~, ou 8 avec Maj) :
+        jne     .etendue                ; changement de la disquette de A:
+        cmp     bh, '7'
+        je      .chg
+        cmp     bh, '8'
+        jne     .etendue
+.chg:   mov     byte [es:V_CHG_A], 1
+        jmp     .fin
+.p_fin: pop     ax
+        jmp     .fin
 .etendue:
         xor     al, al                  ; touche etendue : AL = 0, AH = code XT
         call    file_ajoute
@@ -1465,6 +1486,10 @@ int13h:
 .pas_c: cmp     dl, 1                   ; A: (ROM ou image de la carte SD) ou B: (RAM ou image)
         ja      .absent
         je      .lb
+        cmp     ah, 15h                 ; A: : ligne de changement (Ctrl+Alt+Inser)
+        je      .type_a
+        cmp     ah, 16h
+        je      .chg_a
         cmp     byte [es:V_IMG_ACTIF], 0
         je      .b
         jmp     int13_sd                ; A: = image .IMG de la carte (sd.inc)
@@ -1511,6 +1536,14 @@ int13h:
         jmp     .ok
 .type:  mov     byte [bp + R_AX + 1], 01h   ; disquette sans ligne de changement
         jmp     bios_cf0
+.type_a:
+        mov     byte [bp + R_AX + 1], 02h   ; A: : avec ligne de changement
+        jmp     bios_cf0
+.chg_a: cmp     byte [es:V_CHG_LIGNE], 0
+        je      .ok
+        mov     byte [es:V_CHG_LIGNE], 0
+        mov     ah, 06h                 ; disquette changee
+        jmp     .err
 .params:
         mov     word [bp + R_AX], 0
         mov     word [bp + R_BX], 0001h
@@ -1658,7 +1691,9 @@ int16h:
         mov     byte [es:V_PROGRES], 0
         call    ecran_redessine
 .lire1: call    ecran_suit_h            ; curseur montre avant d'attendre
+        mov     byte [es:V_CHG_OK], 1   ; le DOS attend : changement de A: permis
         call    kbd_attend
+        mov     byte [es:V_CHG_OK], 0
         mov     [bp + R_AX], ax
         jmp     .bloque
 .etat:  cmp     byte [es:V_SORTIE], 0   ; le DOS attend vraiment une touche (pendant DIR,
@@ -1753,6 +1788,7 @@ kbd_attend:
 .it:    call    file_retire
         jnc     .ok
         call    nav_traite
+        call    chg_verifie             ; Ctrl+Alt+Inser sous DOS : disquette de A:
         jmp     .it
 .scrute:
         call    file_retire
@@ -1760,7 +1796,8 @@ kbd_attend:
         push    ax
         call    kbd_libere
         pop     ax
-.a:     mov     cx, 2000
+.a:     call    chg_verifie
+        mov     cx, 2000
         call    kbd_scrute
         call    file_retire
         jc      .a

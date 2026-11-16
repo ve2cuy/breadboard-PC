@@ -687,8 +687,9 @@ V_HD_SECT       equ     0C78h           ; (dd) secteurs de l'image
 V_HD_LBA        equ     0C7Ch           ; (dd) premier secteur de l'image sur la carte
 HD_TABLE        equ     0C80h           ; (16 o) table des parametres du disque fixe (INT 41h)
 V_BOOT_C        equ     0C90h           ; 1 = demarrer depuis C:
-V_DISQUE        equ     0C92h           ; tops IRQ0 restants de pause du LED Show (acces disque)
 V_HD_ENT        equ     0C94h           ; (20 o) entree du fichier de C:
+V_HD_CHOIX      equ     0CAEh           ; disque dur monte en C: (k, voir hd_entree)
+V_IMG_LHD       equ     0CA9h           ; img_ligne : 1 = la ligne est un disque dur
 HD_TETES_DEF    equ     16              ; image sans table de partitions : 16 tetes, 63 secteurs
 HD_SPT_DEF      equ     63
 V_FAT_CACHE     equ     8ECh            ; (dd) secteur de FAT dans SD_TAMPON (FFFFFFFFh : aucun)
@@ -749,15 +750,20 @@ img_liste:
         jb      .disquette
         cmp     word [si + 1Ch], 8000h
         jbe     .disquette
-.disque:
-        cmp     byte [es:V_HD_NB], 0    ; le premier seulement
-        jne     .suiv_ds
-        mov     byte [es:V_HD_NB], 1
-        mov     di, V_HD_ENT
-        jmp     .copie
-.disquette:
+.disque:                                ; disques durs en queue de T_IMG (hd_entree)
         mov     al, [es:V_IMG_NB]
+        add     al, [es:V_HD_NB]
         cmp     al, IMG_MAX
+        jae     .suiv_ds
+        mov     al, [es:V_HD_NB]
+        inc     byte [es:V_HD_NB]
+        call    hd_entree
+        jmp     .copie
+.disquette:                             ; disquettes en tete
+        mov     al, [es:V_IMG_NB]
+        mov     ah, al
+        add     ah, [es:V_HD_NB]
+        cmp     ah, IMG_MAX
         jae     .suiv_ds
         mov     bl, IMG_T
         mul     bl
@@ -1057,6 +1063,33 @@ hd_ouvre:
 .err:   stc
         ret
 
+; hd_entree : AL = disque dur k (0 = le 1er trouve) -> DI = son entree dans T_IMG (place
+; IMG_MAX - 1 - k). Detruit AX, BL.
+hd_entree:
+        mov     ah, IMG_MAX - 1
+        sub     ah, al
+        mov     al, ah
+        mov     bl, IMG_T
+        mul     bl
+        add     ax, T_IMG
+        mov     di, ax
+        ret
+
+; hd_monte : AL = disque dur k -> C: (entree copiee en V_HD_ENT, hd_ouvre). V_HD_CHOIX = k.
+; CF = 1 : refuse (C: demonte). Detruit AX, BX, CX, DX, SI, DI.
+hd_monte:
+        mov     [es:V_HD_CHOIX], al
+        call    hd_entree
+        mov     si, di
+        mov     di, V_HD_ENT
+        mov     cx, IMG_T
+.c:     mov     al, [es:si]
+        mov     [es:di], al
+        inc     si
+        inc     di
+        loop    .c
+        jmp     hd_ouvre
+
 ; img_vers : copie le bloc courant vers le bloc DI (IMG_A ou IMG_B). Detruit AX, CX, SI, DI.
 img_vers:
         mov     si, V_IMG_COUR
@@ -1124,12 +1157,11 @@ sd_choisir:
         call    fat_ouvre
         jc      .rom
         call    img_liste
-        cmp     byte [es:V_HD_NB], 0    ; disque dur C: : monte quel que soit le choix
-        je      .sans_c
-        call    hd_ouvre
-.sans_c:
+        mov     byte [es:V_HD_CHOIX], 0 ; C: : le 1er disque dur trouve (Espace : un autre),
+                                        ; monte apres le choix (.monte_c : la verification
+                                        ; de la FAT prend quelques secondes)
         mov     al, [es:V_IMG_NB]
-        add     al, [es:V_HD_ACTIF]
+        add     al, [es:V_HD_NB]
         jz      .rom
         mov     byte [es:V_IMG_CHOIX], 0
         mov     byte [es:V_IMG_HAUT], 0
@@ -1142,6 +1174,8 @@ sd_choisir:
         je      .echap
         cmp     al, 13
         je      .entree
+        cmp     al, ' '
+        je      .espace
         or      al, al
         jnz     .touche
         mov     bl, [es:V_IMG_CHOIX]
@@ -1153,8 +1187,8 @@ sd_choisir:
         jmp     .bouge
 .bas:   cmp     ah, 50h
         jne     .touche
-        mov     al, [es:V_IMG_NB]       ; derniere ligne : les images, puis C:
-        add     al, [es:V_HD_ACTIF]
+        mov     al, [es:V_IMG_NB]       ; derniere ligne : les disquettes, puis les C:
+        add     al, [es:V_HD_NB]
         cmp     bl, al
         jae     .touche
         inc     bl
@@ -1171,17 +1205,36 @@ sd_choisir:
         sub     al, 2
 .b2:    mov     [es:V_IMG_HAUT], al
         jmp     .dessine
+.espace:                                ; Espace sur une ligne C: : ce disque sera C:
+        mov     al, [es:V_IMG_CHOIX]
+        sub     al, [es:V_IMG_NB]
+        jbe     .touche
+        dec     al
+        mov     [es:V_HD_CHOIX], al
+        jmp     .dessine
+.refus_c:
+        mov     al, 4                   ; 'Image C: refusee !'
+        jmp     .refus
 .entree:
         mov     al, [es:V_IMG_CHOIX]
         or      al, al
         jz      .rom_carte
         cmp     al, [es:V_IMG_NB]
         jbe     .disquette
+        sub     al, [es:V_IMG_NB]       ; ligne C: : ce disque, puis demarrage depuis C:
+        dec     al
+        mov     [es:V_HD_CHOIX], al
+        call    .monte_c
+        jc      .refus_c
         mov     byte [es:V_BOOT_C], 1   ; C: : demarrage depuis le disque dur (A: = ROM)
         mov     byte [es:V_PROGRES], 1
         mov     word [es:V_LUS], 0
         jmp     .fin
 .disquette:
+        push    ax
+        call    .monte_c                ; C: d'abord (refus : rien n'a change)
+        pop     ax
+        jc      .refus_c
         dec     al
         call    img_ouvre
         jc      .refus
@@ -1191,6 +1244,8 @@ sd_choisir:
         mov     word [es:V_LUS], 0
         jmp     .fin
 .rom_carte:
+        call    .monte_c
+        jc      .refus_c
         call    img_dos2_b              ; ROM : B: = image DOS 2.x de la carte, s'il y en a une
         jmp     .fin
 .refus:
@@ -1211,6 +1266,19 @@ sd_choisir:
 .fin:   clc
         ret
 .echap: stc
+        ret
+; .monte_c : s'il y a des disques durs, monte V_HD_CHOIX en C: ('Verification C:...'
+; sur la ligne 1). CF = 1 : refuse. Detruit AX, BX, CX, DX, SI, DI.
+.monte_c:
+        cmp     byte [es:V_HD_NB], 0
+        je      .mc_ok
+        mov     al, 80h | LIGNE1
+        call    lcd_cmd
+        mov     si, txt_hd_verif
+        call    lcd_texte20
+        mov     al, [es:V_HD_CHOIX]
+        jmp     hd_monte
+.mc_ok: clc
         ret
 
 ; img_ecran : titre et 3 lignes de la liste a partir de V_IMG_HAUT ('>' devant le choix).
@@ -1243,10 +1311,20 @@ img_ligne:
         push    ax
         call    tx_init
         pop     ax
-        mov     ah, ' '
+        mov     byte [es:V_IMG_LHD], 0
+        mov     ah, '>'                 ; '>' : le choix ; '*' : le disque monte en C:
         cmp     al, [es:V_IMG_CHOIX]
+        je      .marque
+        mov     ah, ' '
+        mov     bl, al
+        sub     bl, [es:V_IMG_NB]
+        jbe     .marque
+        dec     bl
+        cmp     bl, [es:V_HD_NB]
+        jae     .marque
+        cmp     bl, [es:V_HD_CHOIX]
         jne     .marque
-        mov     ah, '>'
+        mov     ah, '*'
 .marque:
         push    ax
         mov     al, ah
@@ -1258,14 +1336,19 @@ img_ligne:
         jmp     tx_chaine
 .image: cmp     al, [es:V_IMG_NB]
         jbe     .disquette
-        cmp     byte [es:V_HD_ACTIF], 0
-        je      .vide
+        sub     al, [es:V_IMG_NB]
         dec     al
-        cmp     al, [es:V_IMG_NB]
-        jne     .vide
-        mov     si, txt_img_c           ; "C: NOM.IMG     nnM"
+        cmp     al, [es:V_HD_NB]
+        jae     .vide
+        push    ax
+        mov     si, txt_img_c           ; "C:NOM.IMG     nnM"
         call    tx_chaine
-        mov     si, V_HD_ENT
+        pop     ax
+        push    di                      ; DI = position d'ecriture dans V_LIGNE
+        call    hd_entree
+        mov     si, di
+        pop     di
+        mov     byte [es:V_IMG_LHD], 1
         jmp     .nom
 .disquette:
         dec     al
@@ -1292,8 +1375,8 @@ img_ligne:
         mov     dx, [es:si + 2]
         mov     cx, 10                  ; Ko
         mov     bl, 'K'
-        cmp     si, V_HD_ENT + 11
-        jne     .k
+        cmp     byte [es:V_IMG_LHD], 0
+        je      .k
         mov     cx, 20                  ; C: : Mo, 2 colonnes plus loin ("C:" avant le nom)
         mov     bl, 'M'
         mov     di, V_LIGNE + 16
@@ -1318,6 +1401,203 @@ tx_sortie_lcd:
         pop     ds
         ret
 
+;-----------------------------------------------------------------------------
+; Changement de la disquette de A: pendant que le DOS tourne (BIOS 1.7).
+; Ctrl+Alt+Inser (clavier PS/2 ; terminal : ESC [ 2 ; 7 ~ ou Ctrl+] = 1Dh) leve
+; V_CHG_A (sous IRQ). La liste s'ouvre seulement quand le DOS attend vraiment une
+; touche (INT 16h AH=00h : V_CHG_OK), jamais au milieu d'un acces disque :
+; chg_verifie, appele par la boucle de kbd_attend. Pile propre (DSEG:CHG_PILE) ; le
+; tampon de la carte (00500h-006FFh, au DOS) est sauve puis remis. La carte est
+; relue (sd_init, FAT, liste) : on peut changer de carte, mais C: et B: gardent la
+; position de leur image sur la carte du demarrage. Choix : la ROM ou une image de
+; disquette (pas de ligne C:) ; Echap : rien ne change. INT 13h AH=16h signale le
+; changement une fois (V_CHG_LIGNE) ; AH=15h annonce la ligne de changement.
+;-----------------------------------------------------------------------------
+V_CHG_OK        equ     0C91h           ; 1 = INT 16h AH=00h attend : changement permis
+V_CHG_A         equ     0C93h           ; 1 = changement de A: demande (touche)
+V_CHG_LIGNE     equ     0CA8h           ; 1 = A: changee depuis le dernier INT 13h AH=16h
+V_CHG_SS        equ     0CAAh           ; (dw) pile de l'appelant
+V_CHG_SP        equ     0CACh           ; (dw)
+CHG_SAUVE       equ     0CB0h           ; (512 o, jusqu'a 0EAFh) copie du tampon de la carte
+CHG_PILE        equ     1000h           ; pile du changement : 0EB0h-0FFFh (celle du menu,
+                                        ; libre sous DOS)
+
+; chg_verifie : si un changement de A: est demande et permis : la liste (chg_a). ES =
+; DSEG. Preserve tout.
+chg_verifie:
+        cmp     byte [es:V_CHG_A], 0
+        je      .r
+        cmp     byte [es:V_CHG_OK], 0
+        je      .r
+        push    ax
+        mov     ax, ss                  ; jamais sur la pile du menu
+        cmp     ax, DSEG
+        pop     ax
+        je      .r
+        mov     byte [es:V_CHG_OK], 0
+        mov     byte [es:V_CHG_A], 0
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    bp
+        push    ds
+        mov     ax, cs
+        mov     ds, ax
+        call    chg_a
+        pop     ds
+        pop     bp
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        mov     byte [es:V_CHG_OK], 1
+.r:     ret
+
+; chg_a : choix de la disquette de A: (LCD + terminal). DS = CS, ES = DSEG. Detruit AX,
+; BX, CX, DX, SI, DI, BP.
+chg_a:
+        cli
+        mov     [es:V_CHG_SS], ss
+        mov     [es:V_CHG_SP], sp
+        mov     ax, es
+        mov     ss, ax
+        mov     sp, CHG_PILE
+        sti
+        cld
+        push    ds                      ; tampon de la carte (au DOS) -> CHG_SAUVE
+        mov     ax, SD_TAMPON
+        mov     ds, ax
+        xor     si, si
+        mov     di, CHG_SAUVE
+        mov     cx, 256
+        rep     movsw
+        pop     ds
+        mov     al, [es:V_HD_ACTIF]     ; (C: garde son image)
+        push    ax
+        mov     byte [es:V_HD_ACTIF], 0
+        mov     si, txt_sd_lecture
+        call    lcd_ecran
+        call    sd_init
+        jc      .pas_carte
+        call    fat_ouvre
+        jc      .pas_carte
+        call    img_liste
+        mov     byte [es:V_HD_NB], 0    ; la liste sans les lignes C:
+        mov     byte [es:V_IMG_CHOIX], 0
+        mov     byte [es:V_IMG_HAUT], 0
+.dessine:
+        call    img_ecran
+        mov     al, 80h | LIGNE1
+        call    lcd_cmd
+        mov     si, txt_chg_titre
+        call    lcd_texte20
+        call    ecran_uart
+.touche:
+        call    kbd_attend
+        cmp     al, 27
+        je      .fin
+        cmp     al, 13
+        je      .entree
+        or      al, al
+        jnz     .touche
+        mov     bl, [es:V_IMG_CHOIX]
+        cmp     ah, 48h                 ; haut
+        jne     .bas
+        or      bl, bl
+        jz      .touche
+        dec     bl
+        jmp     .bouge
+.bas:   cmp     ah, 50h
+        jne     .touche
+        cmp     bl, [es:V_IMG_NB]
+        jae     .touche
+        inc     bl
+.bouge: mov     [es:V_IMG_CHOIX], bl
+        mov     al, [es:V_IMG_HAUT]     ; fenetre de 3 lignes
+        cmp     bl, al
+        jae     .b1
+        mov     al, bl
+.b1:    mov     ah, al
+        add     ah, 2
+        cmp     bl, ah
+        jbe     .b2
+        mov     al, bl
+        sub     al, 2
+.b2:    mov     [es:V_IMG_HAUT], al
+        jmp     .dessine
+.entree:
+        mov     al, [es:V_IMG_CHOIX]
+        or      al, al
+        jnz     .image
+        mov     byte [es:V_IMG_ACTIF], 0 ; A: = disquette en ROM
+        jmp     .change
+.image: dec     al
+        call    img_ouvre
+        jc      .refus
+        mov     di, IMG_A
+        call    img_vers
+.change:
+        mov     byte [es:V_CHG_LIGNE], 1
+        jmp     .fin
+.refus: mov     bl, al                  ; message 1 s, puis la liste
+        xor     bh, bh
+        shl     bx, 1
+        mov     si, [cs:bx + txt_img_err - 2]
+        jmp     .message
+.pas_carte:
+        mov     si, txt_chg_sans
+        call    .message_1s
+        jmp     .fin
+.message:
+        call    .message_1s
+        jmp     .dessine
+.message_1s:
+        mov     al, 80h | LIGNE1
+        call    lcd_cmd
+        call    lcd_texte20
+        call    ecran_uart
+        mov     cx, 5
+.p:     push    cx
+        DELAY   0
+        pop     cx
+        loop    .p
+        ret
+.fin:   pop     ax
+        mov     [es:V_HD_ACTIF], al
+        mov     word [es:V_FAT_CACHE], 0FFFFh   ; le tampon va etre remis
+        mov     word [es:V_FAT_CACHE + 2], 0FFFFh
+        push    ds                      ; CHG_SAUVE -> tampon de la carte
+        push    es
+        mov     ax, es
+        mov     ds, ax
+        mov     ax, SD_TAMPON
+        mov     es, ax
+        mov     si, CHG_SAUVE
+        xor     di, di
+        mov     cx, 256
+        rep     movsw
+        pop     es
+        pop     ds
+        call    ecran_redessine         ; le LCD reprend la fenetre du DOS
+        cmp     byte [es:V_UCON], 0
+        je      .pile
+        mov     si, txt_chg_fin         ; terminal : le DOS attend toujours sa touche
+        call    uart_texte
+.pile:  cli
+        mov     ss, [es:V_CHG_SS]
+        mov     sp, [es:V_CHG_SP]
+        sti
+        ret
+
+txt_chg_titre:  db  'Disquette A: Entree '
+txt_chg_sans:   db  'Pas de carte SD !   '
+txt_chg_fin:    db  'A: change (Echap : rien).', 13, 10, 0
+
 txt_sd_lecture: db  'Carte SD...         '
                 db  '                    '
                 db  '                    '
@@ -1325,10 +1605,12 @@ txt_sd_lecture: db  'Carte SD...         '
 txt_img_titre:  db  'Demarrer : Entree   '
 txt_img_rom:    db  'ROM PC-DOS 2.1', 0
 txt_img_c:      db  'C:', 0
-txt_img_err:    dw  txt_img_e1, txt_img_e2, txt_img_e3
+txt_img_err:    dw  txt_img_e1, txt_img_e2, txt_img_e3, txt_img_e4
 txt_img_e1:     db  'Taille inconnue !   '
 txt_img_e2:     db  'Image fragmentee !  '
 txt_img_e3:     db  'Erreur de lecture ! '
+txt_img_e4:     db  'Image C: refusee !  '
+txt_hd_verif:   db  'Verification C:...  '
 
 ; -----------------------------------------------------------------------------
 ; INT 13h, lecteur A: = image de la carte (V_IMG_ACTIF). Appele depuis int13h (cadre
@@ -1497,62 +1779,32 @@ int13_sd:
         jmp     .err
 
 ;-----------------------------------------------------------------------------
-; Voyants d'acces : disquettes A:/B: de la carte = DEL PC7 de U7 (la plus a gauche),
-; disque dur C: = DEL PC6 (sa voisine). Avec les animations en arriere-plan, le LED
-; Show est suspendu pendant les acces et encore DISQUE_PAUSE tops IRQ0 (~1 s) apres
-; le dernier (V_DISQUE, decompte par irq_temps) : le bargraphe s'eteint au premier
-; acces, puis seul le voyant bouge. Pas pendant la progression du demarrage (elle se
-; sert du bargraphe). Les voyants : mise a 1/0 d'un bit (BSR). Preservent tout.
+; Voyants d'acces (BIOS 1.7), sur U12 (2e 8255), a part du LED Show : DEL VOY_DISQ
+; (PA0) = disquettes A:/B: de la carte, DEL VOY_HD (PA1) = disque dur C:. PA est ecrit
+; en entier : PA7 (UART TX) reste au repos (1). Seul uart_tx ecrit aussi PA (PA0-PA6 a
+; 0 : voyants eteints), jamais pendant un acces. Preservent tout.
 ;-----------------------------------------------------------------------------
-DISQUE_PAUSE    equ     73              ; ~1 s a 72,83 Hz
+VOY_DISQ        equ     01h             ; PA0 de U12
+VOY_HD          equ     02h             ; PA1 de U12
 
 sd_voyant:
         push    ax
-        call    disque_pause
-        mov     al, 0Fh                 ; BSR : PC7 = 1
-        out     PPI_CTRL, al
-        pop     ax
-        ret
-sd_voyant_eteint:
-        push    ax
-        mov     al, 0Eh                 ; BSR : PC7 = 0
-        out     PPI_CTRL, al
-        call    disque_pause
+        mov     al, UART_TX | VOY_DISQ
+        out     PPI2_PA, al
         pop     ax
         ret
 hd_voyant:
         push    ax
-        call    disque_pause
-        mov     al, 0Dh                 ; BSR : PC6 = 1
-        out     PPI_CTRL, al
+        mov     al, UART_TX | VOY_HD
+        out     PPI2_PA, al
         pop     ax
         ret
+sd_voyant_eteint:
 hd_voyant_eteint:
         push    ax
-        mov     al, 0Ch                 ; BSR : PC6 = 0
-        out     PPI_CTRL, al
-        call    disque_pause
+        mov     al, UART_TX             ; voyants eteints, TX au repos
+        out     PPI2_PA, al
         pop     ax
-        ret
-
-; disque_pause : (re)lance la pause du LED Show ; au debut d'une pause, eteint les 24 DEL.
-; Detruit AX.
-disque_pause:
-        push    ds
-        mov     ax, DSEG
-        mov     ds, ax
-        cmp     byte [V_TACHE_ON], 0    ; sans 8253 : pas d'animation en arriere-plan
-        je      .fin
-        cmp     byte [V_PROGRES], 0     ; progression du demarrage sur le bargraphe
-        jne     .fin
-        cmp     byte [V_DISQUE], 0
-        mov     byte [V_DISQUE], DISQUE_PAUSE
-        jne     .fin
-        xor     al, al                  ; debut de pause : bargraphe eteint
-        out     PPI_PA, al
-        out     PPI_PB, al
-        out     PPI_PC, al
-.fin:   pop     ds
         ret
 
 ; progres_affiche : (demarrage depuis la carte) ligne 4 du LCD "Lecture A:  nnn Ko" et

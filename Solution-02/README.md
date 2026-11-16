@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 1.6 :
+Contenu de la ROM et de la RAM avec le BIOS 1.7 :
 
 | Adresses | Contenu |
 |---|---|
@@ -328,13 +328,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 1.6
+## BIOS 1.7
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.6`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.7`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -434,27 +434,35 @@ déroulée, ~12 Ko/s).
 **Progression et voyant** : pendant le démarrage depuis une image de la carte
 (jusqu'à la première attente d'une touche par le DOS), la ligne 4 du LCD montre
 `Lecture A: nnn Ko` et le **bargraphe se remplit** (une DEL de plus tous les
-8 Ko, il recommence après 24) ; les animations reprennent ensuite. En tout
-temps, la DEL **PC7** (la plus à gauche) s'allume pendant chaque accès à une
-**disquette** de la carte (A: ou B:) et la DEL **PC6** (sa voisine) pendant
-chaque accès au **disque dur C:**, comme les voyants d'un PC. Le **LED Show est
-suspendu** pendant les accès : le bargraphe s'éteint au premier accès, seuls
-les voyants bougent, et les animations reprennent ~1 s (73 IRQ0) après le
-dernier accès (`V_DISQUE`, décompté par IRQ0 ; pas pendant la progression du
-démarrage, qui se sert du bargraphe).
+8 Ko, il recommence après 24) ; les animations reprennent ensuite.
 
-**Disque dur C:** (BIOS 1.6) : le premier fichier `.IMG` de la racine **plus
-grand que 1,44 Mo** devient le disque dur **C:** (INT 13h DL = 80h), monté quel
-que soit le choix ; il s'ajoute en bas de la liste :
+**Voyants d'accès** (BIOS 1.7, à part du LED Show) : deux DEL sur **U12** —
+**D1 sur PA0** pendant chaque accès à une **disquette** de la carte (A: ou B:),
+**D2 sur PA1** pendant chaque accès au **disque dur C:** (390 Ω à la masse,
+actives à 1, comme les bargraphes). PA est écrit en entier avec PA7 (TX de
+l'UART) au repos à 1 ; `uart_tx`, le seul autre à écrire PA, ne tourne jamais
+pendant un accès. (BIOS 1.6 : PC7/PC6 du bargraphe et LED Show suspendu,
+abandonné : la combinaison avec les animations portait à confusion.)
+
+**Disque dur C:** (BIOS 1.6 ; plusieurs images au 1.7) : chaque fichier `.IMG`
+de la racine **plus grand que 1,44 Mo** est une image de disque dur ; elles
+s'ajoutent en bas de la liste (16 lignes au plus en tout, disquettes en tête).
+L'image qui sera **C:** (INT 13h DL = 80h) porte un `*` : la première trouvée
+au départ, **Espace** sur une autre ligne `C:` la choisit.
 
 ```
 Demarrer : Entree
  ROM PC-DOS 2.1
  DOS33.IMG    360K
->C:DOS622_C.IMG 31M
+*C:DOS622_C.IMG 31M
+>C:FREEDOS_C.IMG 31M
 ```
 
-Choisir la ligne `C:` démarre depuis le disque dur (MBR → secteur d'amorce de
+C: est monté **après le choix**, quel qu'il soit (ligne 1 : `Verification
+C:...` ; la vérification de la FAT, image d'un seul tenant, prend quelques
+secondes avec le SPI logiciel ; refus : `Image C: refusee !` et retour à la
+liste). **Entrée** sur une ligne `C:` choisit cette image et démarre depuis le
+disque dur (MBR → secteur d'amorce de
 la partition active, DL = 80h ; A: reste la disquette en ROM). Géométrie :
 têtes et secteurs par piste lus à la fin de la 1re partition du MBR (sinon 16 ×
 63), cylindres = taille / (têtes × secteurs), 1024 au plus (~504 Mo). Le
@@ -475,6 +483,20 @@ carte fraîchement formatée), produites depuis les disquettes d'installation :
 Les deux ont un MBR 8086 (`tests/mbr8086.asm` : partition active, CHS, 3
 essais) et une partition FAT16 active de 16 têtes × 63 secteurs (bibliothèque
 `tests/fatlib.py`). Sans KEYB ni HIMEM (8088).
+
+**Changer la disquette de A:** (BIOS 1.7) pendant que le DOS tourne :
+**Ctrl+Alt+Inser** au clavier PS/2 ; sur le terminal, la même combinaison quand
+il l'envoie (`ESC [ 2 ; 7 ~`, terminaux de type xterm) ou **Ctrl+]** (1Dh). La
+touche ne fait que lever une demande ; la liste (`Disquette A: Entree`, la ROM
+et les images de disquette, sans les lignes C:) s'ouvre quand le DOS attend
+vraiment une touche (INT 16h AH=00h), jamais au milieu d'un accès disque. La
+carte est relue (on peut en changer ; C: et B: gardent la position de leur
+image). Entrée monte l'image (ou la ROM) en A:, Échap ne change rien ; le LCD
+reprend ensuite l'écran du DOS. INT 13h AH=15h annonce maintenant une **ligne
+de changement** pour A: et AH=16h rend « disquette changée » (06h) une fois
+après chaque changement : le DOS 3.x et plus relit la FAT. (Le DOS 2.1 n'en
+tient pas compte et ne lit que les disquettes 5¼ de 160 à 360 Ko.) Le tampon de
+la carte (00500h, au DOS) est sauvé puis remis ; pile propre en DSEG.
 
 **B: = image DOS 2.1 de la carte** : si l'on choisit `ROM PC-DOS 2.1` et que la
 carte porte une image PC-DOS 2.x (secteur d'amorce OEM `IBM  2.`, la première
@@ -847,6 +869,7 @@ un module.
 
 ## État
 
+- 2026-11-16 : BIOS 1.7 : changement de la disquette de A: sous DOS (Ctrl+Alt+Inser, ou Ctrl+] au terminal) ; plusieurs images de disque dur au choix (Espace), C: vérifié après le choix (liste plus rapide) ; voyants d'accès sur U12 (D1 = PA0 disquettes, D2 = PA1 disque dur ; schéma), LED Show plus suspendu. Gravé.
 - 2026-11-16 : BIOS 1.6 : **disque dur C:** = image `.IMG` de plus de 1,44 Mo de la carte SD (INT 13h 80h, démarrage depuis C:, INT 41h) ; voyants : PC7 = disquettes, PC6 = disque dur, LED Show suspendu pendant les accès. Images `DOS622_C.IMG` (MS-DOS 6.22) et `FREEDOS_C.IMG` (FreeDOS 1.4) générées hors de git. Simulé (26 scénarios), gravé.
 - 2026-11-16 : schéma : lecteur microSD (J9) sur U12 (PC4 = CS, PC5 = SCK, PC6 = MOSI, PB3 = MISO, R9/R10 10 kΩ), SPI par le 8088 ; ATmega328P retiré (esprit vintage), UART logiciel rétabli.
 - 2026-11-16 : BIOS 1.5 : Maj + touche de déplacement du pavé = fonction de curseur (Maj inverse Verr Num) : corrige les chiffres reçus pendant la navigation Maj + flèches (préfixe E0 perdu) ; accents de DOS 6.22 : UTF-8 sur le terminal, CGRAM (é è ê à â ç ù ô) sur le LCD. Gravé.

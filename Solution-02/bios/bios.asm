@@ -1,5 +1,5 @@
 ; =============================================================================
-; Solution-02 - BIOS 1.6 (VE2CUY, 2026)
+; Solution-02 - BIOS 1.7 (VE2CUY, 2026)
 ; Ordinateur 8088 / NEC V20 autonome : horloge 82C84 (16 MHz / 3 = 5,33 MHz),
 ; ROM 29C020 (256 Ko), RAM 512 Ko, LCD 20x4 (HD44780 / ST7066U) en ecriture seule.
 ;
@@ -882,7 +882,9 @@ vars_init:
         mov     [es:V_IMGB_ACTIF], al   ; B: = disque virtuel en RAM
         mov     [es:V_HD_ACTIF], al     ; pas de disque dur C:
         mov     [es:V_BOOT_C], al
-        mov     [es:V_DISQUE], al       ; LED Show pas en pause
+        mov     [es:V_CHG_A], al        ; pas de changement de A: demande
+        mov     [es:V_CHG_OK], al
+        mov     [es:V_CHG_LIGNE], al
         mov     [es:V_PROGRES], al
         mov     [es:V_SD_TYPE], al
         call    pit_init
@@ -1609,6 +1611,15 @@ clavier_decode:
         jz      .produit
         xor     al, al
 .produit:
+        cmp     ah, 52h                 ; Ctrl+Alt+Inser : changement de la disquette de A:
+        jne     .produit2               ; (chg_verifie), pas de touche
+        test    bl, CLV_CTRL
+        jz      .produit2
+        test    bl, CLV_ALT
+        jz      .produit2
+        mov     byte [es:V_CHG_A], 1
+        jmp     .n_rien
+.produit2:
         pop     si
         mov     [es:V_CLAVIER], bl
         pop     bx
@@ -2046,7 +2057,7 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 1.6'
+txt_ouv1:   db  'SOLUTION-02 BIOS 1.7'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2070,7 +2081,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 1.6'
+txt_sys:    db  'SOLUTION-02 BIOS 1.7'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2082,7 +2093,7 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 1.6 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 1.7 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC', 13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
