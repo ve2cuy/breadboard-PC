@@ -1242,6 +1242,8 @@ lcd_aller:
 lcd_car_f:
         cmp     al, ' '
         jb      .espace
+        cmp     al, 5Ch                 ; '\' : la ROM A00 a le yen en 5Ch -> CGRAM 4
+        je      .oblique
         cmp     al, 80h
         jb      lcd_car_r
         push    bx
@@ -1249,6 +1251,9 @@ lcd_car_f:
         and     bx, 7Fh
         mov     al, [cs:bx + cp437_lcd]
         pop     bx
+        jmp     lcd_car_r
+.oblique:
+        mov     al, 4
         jmp     lcd_car_r
 .espace:
         mov     al, ' '
@@ -1266,7 +1271,8 @@ lcd_attente:
         ret
 
 ; lcd_cgram : charge les 8 caracteres programmables du LCD (codes 0-7) : e aigu, e grave,
-; e circonflexe, a grave, a circonflexe, c cedille, u grave, o circonflexe. Preserve tout.
+; e circonflexe, a grave, barre oblique inverse (BIOS 1.8, a la place du a circonflexe,
+; affiche 'a'), c cedille, u grave, o circonflexe. Preserve tout.
 lcd_cgram:
         push    ax
         push    cx
@@ -1291,14 +1297,14 @@ lcd_glyphes:
         db      08h, 04h, 0Eh, 11h, 1Fh, 10h, 0Eh, 00h   ; 1 : e grave
         db      04h, 0Ah, 0Eh, 11h, 1Fh, 10h, 0Eh, 00h   ; 2 : e circonflexe
         db      08h, 04h, 0Eh, 01h, 0Fh, 11h, 0Fh, 00h   ; 3 : a grave
-        db      04h, 0Ah, 0Eh, 01h, 0Fh, 11h, 0Fh, 00h   ; 4 : a circonflexe
+        db      00h, 10h, 08h, 04h, 02h, 01h, 00h, 00h   ; 4 : barre oblique inverse (5Ch = yen dans la ROM A00)
         db      00h, 00h, 0Eh, 10h, 10h, 11h, 0Eh, 04h   ; 5 : c cedille
         db      08h, 04h, 11h, 11h, 11h, 13h, 0Dh, 00h   ; 6 : u grave
         db      04h, 0Ah, 0Eh, 11h, 11h, 11h, 0Eh, 00h   ; 7 : o circonflexe
 
 ; page de codes 437 (80h-FFh) -> octet du LCD : 0-7 = CGRAM, sinon ASCII ou ROM A00
 cp437_lcd:
-        db      043h, 075h, 000h, 004h, 061h, 003h, 061h, 005h, 002h, 065h, 001h, 069h, 069h, 069h, 041h, 041h   ; 80h
+        db      043h, 075h, 000h, 061h, 061h, 003h, 061h, 005h, 002h, 065h, 001h, 069h, 069h, 069h, 041h, 041h   ; 80h
         db      045h, 061h, 041h, 007h, 06Fh, 06Fh, 075h, 006h, 079h, 04Fh, 055h, 063h, 04Ch, 059h, 050h, 066h   ; 90h
         db      061h, 069h, 06Fh, 075h, 06Eh, 04Eh, 061h, 06Fh, 03Fh, 02Dh, 02Dh, 02Fh, 02Fh, 021h, 03Ch, 03Eh   ; A0h
         db      0FFh, 0FFh, 0FFh, 07Ch, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh, 07Ch, 02Bh, 02Bh, 02Bh, 02Bh, 02Bh   ; B0h

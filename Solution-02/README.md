@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 1.7 :
+Contenu de la ROM et de la RAM avec le BIOS 1.8 :
 
 | Adresses | Contenu |
 |---|---|
@@ -328,13 +328,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 1.7
+## BIOS 1.8
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.7`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 1.8`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -574,9 +574,11 @@ choisie reste jusqu'à la prochaine attente du clavier qui suit un affichage.
 **terminal**, convertis en **UTF-8** (comme Solution-01 ; le terminal doit être
 en UTF-8, pas en CP437/CP850) ; sur le **LCD**, dont la ROM (A00) n'a pas ces
 lettres, les 8 caractères programmables (CGRAM, chargés par `ecran_init`)
-dessinent **é è ê à â ç ù ô** ; les autres lettres perdent leur accent (ë → e,
-ü → u…), quelques symboles viennent de la ROM du LCD (α β µ π Σ ° ÷ √ █) et les
-cadres deviennent `+ - | =`.
+dessinent **é è ê à ç ù ô** et la **barre oblique inverse** (BIOS 1.8 : la ROM
+A00 a le symbole yen en 5Ch, d'où un caractère japonais à la place de `\` ; â
+devient a pour lui laisser sa place) ; les autres lettres perdent leur accent
+(ë → e, ü → u…), quelques symboles viennent de la ROM du LCD (α β µ π Σ ° ÷ √ █)
+et les cadres deviennent `+ - | =`. Le tilde (7Eh) reste une flèche → (ROM A00).
 
 **Maj inverse Verr Num**, comme sur un PC : Maj + une touche de déplacement du
 pavé numérique (8 2 4 6, 7 1 9 3, 0 .) donne la fonction de curseur (flèche,
@@ -869,6 +871,7 @@ un module.
 
 ## État
 
+- 2026-11-16 : BIOS 1.8 : la barre oblique inverse s'affiche au LCD (CGRAM 4 ; la ROM A00 a le yen en 5Ch), â → a. Gravé.
 - 2026-11-16 : BIOS 1.7 : changement de la disquette de A: sous DOS (Ctrl+Alt+Inser, ou Ctrl+] au terminal) ; plusieurs images de disque dur au choix (Espace), C: vérifié après le choix (liste plus rapide) ; voyants d'accès sur U12 (D1 = PA0 disquettes, D2 = PA1 disque dur ; schéma), LED Show plus suspendu. Gravé.
 - 2026-11-16 : BIOS 1.6 : **disque dur C:** = image `.IMG` de plus de 1,44 Mo de la carte SD (INT 13h 80h, démarrage depuis C:, INT 41h) ; voyants : PC7 = disquettes, PC6 = disque dur, LED Show suspendu pendant les accès. Images `DOS622_C.IMG` (MS-DOS 6.22) et `FREEDOS_C.IMG` (FreeDOS 1.4) générées hors de git. Simulé (26 scénarios), gravé.
 - 2026-11-16 : schéma : lecteur microSD (J9) sur U12 (PC4 = CS, PC5 = SCK, PC6 = MOSI, PB3 = MISO, R9/R10 10 kΩ), SPI par le 8088 ; ATmega328P retiré (esprit vintage), UART logiciel rétabli.

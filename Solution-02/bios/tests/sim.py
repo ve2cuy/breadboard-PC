@@ -811,7 +811,7 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 1.7 - VE2CUY 2026\r\n"
+BANNIERE = (b"\r\nSolution-02 BIOS 1.8 - VE2CUY 2026\r\n"
             b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info"
             b"  5) UART:ON/OFF (console)  6) BASIC\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
@@ -914,12 +914,12 @@ def scenario_sysinfo(image, pic=True, pit=True):
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 1.7" and pret(c):
+        if l[0] == "SOLUTION-02 BIOS 1.8" and pret(c):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
     pas = Etapes([(au_menu, texte('4')), (pret, texte(' '))])
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic, pit=pit)
-    attendu = ["SOLUTION-02 BIOS 1.7", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
+    attendu = ["SOLUTION-02 BIOS 1.8", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
@@ -1042,7 +1042,7 @@ def carte_dos(fragmente=False):
 
 
 def scenario_sd_boot(image):
-    """BIOS 1.7 : Load DOS avec une carte : choix de PCDOS21.IMG (fleche bas, Entree), le DOS
+    """BIOS 1.8 : Load DOS avec une carte : choix de PCDOS21.IMG (fleche bas, Entree), le DOS
     demarre depuis la carte, puis 'dir > liste.txt' ecrit dans l'image (A:), relue sur la carte."""
     import gen_sd
     carte, img = carte_dos()
@@ -1076,7 +1076,7 @@ def scenario_sd_boot(image):
     if copie != img:
         ok = False
         print("    attendu : l'autre image intacte")
-    return verifier("BIOS 1.7 : demarrage sur une image de la carte SD, ecriture dans l'image", lcd, etat, None, ok)
+    return verifier("BIOS 1.8 : demarrage sur une image de la carte SD, ecriture dans l'image", lcd, etat, None, ok)
 
 
 def scenario_sd_fragmentee(image):
@@ -1092,7 +1092,7 @@ def scenario_sd_fragmentee(image):
     pas = Etapes([(au_menu, texte('1')), (lambda c: c["lcd"].lignes() == choix, appui(0x72, True) + appui(0x72, True)),
                   (lambda c: c["lcd"].lignes()[3].startswith(">COPIE"), texte('\r'))])
     lcd, etat, uc = lancer(image, fini=msg, entrees=pas, max_instr=40_000_000, sd=carte)
-    return verifier("BIOS 1.7 : image fragmentee refusee", lcd, etat, None, bool(vu.get("msg")))
+    return verifier("BIOS 1.8 : image fragmentee refusee", lcd, etat, None, bool(vu.get("msg")))
 
 
 def scenario_basic(image):
@@ -1145,7 +1145,7 @@ def scenario_accents(image):
     CHR$(129) dans le BASIC (INT 10h) -> UTF-8 sur le terminal (e aigu, c cedille, u trema) ;
     LCD : CGRAM 0 et 5 (glyphes charges) puis 'u' (sans accent)."""
     tx = lambda c: bytes(c["ppi2"].tx)
-    pas = Etapes([(au_menu, texte('6')), (lambda c: tx(c).endswith(b"Ok\r\n"), b"PRINT CHR$(130);CHR$(135);CHR$(129)\r"),
+    pas = Etapes([(au_menu, texte('6')), (lambda c: tx(c).endswith(b"Ok\r\n"), b"PRINT CHR$(130);CHR$(135);CHR$(129);CHR$(92)\r"),
                   (lambda c: tx(c).count(b"Ok\r\n") >= 2, b"SYSTEM\r")])
 
     def fini(c):
@@ -1153,15 +1153,16 @@ def scenario_accents(image):
     vu = {}
 
     def entrees(c):
-        if bytes([0, 5, ord('u')]) in bytes(c["lcd"].ddram):
+        if bytes([0, 5, ord('u'), 4]) in bytes(c["lcd"].ddram):     # '\' : CGRAM 4 (pas le yen)
             vu["lcd"] = True
         pas(c)
     lcd, etat, uc = lancer(image, fini=fini, entrees=entrees, max_instr=60_000_000)
     t = tx({"ppi2": etat["ppi2"]})
-    utf = "\u00e9\u00e7\u00fc".encode('utf-8')
+    utf = "\u00e9\u00e7\u00fc\\".encode('utf-8')
     print("--- UART : %r ; LCD (codes 0, 5, 'u') vu : %s ; CGRAM 0 : %s" % (
         t[t.find(b"PRINT CHR$"):][:60], vu.get("lcd"), ["%02X" % b for b in lcd.cgram[:8]]))
-    ok = utf in t and vu.get("lcd") and lcd.cgram[:8] == [0x02, 0x04, 0x0E, 0x11, 0x1F, 0x10, 0x0E, 0x00]
+    ok = (utf in t and vu.get("lcd") and lcd.cgram[:8] == [0x02, 0x04, 0x0E, 0x11, 0x1F, 0x10, 0x0E, 0x00]
+          and lcd.cgram[32:40] == [0x00, 0x10, 0x08, 0x04, 0x02, 0x01, 0x00, 0x00])
     if not ok:
         print("    attendu : e aigu, c cedille, u trema en UTF-8 sur l'UART ; LCD : CGRAM 0, 5 et 'u'")
     return verifier("accents (page de codes 437) : UTF-8 sur le terminal, CGRAM sur le LCD", lcd, etat, MENU, ok)
@@ -1220,7 +1221,7 @@ def scenario_disque_c(image):
 
 
 def scenario_change_a(image):
-    """BIOS 1.7 : changement de la disquette de A: sous DOS. DOS 3.3 demarre depuis DOS33.IMG ;
+    """BIOS 1.8 : changement de la disquette de A: sous DOS. DOS 3.3 demarre depuis DOS33.IMG ;
     Ctrl+Alt+Inser (clavier PS/2) a l'invite : liste 'Disquette A: Entree', 2 x fleche bas ->
     PCDOS21.IMG ; DIR A: montre MASM.EXE. Puis Ctrl+] (terminal) : DOS33.IMG ; DIR A: montre
     de nouveau COUNTRY.SYS (INT 13h AH=16h signale chaque changement)."""
@@ -1330,7 +1331,7 @@ def scenario_partout(image):
     terminal -> Info sur le LCD et sur TX ; une touche du terminal -> retour au menu."""
     tx = lambda c: bytes(c["ppi2"].tx)
     on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON "
-    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 1.7" and c["lcd"].lignes()[3].startswith("8259")
+    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 1.8" and c["lcd"].lignes()[3].startswith("8259")
     vu = {}
 
     def menu_vu(c):
@@ -1347,7 +1348,7 @@ def scenario_partout(image):
     print("--- UART TX apres la banniere : %r" % t)
     import gen_accueil                         # ecran d'accueil ANSI, puis le menu
     attendu = gen_accueil.octets() + MENU_TX + (
-               b"\r\nSOLUTION-02 BIOS 1.7\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n") + MENU_TX
+               b"\r\nSOLUTION-02 BIOS 1.8\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n") + MENU_TX
     ok = t == attendu
     if not ok:
         print("    attendu : %r" % attendu)
