@@ -32,7 +32,7 @@ l'image (décalage 30000h), vus en **F000:0000**. Au reset, le 8088 démarre
 en FFFF:0000 = FFFF0h = F000:FFF0 (décalage 3FFF0h de l'image), où se trouve
 un `JMP F000:0000`.
 
-Contenu de la ROM et de la RAM avec le BIOS 2.1 :
+Contenu de la ROM et de la RAM avec le BIOS 2.2 :
 
 | Adresses | Contenu |
 |---|---|
@@ -328,13 +328,13 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 2.1
+## BIOS 2.2
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
 type IBM PC). Déroulement :
 
-1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 2.1`,
+1. **Écran d'ouverture** (~2 s) : `SOLUTION-02 BIOS 2.2`,
    `CPU 8088/V20 5.33MHz`, `RAM 512 Ko  LCD 20x4`, `VE2CUY - 2026`.
 2. **Vérification rapide** des 4 Ko de données du BIOS (7F000h–7FFFFh) ; en
    cas d'échec, le test complet de la RAM part d'office. Bannière sur l'UART.
@@ -497,8 +497,9 @@ essais) et une partition FAT16 active de 16 têtes × 63 secteurs (bibliothèque
 `tests/fatlib.py`). Sans KEYB ni HIMEM (8088).
 
 **Changer la disquette de A:** (BIOS 1.7) pendant que le DOS tourne :
-**Ctrl+Alt+Inser** au clavier PS/2 ; sur le terminal, la même combinaison quand
-il l'envoie (`ESC [ 2 ; 7 ~`, terminaux de type xterm) ou **Ctrl+]** (1Dh). La
+**Ctrl+Alt+Inser** au clavier PS/2 ; sur le terminal (BIOS 2.2) **Ctrl+\**
+(1Ch, comme Solution-01), **F12** (`ESC [ 2 4 ~`), Ctrl+] (1Dh) ou
+Ctrl+Alt+Inser quand le terminal l'envoie (`ESC [ 2 ; 7 ~`). La
 touche ne fait que lever une demande ; la liste (`Disquette A: Entree`, la ROM
 et les images de disquette, sans les lignes C:) s'ouvre quand le DOS attend
 vraiment une touche, jamais au milieu d'un accès disque : INT 16h AH=00h, ou
@@ -705,6 +706,14 @@ ON), clavier par **INT 16h** (clavier PS/2 et terminal), heure de **TIME$** et
 10000h (libre hors DOS). Bannière `VE2CUY 86 BASIC Version 1.0 (inspired by
 GW-BASIC)`, puis `Ok` ; **SYSTEM** ramène au menu.
 
+**Terminal** (BIOS 2.2) : les caractères UTF-8 envoyés par le terminal (2 ou 3
+octets, PuTTY) deviennent ceux de la page de codes 437 du DOS (à → 85h…),
+l'inverse de l'affichage ; chaque octet d'une séquence (UTF-8, `ESC [ …`) est
+lu aussitôt, le suivant arrivant 3/4 de bit plus tard. **Ctrl+Alt+Suppr** au
+terminal : `ESC [ 3 ; 7 ~`. Les messages du chargement (`Carte SD...`,
+`Verification C:...`, `Lecture : nnn Ko` tous les 64 Ko, refus) vont aussi au
+terminal.
+
 **Fichiers** (BIOS 2.0, `fs_s02.inc`) : à la place du pont STM32 de Solution-01
 (même API `fs_*`, voir `Solution-01/lib/bridge.asm`), un petit système **FAT12**
 (racine seulement, un fichier ouvert à la fois) sur la **disquette A:** par
@@ -905,6 +914,7 @@ un module.
 
 ## État
 
+- 2026-11-16 : BIOS 2.2 : terminal (PuTTY) : accents tapés en UTF-8 → page 437 ; Ctrl+\ et F12 changent la disquette de A: ; Ctrl+Alt+Suppr au terminal (`ESC [ 3 ; 7 ~`) ; messages du chargement (Carte SD..., Verification C:..., Lecture : nnn Ko tous les 64 Ko, refus) aussi au terminal. Gravé.
 - 2026-11-16 : BIOS 2.1 : BOOT "NOM.IMG" du BASIC corrigé (INT 19h hors Load DOS : DS = CS pour la table des vecteurs). Gravé.
 - 2026-11-16 : BIOS 2.0 : fichiers du BASIC sur la disquette A: (FAT12 : SAVE, LOAD, FILES, KILL, OPEN…), flèche haut au BASIC, BOOT "NOM.IMG" (INT 13h AH=F0h) ; curseur dans le BDA et recopié au terminal (retour arrière de FreeDOS). Gravé.
 - 2026-11-16 : BIOS 1.9 : le changement de A: s'ouvre aussi quand le DOS attend en interrogeant INT 16h AH=01h (sinon jamais) ; image FreeDOS avec `STACKS=0,0` (clavier PS/2 et UART corrects sous FreeDOS). Gravé.

@@ -553,18 +553,29 @@ irq_uart:
 ucon_entree:
         push    bx
         push    cx
+        push    dx
         cmp     al, 1Bh
         je      .esc
-.simple:
-        cmp     al, 1Dh                 ; Ctrl+] : changement de la disquette de A:
-        jne     .simple2
-        mov     byte [es:V_CHG_A], 1
+        cmp     al, 0C2h                ; UTF-8 (terminal) : 2 ou 3 octets -> page 437 (tot :
+        jb      .simple                 ; l'octet suivant arrive 3/4 de bit plus tard)
+        call    ucon_utf8
+        jc      .fin
+        xor     ah, ah
+        call    file_ajoute
         jmp     .fin
-.simple2:
+.simple:
+        cmp     al, 1Ch                 ; Ctrl+\ (comme Solution-01) ou Ctrl+] : changement
+        je      .chg_a                  ; de la disquette de A: (F12 aussi : ESC [ 2 4 ~)
+        cmp     al, 1Dh
+        jne     .simple3
+.chg_a: mov     byte [es:V_CHG_A], 1
+        jmp     .fin
+.simple3:
         call    ucon_code
         jc      .fin
         call    file_ajoute
-.fin:   pop     cx
+.fin:   pop     dx
+        pop     cx
         pop     bx
         ret
 .esc:   call    ucon_suivant
@@ -581,43 +592,117 @@ ucon_entree:
 .echap: mov     ax, 011Bh
         call    file_ajoute
         jmp     .fin
-.csi:   call    ucon_suivant
+.csi:   call    ucon_suivant            ; (chaque octet de la sequence est lu AUSSITOT :
+        jc      .fin                    ; le suivant arrive 3/4 de bit plus tard ; les
+        cmp     al, '9'                 ; tables sont consultees a la fin)
+        ja      .lettre
+        mov     bl, al                  ; BL = 1er chiffre, BH = 2e chiffre (ou 0),
+        xor     bh, bh                  ; DL = modificateur (ou 0 ; ucon_suivant detruit CX)
+        xor     dl, dl
+        call    ucon_suivant            ; '~', ';' ou 2e chiffre
         jc      .fin
-        mov     bx, ucon_csi
-        call    ucon_table
-        jnc     .etendue
+        cmp     al, '9'
+        ja      .pas_chiffre
+        mov     bh, al
+        call    ucon_suivant
+        jc      .fin
+.pas_chiffre:
+        cmp     al, ';'                 ; modificateur xterm (2 Maj, 3 Alt, 5 Ctrl, 7 Ctrl+Alt)
+        jne     .tilde
+        call    ucon_suivant
+        jc      .fin
+        mov     dl, al
+        call    ucon_suivant
+        jc      .fin
+.tilde: cmp     al, '~'
+        jne     .fin
+        cmp     bx, '2' | ('4' << 8)    ; ESC [ 2 4 ~ = F12 : changement de A:
+        je      .chg_a
+        or      bh, bh                  ; autres touches a 2 chiffres : ignorees
+        jnz     .fin
+        mov     al, bl
         mov     bx, ucon_tilde
         call    ucon_table
         jc      .fin
-        push    ax
-        call    ucon_suivant            ; '~' attendu, ou ';' + modificateur (xterm :
-        jc      .p_fin                  ; 2 Maj, 3 Alt, 5 Ctrl, 7 Ctrl+Alt...) + '~'
-        xor     bh, bh
-        cmp     al, ';'
-        jne     .t1
-        call    ucon_suivant
-        jc      .p_fin
-        mov     bh, al
-        call    ucon_suivant
-        jc      .p_fin
-.t1:    mov     bl, al
-        pop     ax
-        cmp     bl, '~'
-        jne     .fin
-        cmp     ah, 52h                 ; Ctrl+Alt+Inser (ESC [ 2 ; 7 ~, ou 8 avec Maj) :
+        cmp     ah, 53h                 ; Ctrl+Alt+Suppr (ESC [ 3 ; 7 ~) : redemarrage
+        jne     .t2
+        cmp     dl, '7'
+        je      ucon_reset
+        cmp     dl, '8'
+        je      ucon_reset
+.t2:    cmp     ah, 52h                 ; Ctrl+Alt+Inser (ESC [ 2 ; 7 ~, ou 8 avec Maj) :
         jne     .etendue                ; changement de la disquette de A:
-        cmp     bh, '7'
-        je      .chg
-        cmp     bh, '8'
-        jne     .etendue
-.chg:   mov     byte [es:V_CHG_A], 1
-        jmp     .fin
-.p_fin: pop     ax
-        jmp     .fin
+        cmp     dl, '7'
+        je      .chg_a
+        cmp     dl, '8'
+        je      .chg_a
+        jmp     .etendue
+.lettre:
+        mov     bx, ucon_csi
+        call    ucon_table
+        jc      .fin
 .etendue:
         xor     al, al                  ; touche etendue : AL = 0, AH = code XT
         call    file_ajoute
         jmp     .fin
+
+; ucon_reset : Ctrl+Alt+Suppr au terminal (ESC [ 3 ; 7 ~, depuis IRQ4) : retour au
+; demarrage, comme Ctrl+Alt+Suppr au clavier PS/2.
+ucon_reset:
+        mov     al, PIC_EOI
+        out     PIC_CMD, al
+        jmp     0F000h:debut
+
+; ucon_utf8 : AL = 1er octet d'un caractere UTF-8 (C2h-EFh) ; les suivants arrivent d'un
+; trait -> AL = caractere de la page de codes 437 (table cp437_utf), CF = 0 ; CF = 1 :
+; sequence invalide ou caractere absent de la page 437 (ignore). Detruit AH, BX, CX.
+ucon_utf8:
+        mov     bh, al                  ; 1er octet (uart_rx se sert de AH ; BX est garde
+        call    ucon_suivant            ; par ucon_entree) ; 2e octet, tout de suite
+        jc      .r
+        push    dx
+        push    si
+        mov     dh, bh                  ; DH = 1er octet, DL = 2e
+        mov     dl, al
+        cmp     dh, 0E0h
+        jae     .trois
+        and     dh, 1Fh                 ; 2 octets : 110xxxxx 10xxxxxx
+        mov     bl, dh
+        xor     bh, bh
+        mov     al, dl
+        jmp     .dernier
+.trois: call    ucon_suivant            ; 3e octet (1110xxxx 10xxxxxx 10xxxxxx)
+        jc      .non
+        and     dh, 0Fh
+        mov     bl, dh
+        xor     bh, bh
+        mov     cl, 6
+        shl     bx, cl
+        and     dl, 3Fh
+        or      bl, dl
+.dernier:
+        mov     cl, 6                   ; BX = BX x 64 + (AL & 3Fh)
+        shl     bx, cl
+        and     al, 3Fh
+        or      bl, al
+        mov     si, cp437_utf
+        mov     cx, 128
+.cherche:
+        cmp     [cs:si], bx
+        je      .trouve
+        add     si, 2
+        loop    .cherche
+.non:   stc
+        jmp     .fin
+.trouve:
+        mov     ax, si
+        sub     ax, cp437_utf
+        shr     ax, 1
+        or      al, 80h
+        clc
+.fin:   pop     si
+        pop     dx
+.r:     ret
 
 ; ucon_suivant : attend (~2,7 ms) le bit de depart de l'octet suivant d'une sequence
 ; et le lit. AL = octet, CF = 1 si rien ou trame invalide. Detruit CX.

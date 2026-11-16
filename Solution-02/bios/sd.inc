@@ -675,6 +675,7 @@ V_IMG_SECT      equ     V_IMG_COUR + 6
 V_IMG_LBA       equ     V_IMG_COUR + 8
 V_PROGRES       equ     0C5Ch           ; 1 = demarrage depuis la carte en cours (progression)
 V_LUS           equ     0C5Eh           ; (dw) secteurs lus pendant le demarrage
+V_PROG_UART     equ     0C5Dh           ; progression : derniere tranche de 64 Ko au terminal
 V_IMG_NB        equ     8F2h            ; images dans la table
 ; disque dur C: (1er .IMG de plus de 1,44 Mo) : entree de repertoire (format de T_IMG),
 ; geometrie, table des parametres pointee par INT 41h
@@ -1152,6 +1153,8 @@ sd_choisir:
         mov     byte [es:V_BOOT_C], 0
         mov     si, txt_sd_lecture
         call    lcd_ecran
+        mov     si, txt_sd_lecture      ; et au terminal (sinon l'attente semble un plantage)
+        call    msg_uart
         call    sd_init
         jc      .rom
         call    fat_ouvre
@@ -1229,6 +1232,7 @@ sd_choisir:
         mov     byte [es:V_BOOT_C], 1   ; C: : demarrage depuis le disque dur (A: = ROM)
         mov     byte [es:V_PROGRES], 1
         mov     word [es:V_LUS], 0
+        mov     byte [es:V_PROG_UART], 0
         jmp     .fin
 .disquette:
         push    ax
@@ -1242,6 +1246,7 @@ sd_choisir:
         call    img_vers
         mov     byte [es:V_PROGRES], 1
         mov     word [es:V_LUS], 0
+        mov     byte [es:V_PROG_UART], 0
         jmp     .fin
 .rom_carte:
         call    .monte_c
@@ -1253,6 +1258,7 @@ sd_choisir:
         xor     bh, bh
         shl     bx, 1
         mov     si, [cs:bx + txt_img_err - 2]
+        call    msg_uart
         mov     al, 80h | LIGNE1
         call    lcd_cmd
         call    lcd_texte20
@@ -1276,6 +1282,8 @@ sd_choisir:
         call    lcd_cmd
         mov     si, txt_hd_verif
         call    lcd_texte20
+        mov     si, txt_hd_verif
+        call    msg_uart
         mov     al, [es:V_HD_CHOIX]
         jmp     hd_monte
 .mc_ok: clc
@@ -1503,6 +1511,8 @@ chg_a:
         mov     byte [es:V_HD_ACTIF], 0
         mov     si, txt_sd_lecture
         call    lcd_ecran
+        mov     si, txt_sd_lecture
+        call    msg_uart
         call    sd_init
         jc      .pas_carte
         call    fat_ouvre
@@ -2013,6 +2023,19 @@ progres_affiche:
         call    tx_chaine
         mov     al, LIGNE4
         call    tx_sortie_lcd
+        mov     ax, [es:V_LUS]          ; terminal : une ligne tous les 64 Ko
+        mov     cl, 7
+        shr     ax, cl
+        cmp     al, [es:V_PROG_UART]
+        je      .sans_uart
+        mov     [es:V_PROG_UART], al
+        push    ds
+        push    es
+        pop     ds
+        mov     si, V_LIGNE
+        call    msg_uart
+        pop     ds
+.sans_uart:
         pop     ax
         mov     cl, 3
         shr     ax, cl                  ; DEL = Ko / 8, modulo 25
@@ -2036,6 +2059,38 @@ progres_affiche:
         mov     al, bl
         out     PPI_PB, al
         ret
+
+; msg_uart : console UART : CR LF puis la ligne de 20 caracteres DS:SI (espaces de fin
+; retires). Messages du chargement, aussi au terminal. Preserve tout.
+msg_uart:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        call    uart_calme
+        mov     al, 13
+        call    uart_tx
+        mov     al, 10
+        call    uart_tx
+        mov     bx, 20
+.l:     cmp     byte [si + bx - 1], ' '
+        jne     .t
+        dec     bx
+        jnz     .l
+.t:     mov     cx, bx
+        jcxz    .f
+.c:     lodsb
+        call    uart_tx
+        loop    .c
+.f:     pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+.r:     ret
 
 txt_lecture:    db  'Lecture : ', 0
 txt_ko:         db  ' Ko', 0
