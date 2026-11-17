@@ -1793,6 +1793,25 @@ nom83_es:
         stc
         ret
 
+%ifdef LANG_EN
+txt_chg_titre:  db  'Floppy A: Enter     '
+txt_chg_sans:   db  'No SD card!         '
+txt_chg_fin:    db  'A: changed (Esc: no change).', 13, 10, 0
+
+txt_sd_lecture: db  'SD card...          '
+                db  '                    '
+                db  '                    '
+                db  '                    '
+txt_img_titre:  db  'Boot: Enter         '
+txt_img_rom:    db  'ROM PC-DOS 2.1', 0
+txt_img_c:      db  'C:', 0
+txt_img_err:    dw  txt_img_e1, txt_img_e2, txt_img_e3, txt_img_e4
+txt_img_e1:     db  'Unknown size!       '
+txt_img_e2:     db  'Fragmented image!   '
+txt_img_e3:     db  'Read error!         '
+txt_img_e4:     db  'C: image rejected!  '
+txt_hd_verif:   db  'Checking C:...      '
+%else
 txt_chg_titre:  db  'Disquette A: Entree '
 txt_chg_sans:   db  'Pas de carte SD !   '
 txt_chg_fin:    db  'A: change (Echap : rien).', 13, 10, 0
@@ -1810,6 +1829,7 @@ txt_img_e2:     db  'Image fragmentee !  '
 txt_img_e3:     db  'Erreur de lecture ! '
 txt_img_e4:     db  'Image C: refusee !  '
 txt_hd_verif:   db  'Verification C:...  '
+%endif
 
 ; -----------------------------------------------------------------------------
 ; INT 13h, lecteur A: = image de la carte (V_IMG_ACTIF). Appele depuis int13h (cadre
@@ -2092,8 +2112,13 @@ msg_uart:
         pop     ax
 .r:     ret
 
+%ifdef LANG_EN
+txt_lecture:    db  'Reading: ', 0
+txt_ko:         db  ' KB', 0
+%else
 txt_lecture:    db  'Lecture : ', 0
 txt_ko:         db  ' Ko', 0
+%endif
 
 ; -----------------------------------------------------------------------------
 ; INT 13h, disque dur C: (DL = 80h) = image de la carte (V_HD_ACTIF). Appele depuis int13h.

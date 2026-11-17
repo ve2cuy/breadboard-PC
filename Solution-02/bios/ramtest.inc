@@ -997,6 +997,82 @@ rt_boucle:
         ret
 
 ; ---- textes ---------------------------------------------------------------------------
+%ifdef LANG_EN
+txt_rt_menu_lcd:
+        db      'RAM test 512K       '
+        db      '1) Trace            '
+        db      '2) MAP              '
+        db      '3) Loop    Esc: menu'
+txt_rt_menu:
+        db      13, 10, 27, '[36m', '--- RAM test submenu ---', 27, '[0m', 13, 10
+        db      '1) Trace (one line per 1 KB block, every fault detailed)', 13, 10
+        db      '2) MAP (memory map and summary at the end)', 13, 10
+        db      '3) Loop (MAP in a loop, Esc: stop after the pass)', 13, 10
+        db      'Esc: back to the menu', 13, 10, 0
+txt_rt_touche:  db      'Any key: back to the submenu', 13, 10, 0
+txt_rt_lcd1:
+        db      'RAM test 512K       '
+        db      'Running...          '
+        db      '                    '
+        db      '                    '
+txt_rt_lcd_ok:  db      'RAM OK  (key)       ', 0
+txt_rt_lcd_err: db      'RAM FAULTY          ', 0
+txt_rt_lcd_fin: db      'Test finished       ', 0
+txt_rt_lcd_adr_err: db  'Address: ERR (UART) '
+txt_rt_ban1:    db      13, 10, 27, '[0m', '=== RAM test 512K (Solution-02, UART report 9600 8N1) ===', 27, '[0m', 13, 10, 0
+txt_rt_ban2:    db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocks) + seg 7000h (70000h-7EFFFh, 60 blocks),', 13, 10
+        db      'then the last 4 KB (DSEG: BIOS data, screen and stack, 7F000h-7FFFFh), stack moved to the bottom of RAM', 13, 10, 13, 10, 0
+txt_rt_rouge:   db      27, '[31m', 0
+txt_rt_blanc:   db      27, '[0m', 0
+txt_rt_blanc_crlf: db   27, '[0m', 13, 10, 0
+txt_rt_defaut:  db      '  >> MEMORY FAULT @ ', 0
+txt_rt_attendu: db      '  expected=', 0
+txt_rt_lu:      db      '  read=', 0
+txt_rt_vert_ok: db      27, '[32m', 'OK', 27, '[0m', 0
+txt_rt_rouge_err: db    27, '[31m', 'FAULT', 27, '[0m', 0
+txt_rt_ko1:     db      '  -> ', 0
+txt_rt_ko2:     db      'K tested', 13, 10, 0
+txt_rt_etat_ok: db      'State: OK           ', 0
+txt_rt_etat_err: db     'State: FAULT        ', 0
+txt_rt_bloc:    db      'Blk: ', 0
+txt_rt_bloc2:   db      '/512 Err:', 0
+txt_rt_ok:      db      27, '[32m', '*** RAM OK - 524288 bytes tested (512 blocks of 1 KB), no error ***', 27, '[0m', 13, 10, 13, 10, 0
+txt_rt_err:     db      27, '[31m', '*** RAM FAULTY - see the fault details above ***', 27, '[0m', 13, 10, 13, 10, 0
+txt_rt_err_carte: db    27, '[31m', '*** RAM FAULTY - see the memory map above ***', 27, '[0m', 13, 10, 13, 10, 0
+txt_rt_total:   db      'TOTAL FAULTS: ', 0
+txt_rt_total_fin: db    ' byte(s)', 13, 10, 13, 10, 0
+txt_rt_adr:     db      13, 10, 'Address lines A0-A18 test (write through DS with IF=1, read back through ES with IF=0):', 13, 10, 0
+txt_rt_adr_base: db     27, '[31m', '  ADDRESSING FAULT: base cell 35555h overwritten: read ', 0
+txt_rt_adr_ligne: db    27, '[31m', '  ADDRESS LINE A', 0
+txt_rt_adr_ligne2: db   ' FAULTY (stuck, open or shorted): read ', 0
+txt_rt_adr_attendu: db  'h, expected ', 0
+txt_rt_adr_fin: db      'h', 27, '[0m', 13, 10, 0
+txt_rt_adr_ok:  db      27, '[32m', '  Address lines A0-A18 OK: 19 independent lines, 512 KB really addressable (capacity verified)', 27, '[0m', 13, 10, 0
+txt_rt_adr_aide: db     27, '[31m', '  A 128/256 KB chip sold as 512 KB fails on A17/A18.', 27, '[0m', 13, 10, 0
+txt_rt_carte:   db      13, 10, 'MEMORY MAP (1 character = one 1 KB block)', 13, 10, '         0K              16K             32K             48K', 13, 10, 0
+txt_rt_carte_adr: db    '0000h:  ', 0
+txt_rt_x:       db      27, '[31m', 'X', 27, '[0m', 0
+txt_rt_crlf:    db      13, 10, 0
+txt_rt_legende: db      '         . = good   X = faulty   R = not tested', 13, 10, 13, 10, 0
+txt_rt_teste:   db      'RAM tested: ', 0
+txt_rt_ko:      db      ' KB   ', 0
+txt_rt_bons:    db      'Good: ', 0
+txt_rt_mauvais: db      'Faulty: ', 0
+txt_rt_ko_octets: db    ' KB (', 0
+txt_rt_octets:  db      ' bytes)', 13, 10, 0
+txt_rt_non_teste: db    'Not tested: ', 0
+txt_rt_total_ko: db     ' KB   Total: 512 KB', 13, 10, 0
+txt_rt_lignes_ok: db    27, '[32m', 'Address lines A0-A18: OK (512 KB capacity verified)', 27, '[0m', 13, 10, 0
+txt_rt_lignes_err: db   27, '[31m', 'Address lines A0-A18: FAULT (see above)', 27, '[0m', 13, 10, 0
+txt_rt_passe:   db      13, 10, 27, '[36m', '=== RAM test loop - pass ', 0
+txt_rt_passe_fin: db    ' (Esc: stop after this pass) ===', 27, '[0m', 13, 10, 0
+txt_rt_bilan:   db      27, '[36m', 'Loop: ', 0
+txt_rt_bonnes:  db      ' pass(es), ', 0
+txt_rt_defauts: db      ' good, ', 0
+txt_rt_bilan_fin: db    ' with faults', 27, '[0m', 13, 10, 0
+txt_rt_saute:   db      27, '[31m', '*** Byte-by-byte test SKIPPED: two addresses overlap (faulty address line), it would overwrite DSEG (BIOS stack and data) ***', 27, '[0m', 13, 10, 0
+txt_rt_arret:   db      13, 10, '*** RAM test loop stopped (Esc) ***', 13, 10, 0
+%else
 txt_rt_menu_lcd:
         db      'Test RAM 512K       '
         db      '1) Trace            '
@@ -1071,3 +1147,4 @@ txt_rt_defauts: db      ' bonne(s), ', 0
 txt_rt_bilan_fin: db    ' avec defauts', 27, '[0m', 13, 10, 0
 txt_rt_saute:   db      27, '[31m', "*** Essai octet par octet SAUTE: deux adresses se recouvrent (ligne d'adresse en defaut), il ecraserait DSEG (pile et donnees du BIOS) ***", 27, '[0m', 13, 10, 0
 txt_rt_arret:   db      13, 10, '*** Test RAM en boucle arrete (Echap) ***', 13, 10, 0
+%endif

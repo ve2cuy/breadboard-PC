@@ -116,6 +116,8 @@ V_PIC           equ     7B3h            ; 1 = 8259 present : clavier et UART par
 V_EVT           equ     7B4h            ; 1 = IRQ1/IRQ4 a mis quelque chose dans une file
 V_UCON          equ     7B5h            ; 1 = console du DOS sur l'UART (menu 5)
 V_IRQ7          equ     7B6h            ; (mot) IRQ7 parasites comptees (SysInfo)
+V_LED_OFF       equ     7B8h            ; 1 = animations des DEL coupees hors de l'ecran LED Show (menu 7)
+V_LED_ECRAN     equ     7B9h            ; 1 = ecran LED Show (menu 3) : animations meme si V_LED_OFF
 V_UFILE         equ     7C0h            ; file de l'UART : UFILE_N octets
 V_PIT           equ     7E0h            ; 1 = 8253 present
 V_QUART         equ     7E1h            ; IRQ0 modulo 4 (un top du PC sur 4)
@@ -757,6 +759,7 @@ menu:
         mov     ds, ax
         mov     byte [es:V_DOS], 0
         mov     byte [es:V_NAV], 0
+        mov     byte [es:V_LED_ECRAN], 0
         call    kbd_bloque              ; (scrutation) clavier bloque hors des attentes
         call    it_init                 ; vecteurs, 8259 (clavier et UART par IRQ)
         sti
@@ -770,6 +773,7 @@ menu:
         mov     si, txt_menu
         call    lcd_ecran
         call    menu_uart
+        call    menu_led
         cmp     byte [es:V_MELODIE], 0  ; 1er menu apres le demarrage : ecran d'accueil sur le
         jne     .pas_premier            ; terminal (console a ON par defaut) et melodie
         cmp     byte [es:V_UCON], 0
@@ -797,6 +801,8 @@ menu:
         je      sysinfo
         cmp     al, '6'
         je      .basic
+        cmp     al, '7'
+        je      .led
         cmp     al, '5'
         jne     .touche
         xor     byte [es:V_UCON], 1     ; console du DOS sur l'UART : ON <-> OFF
@@ -809,6 +815,17 @@ menu:
         call    ecran_uart
         jmp     .touche
 .basic: jmp     basic_lance
+.led:   xor     byte [es:V_LED_OFF], 1  ; 7) animations des DEL en arriere-plan : ON <-> OFF
+        call    menu_led
+        cmp     byte [es:V_LED_OFF], 0
+        je      .led_uart
+        xor     al, al                  ; OFF : DEL eteintes (la tache est suspendue)
+        out     PPI_PA, al
+        out     PPI_PB, al
+        out     PPI_PC, al
+.led_uart:
+        call    ecran_uart              ; console UART : le menu mis a jour
+        jmp     .touche
 .dos:   call    sd_choisir              ; carte SD : choix de l'image (ou la ROM)
         jnc     .charge
         jmp     menu                    ; Echap
@@ -837,6 +854,16 @@ menu_uart:
         cmp     byte [es:V_UCON], 0
         je      .t
         mov     si, txt_menu4_on
+.t:     jmp     lcd_texte20
+
+; menu_led : ligne 3 du menu selon V_LED_OFF. Detruit AX, BX, CX, SI.
+menu_led:
+        mov     al, 80h | LIGNE3
+        call    lcd_cmd
+        mov     si, txt_menu3_on
+        cmp     byte [es:V_LED_OFF], 0
+        je      .t
+        mov     si, txt_menu3_off
 .t:     jmp     lcd_texte20
 
 ; lcd_ecran : efface le LCD et affiche 4 lignes de 20 caracteres (DS:SI). Detruit AX, BX, CX, SI.
@@ -877,6 +904,8 @@ vars_init:
         mov     [es:V_IRQ7], ax
         mov     [es:V_KBD_N], al
         mov     [es:V_TACHE_ON], al
+        mov     [es:V_LED_OFF], al      ; animations des DEL : ON au demarrage
+        mov     [es:V_LED_ECRAN], al
         mov     [es:V_MELODIE], al
         mov     [es:V_IMG_ACTIF], al    ; A: = ROM tant qu'aucune image n'est choisie
         mov     [es:V_IMGB_ACTIF], al   ; B: = disque virtuel en RAM
@@ -996,6 +1025,7 @@ sysinfo:
 ; animations tournent ici, au premier plan (del_aff attend en traitant les touches).
 ; Echap ramene au menu.
 led_show:
+        mov     byte [es:V_LED_ECRAN], 1 ; animations meme si coupees (menu 7)
         mov     si, txt_led
         call    lcd_ecran
         mov     byte [es:V_COL3], LCD_COLS   ; le premier caractere efface l'invite
@@ -1667,7 +1697,12 @@ clavier_entree:
         push    ax                      ; trame lue : clavier bloque pendant le
         call    kbd_bloque              ; traitement (LCD, UART), relache par del_aff
         pop     ax
-        jc      .fin
+        jnc     .trame_ok
+        and     byte [es:V_CLAVIER], ~(CLV_RELACHE | CLV_ETENDU) ; trame illisible : F0/E0
+                                        ; en attente oublies (sinon la touche suivante serait
+                                        ; prise pour un relachement)
+        jmp     .fin
+.trame_ok:
         call    clavier_decode
         jc      .fin
         call    clavier_touche
@@ -2059,7 +2094,53 @@ anim_vumetre:
 ; Donnees (en ROM, DS = CS)
 ; =============================================================================
 ;                12345678901234567890
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.3'
+%ifdef LANG_EN
+;                12345678901234567890      (BIOS anglais : make LANG=en)
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.4'
+txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
+txt_ouv3:   db  'RAM 512 KB  LCD 20x4'
+txt_ouv4:   db  'VE2CUY - 2026       '
+txt_test1:  db  'MEMORY TEST 512 KB  '
+txt_test2:  db  'KB: 000  Errors  000'
+txt_adr_ok: db  'Address A0-A18: OK  '
+txt_adr_err:db  'Address:  ERR A'
+txt_adr_base:db 'Address: ERR base   '
+txt_ram_ok: db  'MEMORY 512 KB : OK  '
+txt_echec:  db  'RAM FAULT   CNT 0000'
+txt_pile_ok:db  'STACK OK  Key=menu  '
+txt_pile_err:db 'STACK ERR           '
+txt_menu:   db  '1) Load DOS 6) BASIC'
+            db  '2) Test memory      '
+txt_menu3_on:
+            db  '3) LED Show  7) ON  '
+txt_menu4_off:
+            db  '4) Info  5) UART:OFF'
+txt_menu4_on:
+            db  '4) Info  5) UART:ON '
+txt_menu3_off:
+            db  '3) LED Show  7) OFF '
+txt_led:    db  'LED SHOW   Esc=menu '
+            db  '                    '
+            db  'PS/2 keyboard >     '
+            db  'UART 9600 8N1 >     '
+txt_sys:    db  'SOLUTION-02 BIOS 2.4'
+            db  'CPU 8088    5.33 MHz'
+            db  'RAM 512KB  ROM 256KB'
+            db  '8259 absent         '
+txt_pic_ok: db  '8259+8253 OK I7 '
+txt_pic_seul:
+            db  '8259 OK  8253 absent'
+txt_pic_absent:
+            db  '8259 absent (polled)'
+txt_cpu_8088:db 'CPU 8088    5.33 MHz'
+txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
+txt_uart_banniere:
+            db  13, 10, 'Solution-02 BIOS 2.4 - VE2CUY 2026', 13, 10
+            db  'Menu (PS/2 keyboard): 1) Load DOS  2) Test memory  3) LED Show  4) Info'
+            db  '  5) UART:ON/OFF (console)  6) BASIC  7) LED Show ON/OFF', 13, 10, 0
+%else
+;                12345678901234567890      (BIOS francais, par defaut)
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.4'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2072,18 +2153,21 @@ txt_ram_ok: db  'MEMOIRE 512 Ko : OK '
 txt_echec:  db  'RAM DEFAUT  CPT 0000'
 txt_pile_ok:db  'PILE OK  Touche=menu'
 txt_pile_err:db 'PILE ERR            '
-txt_menu:   db  '1) Load DOS 6) BASIC'
-            db  '2) Test memory      '
-            db  '3) LED Show         '
+txt_menu:   db  '1) DOS      6) BASIC'
+            db  '2) Test memoire     '
+txt_menu3_on:
+            db  '3) Anim. DEL 7) ON  '
 txt_menu4_off:
             db  '4) Info  5) UART:OFF'
 txt_menu4_on:
             db  '4) Info  5) UART:ON '
+txt_menu3_off:
+            db  '3) Anim. DEL 7) OFF '
 txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.3'
+txt_sys:    db  'SOLUTION-02 BIOS 2.4'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2095,9 +2179,10 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.3 - VE2CUY 2026', 13, 10
-            db  'Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info'
-            db  '  5) UART:ON/OFF (console)  6) BASIC', 13, 10, 0
+            db  13, 10, 'Solution-02 BIOS 2.4 - VE2CUY 2026', 13, 10
+            db  'Menu (clavier PS/2) : 1) DOS  2) Test memoire  3) Anim. DEL  4) Info'
+            db  '  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF', 13, 10, 0
+%endif
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
 fleches_ansi:
             db  48h, 'A', 50h, 'B', 4Dh, 'C', 4Bh, 'D', 0
@@ -2145,6 +2230,17 @@ anim_table:
             dw  txt_a9, anim_vumetre
 anim_fin:
 ;                1234567890123456
+%ifdef LANG_EN
+txt_a1:     db  'Chaser          '
+txt_a2:     db  'Sweep           '
+txt_a3:     db  'Fill            '
+txt_a4:     db  'Explosion       '
+txt_a5:     db  'Alternate       '
+txt_a6:     db  'Counter/Gray    '
+txt_a7:     db  'Ports C A B     '
+txt_a8:     db  'Sparkles        '
+txt_a9:     db  'VU meter        '
+%else
 txt_a1:     db  'Chenillard      '
 txt_a2:     db  'Balayage        '
 txt_a3:     db  'Remplissage     '
@@ -2154,9 +2250,14 @@ txt_a6:     db  'Compteur/Gray   '
 txt_a7:     db  'Ports C A B     '
 txt_a8:     db  'Etincelles      '
 txt_a9:     db  'Vu-metre        '
+%endif
 
 %include "clavier_us.inc"
+%ifdef LANG_EN
+%include "accueil_en.inc"
+%else
 %include "accueil.inc"
+%endif
 %include "sd.inc"
 %include "services.inc"
 %include "ramtest.inc"

@@ -359,6 +359,11 @@ irq_temps:
         int     1Ch
 .anim:  cmp     byte [es:V_TACHE_ON], 0
         je      .retour
+        cmp     byte [es:V_LED_OFF], 0  ; animations coupees (menu 7), sauf a l'ecran
+        je      .anim_on                ; LED Show (menu 3)
+        cmp     byte [es:V_LED_ECRAN], 0
+        je      .retour
+.anim_on:
         cmp     byte [es:V_PROGRES], 0  ; progression du demarrage sur le bargraphe
         jne     .retour
         cli
@@ -482,7 +487,12 @@ irq_clavier:
         mov     es, ax
         inc     byte [es:V_KBD_N]       ; (ecran_uart attend le calme)
         call    ps2_trame_it
-        jc      .fin
+        jnc     .trame_ok
+        and     byte [es:V_CLAVIER], ~(CLV_RELACHE | CLV_ETENDU) ; trame illisible : F0/E0
+                                        ; en attente oublies (sinon la touche suivante serait
+                                        ; prise pour un relachement)
+        jmp     .fin
+.trame_ok:
         call    clavier_decode
         jc      .fin
         cmp     ah, 53h                 ; Ctrl + Alt + Suppr
@@ -2029,7 +2039,12 @@ kbd_scrute:
 ; speciales. CF = 0 si une touche a ete mise dans la file. Detruit AX.
 kbd_octet:
         call    ps2_trame
-        jc      .rien
+        jnc     .trame_ok
+        and     byte [es:V_CLAVIER], ~(CLV_RELACHE | CLV_ETENDU) ; trame illisible : F0/E0
+                                        ; en attente oublies (sinon la touche suivante serait
+                                        ; prise pour un relachement)
+        jmp     .rien
+.trame_ok:
         call    clavier_decode
         jc      .rien
         cmp     ah, 53h                 ; Ctrl + Alt + Suppr : retour au menu

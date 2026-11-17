@@ -1,10 +1,13 @@
 # Solution-02 - BIOS (nasm dans le PATH)
 NASM  ?= nasm
 IMAGE  = build/solution-02-bios.bin
+# BIOS anglais (textes sous %ifdef LANG_EN) ; le francais est l'image par defaut
+IMAGE_EN = build/solution-02-bios-en.bin
 # calibration de l'UART logiciel : make UART_N=28 (voir README) ; refaire "make clean" avant
 NASM_DEF = $(if $(UART_N),-DUART_N=$(UART_N))
 
-all: $(IMAGE)
+all: $(IMAGE) $(IMAGE_EN)
+en: $(IMAGE_EN)
 
 BASIC_BIN = build/basic_s02.bin
 BASIC_SRC = basic_s02.asm fs_s02.inc $(wildcard ../../Solution-01/lib/basic*.asm) ../../Solution-01/lib/basic_tokens.inc
@@ -16,7 +19,18 @@ $(BASIC_BIN): $(BASIC_SRC)
 ../../PC-DOS/pcdos2_1_rom.img: tests/gen_dos_rom.py ../../PC-DOS/pcdos2_1.img
 	python tests/gen_dos_rom.py
 
-$(IMAGE): bios.asm clavier_us.inc accueil.inc services.inc sd.inc ramtest.inc $(BASIC_BIN) ../../PC-DOS/pcdos2_1_rom.img
+SRC_BIOS = bios.asm clavier_us.inc accueil.inc accueil_en.inc services.inc sd.inc ramtest.inc $(BASIC_BIN) ../../PC-DOS/pcdos2_1_rom.img
+
+# ecrans d'accueil ANSI de la console UART (francais et anglais)
+accueil.inc accueil_en.inc: tests/gen_accueil.py
+	python tests/gen_accueil.py
+
+$(IMAGE_EN): $(SRC_BIOS)
+	@mkdir -p build
+	$(NASM) -f bin $(NASM_DEF) -DLANG_EN -l build/bios-en.lst -o $@ bios.asm
+	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
+
+$(IMAGE): $(SRC_BIOS)
 	@mkdir -p build
 	$(NASM) -f bin $(NASM_DEF) -l build/bios.lst -o $@ bios.asm
 	@python -c "import os,sys; n=os.path.getsize('$@'); print('$@', n, 'octets'); sys.exit(n != 262144)"
@@ -51,7 +65,7 @@ test: $(IMAGE)
 clean:
 	rm -rf build
 
-.PHONY: all test clean flash diag diag2 diagsd
+.PHONY: all en test clean flash diag diag2 diagsd
 
 # Graver la ROM (TL866CS + minipro sous WSL, comme Solution-01). Inserer la puce d'abord.
 FLASH_CHIP ?= W29C020C
@@ -60,13 +74,17 @@ USB_BUSID  ?= 1-2
 MINIPRO_DIR ?= ~/minipro
 MINIPRO     = MINIPRO_HOME=$(MINIPRO_DIR) $(MINIPRO_DIR)/minipro
 
-# image a graver : la ROM normale, ou un diagnostic (make flash PUCE=ok GRAVER=diag|diag2|diagsd)
+# image a graver : la ROM normale (FLASH_LANG=fr|en), ou un diagnostic
+# (make flash PUCE=ok GRAVER=diag|diag2|diagsd)
+FLASH_LANG ?= fr
 ifeq ($(GRAVER),diag)
 FLASH_IMAGE = $(DIAG)
 else ifeq ($(GRAVER),diag2)
 FLASH_IMAGE = $(DIAG2)
 else ifeq ($(GRAVER),diagsd)
 FLASH_IMAGE = $(DIAGSD)
+else ifeq ($(FLASH_LANG),en)
+FLASH_IMAGE = $(IMAGE_EN)
 else
 FLASH_IMAGE = $(IMAGE)
 endif

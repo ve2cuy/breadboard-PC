@@ -1,0 +1,29 @@
+[
+    {
+        "lang":  "fr",
+        "name":  "BIOS 2.4 français",
+        "file":  "solution-02-bios.bin",
+        "name_en":  "BIOS 2.4 French"
+    },
+    {
+        "lang":  "en",
+        "name":  "BIOS 2.4 anglais",
+        "file":  "solution-02-bios-en.bin",
+        "name_en":  "BIOS 2.4 English"
+    },
+    {
+        "name":  "Diagnostic de la carte SD",
+        "file":  "solution-02-diag-sd.bin",
+        "name_en":  "SD card diagnostic"
+    },
+    {
+        "name":  "Diagnostic du 8255 U12",
+        "file":  "solution-02-diag-u12.bin",
+        "name_en":  "U12 8255 diagnostic"
+    },
+    {
+        "name":  "Diagnostic du 8255 U7",
+        "file":  "solution-02-diag-8255.bin",
+        "name_en":  "U7 8255 diagnostic"
+    }
+]

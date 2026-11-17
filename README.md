@@ -13,6 +13,19 @@ A project by Alain Boudreault (VE2CUY), 2026. *[Version française](README_fr.md
   the RAM. The LCD shows the “Information” screen (date and time, versions, RAM, disk, speed).</em>
 </p>
 
+## Online simulator
+
+The [Solution-02](Solution-02/) board (stand-alone 8088 / NEC V20, 512 KB, 20×4 LCD, LEDs, PS/2 keyboard,
+software UART, SD card) also runs in the browser, emulated in Rust/WebAssembly with its real BIOS:
+**[launch the simulator](https://ve2cuy.github.io/breadboard-PC/)** (English and French). PCB view with live pin levels, oscilloscope,
+32-channel logic analyzer with protocol decoders, debugger, fault injection.
+
+<p align="center">
+  <a href="https://ve2cuy.github.io/breadboard-PC/"><img src="Solution-02/Simulateur/docs/simulateur.png" alt="The Solution-02 simulator: LCD, LEDs, PCB view and UART terminal showing PC-DOS 2.1 and DIR" width="800"></a><br>
+  <em>The simulator running PC-DOS 2.1 (DIR typed on the PS/2 keyboard). Click the image to open it.
+  More in the <a href="Solution-02/Simulateur/README.md">simulator README</a> (animated demo).</em>
+</p>
+
 ## At a glance
 
 | | |

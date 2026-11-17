@@ -632,9 +632,9 @@ class Etapes:
             self.libre = t + 60000
 
 
-MENU = ["1) Load DOS 6) BASIC", "2) Test memory      ", "3) LED Show         ", "4) Info  5) UART:ON "]
+MENU = ["1) DOS      6) BASIC", "2) Test memoire     ", "3) Anim. DEL 7) ON  ", "4) Info  5) UART:ON "]
 MENU_OFF = MENU[:3] + ["4) Info  5) UART:OFF"]
-MENU_TX = b"\r\n1) Load DOS 6) BASIC\r\n2) Test memory\r\n3) LED Show\r\n4) Info  5) UART:ON\r\n"
+MENU_TX = b"\r\n1) DOS      6) BASIC\r\n2) Test memoire\r\n3) Anim. DEL 7) ON\r\n4) Info  5) UART:ON\r\n"
 
 
 def au_menu(ctx):
@@ -811,9 +811,9 @@ def verifier(titre, lcd, etat, attendu, ok=True):
     return ok
 
 
-BANNIERE = (b"\r\nSolution-02 BIOS 2.3 - VE2CUY 2026\r\n"
-            b"Menu (clavier PS/2) : 1) Load DOS  2) Test memory  3) LED Show  4) Info"
-            b"  5) UART:ON/OFF (console)  6) BASIC\r\n")
+BANNIERE = (b"\r\nSolution-02 BIOS 2.4 - VE2CUY 2026\r\n"
+            b"Menu (clavier PS/2) : 1) DOS  2) Test memoire  3) Anim. DEL  4) Info"
+            b"  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF\r\n")
 RAM_OK = ["MEMOIRE 512 Ko : OK ", "Ko: 512  Defauts 000", "Adresses A0-A18: OK ", "PILE OK  Touche=menu"]
 echec_ram = lambda ctx: ctx["lcd"].lignes()[0].endswith("CPT 0003")
 
@@ -960,12 +960,12 @@ def scenario_sysinfo(image, pic=True, pit=True):
 
     def fini(c):
         l = c["lcd"].lignes()
-        if l[0] == "SOLUTION-02 BIOS 2.3" and pret(c):
+        if l[0] == "SOLUTION-02 BIOS 2.4" and pret(c):
             vu["l"] = l
         return vu["l"] is not None and l == MENU
     pas = Etapes([(au_menu, texte('4')), (pret, texte(' '))])
     lcd, etat, uc = lancer(image, fini=fini, entrees=pas, pic=pic, pit=pit)
-    attendu = ["SOLUTION-02 BIOS 2.3", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
+    attendu = ["SOLUTION-02 BIOS 2.4", "CPU 8088    5.33 MHz", "RAM 512Ko  ROM 256Ko", ligne4]
     ok = vu["l"] == attendu
     print("--- SysInfo vu : %s" % vu["l"])
     if not ok:
@@ -1505,7 +1505,7 @@ def scenario_partout(image):
     terminal -> Info sur le LCD et sur TX ; une touche du terminal -> retour au menu."""
     tx = lambda c: bytes(c["ppi2"].tx)
     on = lambda c: c["lcd"].lignes()[3] == "4) Info  5) UART:ON "
-    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 2.3" and c["lcd"].lignes()[3].startswith("8259")
+    info = lambda c: c["lcd"].lignes()[0] == "SOLUTION-02 BIOS 2.4" and c["lcd"].lignes()[3].startswith("8259")
     vu = {}
 
     def menu_vu(c):
@@ -1522,7 +1522,7 @@ def scenario_partout(image):
     print("--- UART TX apres la banniere : %r" % t)
     import gen_accueil                         # ecran d'accueil ANSI, puis le menu
     attendu = gen_accueil.octets() + MENU_TX + (
-               b"\r\nSOLUTION-02 BIOS 2.3\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n") + MENU_TX
+               b"\r\nSOLUTION-02 BIOS 2.4\r\nCPU 8088    5.33 MHz\r\nRAM 512Ko  ROM 256Ko\r\n8259+8253 OK I7 0000\r\n") + MENU_TX
     ok = t == attendu
     if not ok:
         print("    attendu : %r" % attendu)

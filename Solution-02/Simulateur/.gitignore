@@ -1,0 +1,5 @@
+/target/
+Cargo.lock.bak
+# images de disque copiees de ../../PC-DOS par outils/serveur.py (gros fichiers)
+/www/images/*
+!/www/images/.gitkeep

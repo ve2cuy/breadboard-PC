@@ -328,7 +328,25 @@ horloge. `UART_N` (dans `bios.asm`, valeur par défaut 29 pour un 8088 à
    `make clean && make UART_N=28` (puis graver). Un V20 (instructions plus
    rapides) demande une valeur plus grande.
 
-## BIOS 2.3
+## BIOS 2.4
+
+Le BIOS 2.4 existe en **français** (`make` : `build/solution-02-bios.bin`) et en **anglais**
+(`make en` : `build/solution-02-bios-en.bin`, textes sous `%ifdef LANG_EN`). Gravure :
+`make flash FLASH_LANG=fr|en PUCE=ok`. Nouveautés par rapport au 2.3 :
+
+- **Menu 7) : animations des DEL ON/OFF**. Ligne 3 du menu :
+  `3) Anim. DEL 7) ON` ou `3) LED Show  7) ON` (anglais), avec `ON` ou `OFF`. Sur OFF, la
+  tâche des animations ne reçoit plus la main de l'IRQ0 (`V_LED_OFF`, DSEG 7B8h) : les
+  DEL restent éteintes au menu et sous DOS. L'écran du menu 3) les anime toujours
+  (`V_LED_ECRAN`, 7B9h). Le réglage revient à ON au démarrage.
+- **Menu en français** dans le BIOS français : `1) DOS`, `2) Test memoire`. Le BIOS anglais
+  garde `1) Load DOS` et `2) Test memory`. Tous les textes du LCD et de l'UART sont
+  traduits, y compris l'accueil ANSI (`accueil_en.inc`, généré par `tests/gen_accueil.py`)
+  et le rapport du test de la RAM.
+- **Clavier plus robuste** : une trame PS/2 illisible (par exemple arrivée pendant un envoi
+  à l'UART, interruptions masquées) remet à zéro les préfixes F0/E0 en attente. Avant,
+  si le 2e octet d'un relâchement (`F0 xx`) était perdu, la touche suivante était prise
+  pour un relâchement et disparaissait.
 
 Sources : [bios/bios.asm](bios/bios.asm) (démarrage, menu, test de la RAM,
 DEL, clavier, UART) et [bios/services.inc](bios/services.inc) (services de
@@ -926,6 +944,30 @@ pour ne pas toucher à PA7 (TX de l'UART).
 donnerait ~50–100 Ko/s, au prix de 3 ou 4 puces et d'un décodage avec
 RD#/WR# (comme pour le LCD). Commencer par la version sur U12 : 4 fils et
 un module.
+
+## Simulateur
+
+En ligne : <https://ve2cuy.github.io/breadboard-PC/> (publié par `Simulateur/publier.ps1`).
+
+![Démonstration du simulateur](Simulateur/docs/simulateur.gif)
+
+Le dossier [Simulateur](Simulateur/README.md) contient un émulateur complet de Solution-02 en
+Rust/WebAssembly qui tourne dans le navigateur (`Simulateur/lancer.cmd`, puis
+<http://localhost:8088/>). Il exécute la ROM du BIOS telle quelle, au cycle près pour l'UART logiciel,
+le clavier PS/2, le LCD et la carte SD.
+
+- La vue de la carte reprend les 49 composants et les 182 nets du schéma KiCad, chaque broche
+  colorée selon son niveau logique.
+- L'ordinateur simulé a son LCD 20×4, ses DEL, son clavier PS/2, un terminal UART et une carte SD
+  FAT32 avec des images .IMG.
+- Les instruments sont un oscilloscope de table 4 voies (DSO-804, qui décode l'UART et le
+  PS/2), un analyseur logique 32 voies (décodeurs configurables : bus du 8088, ASCII, UART,
+  SPI, I²C, PS/2) et un débogueur.
+- L'interface est en français et en anglais ; la langue du navigateur choisit aussi le BIOS.
+- Un clic sur un composant ouvre sa fiche technique en PDF.
+- On peut simuler les pannes du montage (8259 retiré, bus inversé vers U7…).
+
+Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 fichiers d'opcodes).
 
 ## État
 

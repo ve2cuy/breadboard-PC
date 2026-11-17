@@ -2,7 +2,7 @@
 quand la console passe a ON (menu 5). Inspire de l'ecran d'accueil de z/OS (medias/Z88.png),
 sans la section LOGON. ASCII seulement (pas d'accents : le terminal peut ne pas etre en UTF-8).
 
-    python tests/gen_accueil.py            -> accueil.inc
+    python tests/gen_accueil.py            -> accueil.inc (francais) et accueil_en.inc (anglais)
     python tests/gen_accueil.py --apercu   -> apercu dans la console (couleurs ANSI)
 """
 import sys
@@ -25,20 +25,28 @@ def logo():
     return lignes
 
 
-def ecran():
+TEXTES = {
+    'fr': ("Solution-02 : un PC 8088 sur platine d'essai", ' ' * 22 + '8088 / NEC V20 a 5,33 MHz, 512 Ko de RAM',
+           ' ' * 17 + "PC-DOS 2.1 fait tourner la platine d'essai"),
+    'en': ('Solution-02: an 8088 PC on a breadboard', ' ' * 22 + '8088 / NEC V20 at 5.33 MHz, 512 KB of RAM',
+           ' ' * 20 + 'PC-DOS 2.1 runs on the breadboard'),
+}
+
+
+def ecran(langue='fr'):
     """Liste de (couleur, texte) ; couleur None = ligne vide."""
-    l = [(BLANC, 'Solution-02 : un PC 8088 sur platine d\'essai'), (None, ''), (None, ''), (None, '')]
+    titre, cpu, dos = TEXTES[langue]
+    l = [(BLANC, titre), (None, ''), (None, ''), (None, '')]
     l += [(ROUGE, ' ' * 20 + 'https://github.com/ve2cuy/breadboard-PC'),
           (ROUGE, ' ' * 20 + 'https://github.com/ve2cuy/breadboard-PC/tree/master/Solution-02'), (None, '')]
     l += [(VERT, x) for x in logo()]
-    l += [(None, ''), (VERT, ' ' * 22 + '8088 / NEC V20 a 5,33 MHz, 512 Ko de RAM'), (None, ''),
-          (ROUGE, ' ' * 17 + 'PC-DOS 2.1 fait tourner la platine d\'essai'), (None, '')]
+    l += [(None, ''), (VERT, cpu), (None, ''), (ROUGE, dos), (None, '')]
     return l
 
 
-def octets():
+def octets(langue='fr'):
     s = EFFACE
-    for coul, txt in ecran():
+    for coul, txt in ecran(langue):
         s += (coul + txt if coul else '') + '\r\n'
     return (s + NORMAL).encode('ascii')
 
@@ -63,5 +71,7 @@ if __name__ == '__main__':
         sys.stdout.write(b.decode('ascii').replace(EFFACE, ''))
         print()
     else:
-        open('accueil.inc', 'w', encoding='ascii', newline='\n').write(asm(b))
-        print('accueil.inc : %d octets' % len(b))
+        for langue, nom in (('fr', 'accueil.inc'), ('en', 'accueil_en.inc')):
+            b = octets(langue)
+            open(nom, 'w', encoding='ascii', newline='\n').write(asm(b))
+            print('%s : %d octets' % (nom, len(b)))
