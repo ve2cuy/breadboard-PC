@@ -1,158 +1,164 @@
-# Simulateur de Solution-02
+# Solution-02 simulator
 
-Émulateur de **Solution-02** (ordinateur 8088 / NEC V20 sur platine d'essai), écrit en
-**Rust** et compilé en **WebAssembly**. Il tourne dans le navigateur. Le BIOS de la ROM s'y exécute
-tel quel, au cycle d'horloge près pour les délais logiciels :
-- UART bit à bit à 9600 bauds : 556 cycles par bit mesurés, 555,6 attendus ;
-- trames PS/2 du clavier ;
-- délais du LCD ;
-- carte SD en SPI bit à bit.
+*[Version française](README_fr.md)*
 
-À la mise sous tension, il se comporte comme le montage. Le contenu de la RAM est quelconque et le
-LCD n'est pas initialisé (lignes 1 et 3 en pavés noirs). Le BIOS 2.4 fait ensuite son test de la
-RAM, puis affiche son écran d'ouverture, l'accueil ANSI sur l'UART et le menu.
+Emulator of **Solution-02** (an 8088 / NEC V20 computer on a breadboard), written in **Rust** and
+compiled to **WebAssembly**. It runs in the browser. The ROM's BIOS runs unmodified, accurate to the
+clock cycle for software delays:
+- bit-banged UART at 9600 baud: 556 cycles per bit measured, 555.6 expected;
+- PS/2 keyboard frames;
+- LCD delays;
+- bit-banged SPI SD card.
 
-**Essayer en ligne : <https://ve2cuy.github.io/breadboard-PC/>**
+At power-up it behaves like the real build. RAM contents are random and the LCD is not initialized
+(lines 1 and 3 show black blocks). BIOS 2.4 then runs its RAM test, shows its splash screen, the
+ANSI welcome on the UART and the menu.
 
-![Démonstration du simulateur : démarrage du BIOS, LED Show, PC-DOS et DIR au clavier PS/2, survol d'une broche, oscilloscope, analyseur logique, interface anglaise](docs/simulateur.gif)
+**Try it online: <https://ve2cuy.github.io/breadboard-PC/>**
 
-L'animation ci-dessus (35 s, 1,2 Mo) a été filmée dans Edge avec Playwright. On y voit :
-1. la mise sous tension ;
-2. le LED Show ;
-3. le choix de l'image sur la carte SD ;
-4. le démarrage de PC-DOS 2.1 ;
-5. `DIR` tapé au clavier PS/2 ;
-6. le survol d'une broche (U1.37 = A17) ;
-7. l'oscilloscope sur le clavier ;
-8. l'analyseur logique sur le bus du 8088 (32 voies) ;
-9. son zoom jusqu'au cycle d'horloge ;
-10. le décodeur ASCII du bus de données ;
-11. l'interface anglaise.
+![Simulator demo: BIOS boot, LED Show, PC-DOS and DIR on the PS/2 keyboard, pin hover, oscilloscope, J12 interrupt, logic analyzer, English interface](docs/simulateur.gif)
 
-## Lancer
+The animation above (37 s, 1.4 MB) was recorded in Edge with Playwright. It shows:
+1. power-up;
+2. the LED Show;
+3. choosing the image on the SD card;
+4. PC-DOS 2.1 booting;
+5. `DIR` typed on the PS/2 keyboard;
+6. hovering over a pin (U1.37 = A17);
+7. the oscilloscope on the keyboard;
+8. J12: IR2 enabled then triggered with a right-click;
+9. the "INT 0Ah Triggered" message;
+10. the logic analyzer on the 8088 bus (32 channels);
+11. zooming down to a single clock cycle;
+12. the ASCII decoder on the data bus;
+13. the English interface.
 
-```
-lancer.cmd                      (ou : python outils\serveur.py)
-```
-
-Le serveur copie les images de disque de `../../PC-DOS/` dans `www/images/`, sert `www/` sur
-<http://localhost:8088/> et ouvre le navigateur. Un serveur HTTP est nécessaire : les modules
-JavaScript et le WebAssembly ne se chargent pas depuis `file://`.
-
-Version en ligne : <https://ve2cuy.github.io/breadboard-PC/>, publiée par `.\publier.ps1`.
-Le script pousse la branche `gh-pages` (site seul) et active GitHub Pages. La version en ligne
-reprend les disquettes déjà suivies par git dans `PC-DOS/` et l'image FreeDOS (GPL). L'image
-MS-DOS 6.22 C: n'est pas publiée.
-
-## Construire
-
-Outils : Rust (cible `wasm32-unknown-unknown`), `wasm-pack`, Python 3. KiCad 10 est facultatif
-(il régénère la netliste).
+## Running
 
 ```
-.\construire.ps1                (ROM, netliste, WebAssembly)
-.\construire.ps1 -Essais        (+ essais natifs)
-.\construire.ps1 -Lancer        (+ serveur local)
+lancer.cmd                      (or: python outils\serveur.py)
 ```
 
-Le script copie la ROM de `../bios/build/` dans `www/roms/`. Il exporte aussi la netliste du schéma
-(`kicad-cli`) puis la convertit en `www/js/netlist.js` (`outils/netlist.py`). Enfin, il compile le
-WebAssembly dans `www/pkg/`.
+The server copies the disk images from `../../PC-DOS/` into `www/images/`, serves `www/` on
+<http://localhost:8088/> and opens the browser. An HTTP server is required: JavaScript modules and
+WebAssembly do not load from `file://`.
 
-## Fonctions
+Online version: <https://ve2cuy.github.io/breadboard-PC/>, published by `.\publier.ps1`.
+The script pushes the `gh-pages` branch (site only) and enables GitHub Pages. The online version
+uses the floppy images already tracked by git in `PC-DOS/` and the FreeDOS image (GPL). The
+MS-DOS 6.22 C: image is not published.
 
-| Fonction | Détail |
+## Building
+
+Tools: Rust (target `wasm32-unknown-unknown`), `wasm-pack`, Python 3. KiCad 10 is optional
+(it regenerates the netlist).
+
+```
+.\construire.ps1                (ROM, netlist, WebAssembly)
+.\construire.ps1 -Essais        (+ native tests)
+.\construire.ps1 -Lancer        (+ local server)
+```
+
+The script copies the ROM from `../bios/build/` into `www/roms/`. It also exports the schematic's
+netlist (`kicad-cli`) and converts it to `www/js/netlist.js` (`outils/netlist.py`). Finally, it
+compiles the WebAssembly into `www/pkg/`.
+
+## Features
+
+| Feature | Details |
 |---|---|
-| Langues | Interface en français et en anglais (FR/EN dans la barre d'outils, ou `?lang=en`). La langue du navigateur choisit la langue au premier chargement, et aussi le BIOS 2.4 (français ou anglais). |
-| Carte (PCB) | Vrai circuit imprimé : vernis épargne bleu, pastilles dorées (broche 1 carrée), pistes de cuivre routées à 45° sous le vernis avec vias, sérigraphie blanche (contours, références, encarts), cadre doré et trous de fixation. Les 49 composants du schéma KiCad avec leurs références, leurs boîtiers (DIP, SIP, connecteurs, module LCD, lecteur micro-SD) et toutes leurs broches. Chaque broche prend la couleur de son niveau : rouge = 1, bleu = 0, jaune = activité, gris = flottant. Le survol affiche la broche, le net, le niveau et les broches reliées. Maj+clic met un net en évidence (continuité), la case « liaisons » affiche toutes les connexions. Molette pour le zoom (noms des broches visibles de près), glisser pour déplacer, double-clic pour tout voir. |
-| Netliste | Les 182 nets du schéma (`outils/solution02.xml`) sont reliés aux signaux du simulateur : bus d'adresses et de données, ALE, RD#, WR#, IO/M, sorties du 74LS138, CE de la ROM et de la RAM, E du LCD, IRQ, ports des deux 8255, son, SPI de la carte SD… |
-| LCD 20×4 | HD44780 complet : DDRAM, CGRAM (accents et barre oblique inverse du BIOS), curseur, décalage, police de la ROM A00 (yen en 5Ch, katakana). Le contraste se règle avec RV1. Le modèle contrôle aussi les délais d'exécution des commandes. |
-| DEL | Les 3 bargraphes HDSP-4830 sur PC7…PB0 de U7 et les voyants D1/D2 (carte SD, disque C:) de U12, sur la face avant et sur la carte. |
-| RESET | Bouton de la barre d'outils ou SW1 sur la carte (maintenu = RESET tenu). Il remet à zéro le 8088, les 8255 et U16 ; le LCD, le 8259 et la 8253 gardent leur état, comme sur le montage. |
-| Clavier PS/2 (J4) | Les touches partent en vraies trames PS/2 (jeu 2, horloge à 10 kHz, 1 ms entre les octets d'une touche) sur PB0/PB1 de U12 et IRQ1. Une trame que le BIOS ne lit pas est perdue, comme sur le montage. |
-| Terminal UART (J5) | VT100/ANSI en couleur, UTF-8, 80 colonnes, historique. Le terminal envoie les mêmes séquences que PuTTY. Le bouton PS/2 ⇄ UART (ou Ctrl+Maj+K) choisit le clavier ; un clic dans le terminal passe à l'UART. Le menu « Touches » donne Ctrl+Alt+Suppr, Ctrl+Alt+Inser, F12, Ctrl+\ et le collage de texte. |
-| Carte SD (J9) | Carte SDHC simulée en SPI (CMD0/8/9/16/17/24/55/58, ACMD41), formatée en FAT32 avec les images `.IMG` choisies (disquettes, disques C:). On peut y ajouter des images de l'ordinateur (glisser-déposer) et récupérer celles que le DOS a modifiées. |
-| Oscilloscope DSO-804 | Façade d'oscilloscope de table à 4 voies : écran avec barres d'état (H, T, état du déclenchement), boîtes des voies et repères. Les traces ont une allure analogique (0-5 V, fronts, léger bruit, phosphore). Commandes : touches RUN/STOP, SINGLE, AUTO (base de temps automatique) et CLEAR, boutons rotatifs SCALE et POS, source et front du déclenchement, mode Auto/Normal, boutons des voies 1-4. Quatre fiches BNC portent le nom du signal sondé. Pour sonder, on choisit la voie puis on clique sur une broche de la carte. Curseurs ΔX et 1/ΔX, mesures de période, fréquence, largeur et rapport cyclique. Les octets UART et les trames PS/2 sont décodés en hexagones sous la trace. |
-| Analyseur logique | 32 voies, à la manière d'un analyseur sur PC : règle de temps, voies numérotées aux couleurs des résistances, lignes de décodage et tableau des résultats avec recherche. Capture déclenchée sur un front de n'importe quelle voie (clic sur son numéro : ↑ ↓ ↕ ×), avec avant-déclenchement réglable. Profondeur de 20 µs à 2 s, résolution de 47 ns (un quart de cycle) et mémoire de 4 millions de fronts. Mode unique ou continu, zoom à la molette, déplacement en glissant. Décodeurs : liste d'instances à ajouter, configurer (⚙ : voies et paramètres) ou retirer, comme sur un analyseur sur PC.
-<br>• **Bus du 8088** : cycles MR, MW, IOR et IOW, avec adresse et donnée.
-<br>• **ASCII** : bus parallèle D0-D7, par noms ou 8 voies consécutives. L'échantillonnage se fait sur un ou deux signaux (fronts ↑ ↓ ↕), ou à chaque changement des données. Les caractères de contrôle sont nommés (CR, LF, ESC…).
-<br>• **UART** : voie, débit de 300 à 115 200 bauds, 5 à 8 bits, parité N/E/O, 1 ou 2 bits d'arrêt, signal inversé, affichage ASCII ou hexadécimal.
-<br>• **SPI** : SCK, MOSI, MISO, CS#, modes 0 à 3, MSB ou LSB d'abord.
-<br>• **I²C** : SCL et SDA. Affiche START, START répété, adresse avec lecture/écriture, données, ACK/NACK et STOP.
-<br>• **PS/2** : CLK et DATA.
-<br>Chaque préréglage crée ses décodeurs : **bus de données** (D0-D7, RD, WR, IO/M → ASCII), bus complet (A0-A19, D0-D7, ALE, RD, WR, IO/M = 32 voies → bus 8088 et ASCII), E/S de U12, carte SD, clavier et UART, DEL, LCD (ASCII sur E). Le bouton ⛶ donne toute la largeur aux instruments. |
-| Débogueur | Pause et pas à pas (F10), par-dessus (F11), jusqu'au retour. Points d'arrêt (clic dans la marge ou adresse `F000:E05B`). Registres et drapeaux modifiables, désassembleur, pile, mémoire (raccourcis : vecteurs, BDA, DSEG du BIOS…) et 64 derniers accès d'E/S. |
-| Fiches techniques | Clic (ou clic droit) sur un composant : fiche PDF dans une fenêtre (dossier `www/pdf/`), inspecteur de l'état interne (8255, 8259, 8253, LCD, carte SD, clavier, UART, port 61h), retrait de la puce. |
-| ROM | Choix entre le BIOS 2.4 français ou anglais et les ROM de diagnostic (carte SD, U12, U7), ou n'importe quel fichier `.bin` de 256 Ko (bouton Ouvrir… ou glisser-déposer). |
-| Pannes | Retirer le 8259, la 8253, le LCD ou la ROM. D0-D7 inversés vers U7 (erreur réelle du 13 nov.), D+/D- inversés sur J4 (14 nov.), R4 absente avec le terminal débranché, ligne d'adresse de la RAM coupée, cellule de RAM défectueuse. Le BIOS réagit comme sur le montage : repli par scrutation sans 8259, « RAM ERR » au test… |
-| Son | Piézo BZ1 : compteur 2 de la 8253, port 61h (U16), sortie SPK. Il est muet par défaut parce qu'il n'est pas câblé sur le montage ; le bouton 🔈 l'active. |
-| Vitesse | 1/1000 à ×20 et « Max » (environ 22 fois le temps réel dans Edge). |
-| Instantané | Mémorise l'état complet de la machine ; ↺ y revient. |
-| Journal | Messages des modèles (délais du LCD, modes inattendus…) et statistiques : IRQ servies et parasites, trames PS/2 perdues, erreurs de trame et durée du bit sur TX, secteurs lus et écrits sur la carte SD. |
+| Languages | French and English interface (FR/EN in the toolbar, or `?lang=en`). The browser language picks the language on first load, and also BIOS 2.4 (French or English). |
+| Board (PCB) | A real-looking printed circuit board: blue solder mask, gold pads (square pin 1), copper traces routed at 45° under the mask with vias, white silkscreen (outlines, references, labels), gold frame and mounting holes. The 57 components of the KiCad schematic with their references, packages (DIP, SIP, headers, LCD module, micro-SD reader) and all their pins. Each pin takes the color of its level: red = 1, blue = 0, yellow = activity, grey = floating. Hovering shows the pin, the net, the level and the connected pins. Shift+click highlights a net (continuity), the "connections" box shows every connection. Mouse wheel to zoom (pin names visible up close), drag to pan, double-click to fit. |
+| Netlist | The 182 nets of the schematic (`outils/solution02.xml`) are tied to the simulator's signals: address and data buses, ALE, RD#, WR#, IO/M, 74LS138 outputs, ROM and RAM CE, LCD E, IRQs, ports of both 8255s, sound, SD card SPI… |
+| 20×4 LCD | Complete HD44780: DDRAM, CGRAM (the BIOS's accents and backslash), cursor, shift, ROM A00 font (yen at 5Ch, katakana). Contrast is set with RV1. The model also checks command execution delays. |
+| LEDs | The 3 HDSP-4830 bar graphs on PC7…PB0 of U7 and the D1/D2 indicators (SD card, C: drive) of U12, on the front panel and on the board. |
+| RESET | Toolbar button or SW1 on the board (held = RESET held). It resets the 8088, both 8255s and U16; the LCD, the 8259 and the 8253 keep their state, as on the real build. |
+| Headers J10, J11, J12 | The schematic's expansion headers: J10 (2×20) carries the 8088 bus (A0-A19, D0-D7, ALE, IO/M, RD#, WR#, INTA#, INTR, CLK, PCLK, RESET), J11 (2×13) the PA, PB and PC ports of 8255 U7, J12 (1×7) the free inputs of the 8259. Their pins follow the signals like chip pins do: they can be probed with the oscilloscope or the logic analyzer. |
+| Free IRQs (J12) | **IRQ** tab: IR2, IR3, IR5, IR6 and IR7 of the 8259 (INT 0Ah, 0Bh, 0Dh, 0Eh, 0Fh), pulled to ground by R13-R17. The BIOS masks them (IMR = ECh). "Enable" unmasks them, like a program writing port 21h; "Trigger" (or right-click on J12) drives the pin to +5 V until the INTA acknowledge. The message **"INT 0Ah Triggered (IR2, J12.2)"** then shows on screen and in the log. A masked input is reported. The BIOS points these vectors to an IRET with no EOI: the "Simulated end of interrupt" box (checked by default) performs the EOI; unchecked, the input stays in service and blocks IR4 (UART), as on the real board. |
+| PS/2 keyboard (J4) | Keys are sent as real PS/2 frames (set 2, 10 kHz clock, 1 ms between the bytes of a key) on PB0/PB1 of U12 and IRQ1. A frame the BIOS does not read is lost, as on the real build. |
+| UART terminal (J5) | Color VT100/ANSI, UTF-8, 80 columns, scrollback. The terminal sends the same sequences as PuTTY. The PS/2 ⇄ UART button (or Ctrl+Shift+K) selects the keyboard; clicking in the terminal switches to the UART. The "Keys" menu provides Ctrl+Alt+Del, Ctrl+Alt+Ins, F12, Ctrl+\ and text paste. |
+| SD card (J9) | Simulated SDHC card over SPI (CMD0/8/9/16/17/24/55/58, ACMD41), formatted FAT32 with the chosen `.IMG` images (floppies, C: disks). Images from the computer can be added (drag and drop) and those modified by DOS can be downloaded. |
+| DSO-804 oscilloscope | Front panel of a 4-channel bench oscilloscope: screen with status bars (H, T, trigger state), channel boxes and markers. Traces look analog (0-5 V, edges, slight noise, phosphor). Compact control panel (2×2 grid beside the screen, a single row when it wraps below it; the screen height adapts to the window). Controls: RUN/STOP, SINGLE, AUTO (automatic time base) and CLEAR keys, SCALE and POS knobs, trigger source and slope, Auto/Normal mode, channel buttons 1-4. Four BNC jacks show the name of the probed signal. To probe, pick the channel then click a pin on the board. ΔX and 1/ΔX cursors, period, frequency, width and duty cycle measurements. UART bytes and PS/2 frames are decoded in hexagons under the trace. |
+| Logic analyzer | 32 channels, in the style of a PC-based analyzer: time ruler, numbered channels in resistor colors, decoder rows and a searchable results table. Capture triggered on an edge of any channel (click its number: ↑ ↓ ↕ ×), with adjustable pre-trigger. Depth from 20 µs to 2 s, 47 ns resolution (a quarter cycle) and a memory of 4 million edges. Single or continuous mode, wheel zoom, drag to pan. Decoders: a list of instances to add, configure (⚙: channels and parameters) or remove, as on a PC-based analyzer.
+<br>• **8088 bus**: MR, MW, IOR and IOW cycles, with address and data.
+<br>• **ASCII**: D0-D7 parallel bus, by names or 8 consecutive channels. Sampling on one or two signals (edges ↑ ↓ ↕), or on every data change. Control characters are named (CR, LF, ESC…).
+<br>• **UART**: channel, 300 to 115,200 baud, 5 to 8 bits, N/E/O parity, 1 or 2 stop bits, inverted signal, ASCII or hexadecimal display.
+<br>• **SPI**: SCK, MOSI, MISO, CS#, modes 0 to 3, MSB or LSB first.
+<br>• **I²C**: SCL and SDA. Shows START, repeated START, address with read/write, data, ACK/NACK and STOP.
+<br>• **PS/2**: CLK and DATA.
+<br>Each preset creates its decoders: **data bus** (D0-D7, RD, WR, IO/M → ASCII), full bus (A0-A19, D0-D7, ALE, RD, WR, IO/M = 32 channels → 8088 bus and ASCII), U12 I/O, SD card, keyboard and UART, LEDs, LCD (ASCII on E). The ⛶ button gives the instruments the full width. |
+| Debugger | Pause and step (F10), step over (F11), run to return. Breakpoints (click in the margin or address `F000:E05B`). Editable registers and flags, disassembler, stack, memory (shortcuts: vectors, BDA, BIOS DSEG…) and the last 64 I/O accesses. |
+| Datasheets | Click (or right-click) a component: PDF datasheet in a window (`www/pdf/` folder), inspector of the internal state (8255, 8259, 8253, LCD, SD card, keyboard, UART, port 61h), chip removal. |
+| ROM | Choice between BIOS 2.4 in French or English and the diagnostic ROMs (SD card, U12, U7), or any 256 KB `.bin` file (Open… button or drag and drop). |
+| Faults | Remove the 8259, the 8253, the LCD or the ROM. D0-D7 reversed to U7 (real mistake of Nov. 13), D+/D- swapped on J4 (Nov. 14), R4 missing with the terminal unplugged, cut RAM address line, faulty RAM cell. The BIOS reacts as on the real build: polling fallback without the 8259, "RAM ERR" in the test… |
+| Sound | Piezo BZ1: counter 2 of the 8253, port 61h (U16), SPK output. Muted by default because it is not wired on the real build; the 🔈 button enables it. |
+| Speed | 1/1000 to ×20 and "Max" (about 22 times real time in Edge). |
+| Snapshot | Saves the full machine state; ↺ goes back to it. |
+| Log | Model messages (LCD delays, unexpected modes…) and statistics: IRQs served and spurious, lost PS/2 frames, framing errors and bit time on TX, sectors read and written on the SD card. |
 
-## Organisation
+## Layout
 
 ```
 Simulateur/
 ├─ Cargo.toml, construire.ps1, lancer.cmd
-├─ src/            cœur en Rust (aussi utilisé par les essais natifs)
-│  ├─ cpu.rs       8088 complet (avec les instructions non documentées) ; durées : table d'Intel
-│  │               + 4 cycles par transfert de mot, bornées par le débit du bus de 8 bits
-│  ├─ machine.rs   carte : bus, décodage (U5, U8, U9), RAM, ROM, interruptions, son, pannes
-│  ├─ lcd.rs  ppi.rs  pic.rs  pit.rs  serial.rs (PS/2, UART)  sd.rs (carte SD, FAT32)
-│  ├─ signals.rs   signaux de la netliste, activité, événements de l'oscilloscope
-│  ├─ disasm.rs    désassembleur (syntaxe NASM)
-│  └─ lib.rs       interface WebAssembly (Sim)
-├─ tests/          essais natifs : boot.rs (BIOS), sst.rs (suite SingleStepTests du 8088)
-├─ outils/         netlist.py (KiCad -> JS), serveur.py, solution02.xml (netliste exportée)
-├─ publier.ps1     publication sur GitHub Pages (branche gh-pages)
-└─ www/            application : index.html, css/, js/ (board, scope, la = analyseur, i18n + i18n_en),
+├─ src/            Rust core (also used by the native tests)
+│  ├─ cpu.rs       complete 8088 (including undocumented instructions); timings: Intel table
+│  │               + 4 cycles per word transfer, bounded by the 8-bit bus throughput
+│  ├─ machine.rs   board: bus, decoding (U5, U8, U9), RAM, ROM, interrupts (J12), sound, faults
+│  ├─ lcd.rs  ppi.rs  pic.rs  pit.rs  serial.rs (PS/2, UART)  sd.rs (SD card, FAT32)
+│  ├─ signals.rs   netlist signals, activity, oscilloscope events
+│  ├─ disasm.rs    disassembler (NASM syntax)
+│  └─ lib.rs       WebAssembly interface (Sim)
+├─ tests/          native tests: boot.rs (BIOS), sst.rs (8088 SingleStepTests suite)
+├─ outils/         netlist.py (KiCad -> JS), serveur.py, solution02.xml (exported netlist)
+├─ publier.ps1     publishing to GitHub Pages (gh-pages branch)
+└─ www/            application: index.html, css/, js/ (board, scope, la = analyzer, i18n + i18n_en),
                    pkg/ (WebAssembly), roms/, pdf/, images/
 ```
 
-## Essais
+## Tests
 
 ```
 cargo test --release --test boot -- --nocapture
 ```
 
-Ces essais font tourner le vrai BIOS 2.4 (français) :
-- écran d'ouverture et menu sur le LCD et sur l'UART ;
-- PC-DOS 2.1 depuis la ROM, puis DIR au clavier PS/2 ;
-- BASIC de la ROM : PRINT 2+3 tapé au clavier PS/2 (avec Maj) donne 5 ;
-- MS-DOS 6.22 depuis l'image C: d'une carte SD FAT32, puis VER ;
-- mélodie du menu au piézo ;
-- LED Show (24 DEL animées) et Info (« 8259+8253 OK ») ;
-- repli sans 8259 (« 8259 absent ») ;
-- panne du bus inversé vers U7.
+These tests run the real BIOS 2.4 (French):
+- splash screen and menu on the LCD and on the UART;
+- PC-DOS 2.1 from the ROM, then DIR on the PS/2 keyboard;
+- ROM BASIC: PRINT 2+3 typed on the PS/2 keyboard (with Shift) gives 5;
+- MS-DOS 6.22 from the C: image of a FAT32 SD card, then VER;
+- the menu melody on the piezo;
+- LED Show (24 animated LEDs) and Info ("8259+8253 OK");
+- fallback without the 8259 ("8259 absent");
+- the reversed bus fault to U7;
+- free IRQs on J12: masked IR3 not served, enabled IR2 gives INT 0Ah, ISR without EOI.
 
 ```
 set SST_DIR=…\8088\v1 && cargo test --release --test sst -- --nocapture
 ```
 
-Cet essai valide le processeur avec la suite publique
-[SingleStepTests/8088](https://github.com/SingleStepTests/8088), relevée sur un vrai 8088 :
-**2 004 000 cas sur 218 fichiers d'opcodes, sans échec**, en tenant compte des drapeaux non définis
-indiqués par la suite. Cela couvre aussi les particularités du 8088 :
-- seuil de 9Fh de DAA et de DAS quand AF = 1 ;
-- AAA et AAS sans retenue de AL vers AH ;
-- drapeaux de AAM 0 ;
-- quotient d'IDIV inversé par un préfixe REP ;
-- SETMO et SETMOC.
+This test validates the processor against the public
+[SingleStepTests/8088](https://github.com/SingleStepTests/8088) suite, recorded on a real 8088:
+**2,004,000 cases over 218 opcode files, with no failure**, taking into account the undefined flags
+listed by the suite. It also covers the 8088's quirks:
+- 9Fh threshold of DAA and DAS when AF = 1;
+- AAA and AAS without carry from AL to AH;
+- AAM 0 flags;
+- IDIV quotient negated by a REP prefix;
+- SETMO and SETMOC.
 
-Les durées en cycles ne sont pas comparées. Les drapeaux empilés par une exception de division
-non plus : ils dépendent du microcode de division, qui n'est pas modélisé.
+Cycle counts are not compared. Neither are the flags pushed by a divide exception: they depend on
+the division microcode, which is not modeled.
 
-## Limites connues
+## Known limitations
 
-- Les durées des instructions suivent la table d'Intel bornée par le bus. La file d'attente
-  d'instructions (prefetch) n'est pas simulée cycle par cycle : un vrai 8088 peut prendre quelques
-  pour cent de plus.
-- Le 8255 ne simule que le mode 0 et le BSR : ce sont les seuls modes du BIOS.
-- La carte SD ne connaît que les commandes du BIOS (lecture et écriture d'un secteur à la fois).
-- Limite du BIOS, reproduite telle quelle (le montage fait pareil) : une trame PS/2 qui arrive
-  pendant un envoi à l'UART est perdue, car le BIOS masque les interruptions environ 1 ms par
-  caractère. Si c'est un relâchement, la touche suivante est ignorée. Une frappe très rapide
-  pendant un long affichage peut donc perdre des touches.
-- Les combinaisons réservées par le système (Ctrl+Alt+Suppr, parfois F12) passent par le menu
-  « Touches ».
+- Instruction timings follow the Intel table bounded by the bus. The instruction queue (prefetch)
+  is not simulated cycle by cycle: a real 8088 can take a few percent longer.
+- The 8255 only simulates mode 0 and BSR: those are the only modes the BIOS uses.
+- The SD card only knows the BIOS's commands (reading and writing one sector at a time).
+- BIOS limitation, reproduced as is (the real build does the same): a PS/2 frame arriving while
+  sending to the UART is lost, because the BIOS masks interrupts for about 1 ms per character. If
+  it is a key release, the next key is ignored. Very fast typing during a long display can therefore
+  lose keys.
+- Key combinations reserved by the system (Ctrl+Alt+Del, sometimes F12) go through the "Keys"
+  menu.

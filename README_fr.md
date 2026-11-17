@@ -15,15 +15,15 @@ Projet d'Alain Boudreault (VE2CUY), 2026. *[English version](README.md)*
 
 ## Simulateur en ligne
 
-La carte [Solution-02](Solution-02/) (8088 / NEC V20 autonome, 512 Ko, LCD 20×4, DEL, clavier PS/2,
+La carte [Solution-02](Solution-02/README_fr.md) (8088 / NEC V20 autonome, 512 Ko, LCD 20×4, DEL, clavier PS/2,
 UART logiciel, carte SD) tourne aussi dans le navigateur, émulée en Rust/WebAssembly avec son vrai BIOS :
 **[lancer le simulateur](https://ve2cuy.github.io/breadboard-PC/)** (français et anglais). Vue de la carte avec le niveau des broches en direct,
 oscilloscope, analyseur logique 32 voies avec décodeurs, débogueur, pannes à simuler.
 
 <p align="center">
-  <a href="https://ve2cuy.github.io/breadboard-PC/"><img src="Solution-02/Simulateur/docs/simulateur.png" alt="Le simulateur de Solution-02 : LCD, DEL, vue de la carte et terminal UART qui montre PC-DOS 2.1 et DIR" width="800"></a><br>
-  <em>Le simulateur sous PC-DOS 2.1 (DIR tapé au clavier PS/2). Cliquer sur l'image pour l'ouvrir.
-  Plus de détails dans le <a href="Solution-02/Simulateur/README.md">README du simulateur</a> (animation).</em>
+  <a href="https://ve2cuy.github.io/breadboard-PC/"><img src="Solution-02/Simulateur/docs/simulateur.gif" alt="Le simulateur de Solution-02 : LCD, DEL, vue de la carte et terminal UART qui montre PC-DOS 2.1 et DIR" width="800"></a><br>
+  <em>Le simulateur sous PC-DOS 2.1 (DIR tapé au clavier PS/2). Cliquer sur l'animation pour ouvrir le simulateur.
+  Plus de détails dans le <a href="Solution-02/Simulateur/README_fr.md">README du simulateur</a>.</em>
 </p>
 
 ## En bref

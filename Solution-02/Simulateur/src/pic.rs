@@ -22,6 +22,12 @@ pub struct Pic {
     read_isr: bool,
     poll: bool,
     pub served: [u64; 8],
+    /// Simulateur : entrees demasquees de force (IMR ignore pour ces bits ; lecture de 21h inchangee).
+    pub force: u8,
+    /// Simulateur : fin d'interruption automatique pour ces entrees (gestionnaire simule).
+    pub sim_eoi: u8,
+    /// Derniere entree servie par INTA (None = parasite).
+    pub last_irq: Option<u8>,
     pub spurious: u64,
     pub log: Vec<String>,
 }
@@ -44,6 +50,9 @@ impl Pic {
             read_isr: false,
             poll: false,
             served: [0; 8],
+            force: 0,
+            sim_eoi: 0,
+            last_irq: None,
             spurious: 0,
             log: Vec::new(),
         }
@@ -163,7 +172,7 @@ impl Pic {
         if !self.init {
             return None;
         }
-        let req = self.irr() & !self.imr;
+        let req = self.irr() & !(self.imr & !self.force);
         if req == 0 {
             return None;
         }
@@ -186,10 +195,12 @@ impl Pic {
         let v = match self.request() {
             None => {
                 self.spurious += 1;
+                self.last_irq = None;
                 self.base + 7
             }
             Some(irq) => {
-                if !self.aeoi {
+                self.last_irq = Some(irq);
+                if !self.aeoi && self.sim_eoi & (1 << irq) == 0 {
                     self.isr |= 1 << irq;
                 }
                 self.edge &= !(1 << irq);

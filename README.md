@@ -21,9 +21,9 @@ software UART, SD card) also runs in the browser, emulated in Rust/WebAssembly w
 32-channel logic analyzer with protocol decoders, debugger, fault injection.
 
 <p align="center">
-  <a href="https://ve2cuy.github.io/breadboard-PC/"><img src="Solution-02/Simulateur/docs/simulateur.png" alt="The Solution-02 simulator: LCD, LEDs, PCB view and UART terminal showing PC-DOS 2.1 and DIR" width="800"></a><br>
-  <em>The simulator running PC-DOS 2.1 (DIR typed on the PS/2 keyboard). Click the image to open it.
-  More in the <a href="Solution-02/Simulateur/README.md">simulator README</a> (animated demo).</em>
+  <a href="https://ve2cuy.github.io/breadboard-PC/"><img src="Solution-02/Simulateur/docs/simulateur.gif" alt="The Solution-02 simulator: LCD, LEDs, PCB view and UART terminal showing PC-DOS 2.1 and DIR" width="800"></a><br>
+  <em>The simulator running PC-DOS 2.1 (DIR typed on the PS/2 keyboard). Click the animation to open the simulator.
+  More in the <a href="Solution-02/Simulateur/README.md">simulator README</a>.</em>
 </p>
 
 ## At a glance

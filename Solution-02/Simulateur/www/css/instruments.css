@@ -20,12 +20,14 @@ body.dock-max .bench, body.dock-max .splitter { display: none; }
 .dso-spec { font: 600 10px "Segoe UI", Arial, sans-serif; color: #b9bfc6; letter-spacing: .08em; overflow: hidden; text-overflow: ellipsis; }
 .dso-badge { margin-left: auto; font: 700 11px "Segoe UI", Arial; color: #111; background: #e8ecef; padding: 1px 6px; border-radius: 3px; }
 .dso-body { display: flex; gap: 10px; flex-wrap: wrap; }
-.dso-screen { flex: 1 1 360px; min-width: 300px; padding: 10px; border-radius: 8px; background: #0b0c0e;
+.dso-screen { flex: 3 1 280px; min-width: 260px; padding: 10px; border-radius: 8px; background: #0b0c0e;
   box-shadow: inset 0 0 0 2px #17191c, inset 0 4px 14px #000, 0 1px 0 #50555c; }
-#scopeCanvas { display: block; width: 100%; height: 330px; border-radius: 3px; background: #000; }
-.dso-panel { flex: 1 1 196px; max-width: 260px; display: flex; flex-direction: column; gap: 8px; padding: 8px; border-radius: 8px;
+#scopeCanvas { display: block; width: 100%; height: clamp(200px, calc(100vh - 525px), 330px); border-radius: 3px; background: #000; }
+/* panneau compact : grille 2 x 2 a cote de l'ecran, 4 x 1 s'il passe dessous */
+.dso-panel { flex: 1 1 232px; display: grid; grid-template-columns: repeat(auto-fit, minmax(102px, 1fr)); gap: 10px 6px;
+  align-content: center; padding: 8px; border-radius: 8px;
   background: linear-gradient(#2f3338, #26292d); box-shadow: inset 0 0 0 1px #1a1c1f, inset 0 1px 0 #4b5057; }
-.dso-grp { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; }
+.dso-grp { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; justify-content: center; align-content: flex-start; }
 .dso-grp .kl { width: 100%; text-align: center; font: 600 10px "Segoe UI", Arial; letter-spacing: .1em; color: #9fb7cf; text-transform: uppercase; }
 .dkey { min-width: 52px; height: 36px; padding: 0 6px; border-radius: 6px; cursor: pointer; font: 700 11px "Segoe UI", Arial; color: #eef1f3; line-height: 1.05;
   background: linear-gradient(#45494f, #2f3236); border: 1px solid #111; box-shadow: inset 0 1px 0 #6c7178, 0 2px 0 #121315, 0 3px 5px #0008; }
@@ -35,22 +37,25 @@ body.dock-max .bench, body.dock-max .splitter { display: none; }
 .dkey.run.stopped { color: #ff6b6b; text-shadow: 0 0 6px #ff4d4d; }
 .dkey.lit { color: #ffd23f; text-shadow: 0 0 6px #ffb000; }
 .dkey.on { color: #bfffd2; box-shadow: inset 0 1px 0 #6c7178, 0 2px 0 #121315, 0 0 0 1px #3ee07a66; }
-.knobs { gap: 14px; }
+.keys { display: grid; grid-template-columns: repeat(2, 48px); gap: 5px; justify-content: center; align-content: center; }
+.dso-panel .dkey { min-width: 48px; height: 30px; padding: 0 4px; font-size: 10px; }
+.dso-panel .dkey.sm { height: 26px; min-width: 0; padding: 0 5px; }
+.knobs { column-gap: 12px; }
 .knob-w { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .knob-w .ks { font: 600 9px "Segoe UI", Arial; color: #9aa1a8; letter-spacing: .1em; }
 .knob-w .kl { font: 600 10px "Segoe UI", Arial; letter-spacing: .1em; color: #9fb7cf; text-transform: uppercase; }
-.knob { width: 54px; height: 54px; border-radius: 50%; position: relative; cursor: ew-resize; user-select: none;
+.knob { width: 40px; height: 40px; border-radius: 50%; position: relative; cursor: ew-resize; user-select: none;
   background: repeating-conic-gradient(#1b1d20 0 6deg, #3b3f44 6deg 12deg);
   box-shadow: 0 0 0 3px #1c1e21, 0 0 0 4px #4a4f55, 0 4px 8px #000a; }
-.knob::after { content: ""; position: absolute; inset: 9px; border-radius: 50%; background: radial-gradient(circle at 45% 35%, #5c6168, #2e3135 70%);
+.knob::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: radial-gradient(circle at 45% 35%, #5c6168, #2e3135 70%);
   box-shadow: inset 0 1px 0 #7b8087, 0 1px 3px #000; }
-.knob i { position: absolute; left: 50%; top: 11px; width: 3px; height: 13px; margin-left: -1.5px; background: #e8ecef; border-radius: 2px; z-index: 2; transform-origin: 50% 16px; }
+.knob i { position: absolute; left: 50%; top: 8px; width: 3px; height: 10px; margin-left: -1.5px; background: #e8ecef; border-radius: 2px; z-index: 2; transform-origin: 50% 12px; }
 .trig .srcs { display: flex; gap: 3px; }
-.trig .srcs button { width: 30px; height: 24px; border-radius: 4px; border: 1px solid #111; background: #2b2e32; color: #c9ced3; font: 700 11px Arial; cursor: pointer; }
+.trig .srcs button { width: 24px; height: 22px; border-radius: 4px; border: 1px solid #111; background: #2b2e32; color: #c9ced3; font: 700 11px Arial; cursor: pointer; }
 .trig .srcs button.on { background: #f08a24; color: #111; }
-.trig .row2 { display: flex; gap: 6px; }
-.chans .chs { display: grid; grid-template-columns: repeat(4, 34px); gap: 5px; }
-.chb { height: 34px; border-radius: 6px; border: 1px solid #111; font: 800 15px "Segoe UI", Arial; cursor: pointer; color: #5a6066;
+.dso-grp .row2 { display: flex; gap: 4px; }
+.chans .chs { display: grid; grid-template-columns: repeat(4, 23px); gap: 3px; }
+.chb { height: 26px; padding: 0; border-radius: 5px; border: 1px solid #111; font: 800 13px "Segoe UI", Arial; cursor: pointer; color: #5a6066;
   background: linear-gradient(#3e4248, #2b2e32); box-shadow: inset 0 1px 0 #666b72, 0 2px 0 #111; }
 .chb.used { color: var(--cc); text-shadow: 0 0 8px var(--cc); }
 .chb.sel { outline: 2px solid var(--cc); outline-offset: 1px; }

@@ -60,6 +60,15 @@ export const PLACE = {
   J9:  { kind: 'sdmod', x: 138, y: 168 },
   R9:  { kind: 'axial', x: 126, y: 197, span: 7.62 },
   R10: { kind: 'axial', x: 140, y: 197, span: 7.62 },
+  // connecteurs d'extension (verticaux, broche 1 en haut a gauche)
+  J10: { kind: 'hdr', cols: 2, x: 258, y: 46 },
+  J11: { kind: 'hdr', cols: 2, x: 18, y: 118 },
+  J12: { kind: 'hdr', cols: 1, x: 282, y: 28 },
+  R13: { kind: 'axial', x: 284, y: 44, span: 7.62 },
+  R14: { kind: 'axial', x: 284, y: 49, span: 7.62 },
+  R15: { kind: 'axial', x: 284, y: 54, span: 7.62 },
+  R16: { kind: 'axial', x: 284, y: 59, span: 7.62 },
+  R17: { kind: 'axial', x: 284, y: 64, span: 7.62 },
   // afficheur
   U10: { kind: 'lcd', x: 246, y: 170 },
   RV1: { kind: 'pot', x: 206, y: 132 },
@@ -94,6 +103,12 @@ export function pinPositions(ref, comp) {
       // connecteur 1x16 en haut a gauche du module (98 x 60 mm)
       const x0 = x - 49 + 8;
       for (let i = 1; i <= 16; i++) pos[i] = [x0 + (i - 1) * P, y - 30 + 2.5];
+      break;
+    }
+    case 'hdr': {
+      const rows = Math.ceil(n / pl.cols);
+      const y0 = y - ((rows - 1) * P) / 2, x0 = x - ((pl.cols - 1) * P) / 2;
+      for (let i = 1; i <= n; i++) pos[i] = [x0 + ((i - 1) % pl.cols) * P, y0 + Math.floor((i - 1) / pl.cols) * P];
       break;
     }
     case 'axial': {
@@ -138,6 +153,10 @@ export function bodyRect(ref, comp) {
     case 'bar': return [x - 12.7, y - 5.1, 25.4, 10.2];
     case 'sip': return [x - (n * P) / 2, y - 1.6, n * P, 3.2];
     case 'header': return [x - (n * P) / 2, y - 1.27, n * P, 2.54];
+    case 'hdr': {
+      const rows = Math.ceil(n / pl.cols);
+      return [x - (pl.cols * P) / 2, y - (rows * P) / 2, pl.cols * P, rows * P];
+    }
     case 'lcd': return [x - 49, y - 30, 98, 60];
     case 'axial': return [x - pl.span / 2, y - 1.3, pl.span, 2.6];
     case 'cap': return [x - 2.2, y - 1.6, 4.4, 3.2];
@@ -185,6 +204,11 @@ export const ROLE = {
   J9: 'Lecteur de carte micro-SD (SPI)', SW1: 'Bouton RESET', Y1: 'Quartz 16 MHz', BZ1: 'Piezo passif (son)',
   RV1: 'Contraste du LCD', D1: 'Voyant des disquettes A:/B: de la carte', D2: 'Voyant du disque dur C:',
   J1: 'DEL du port A de U7', J2: 'DEL du port B de U7', J3: 'DEL du port C de U7',
+  J10: 'Connecteur 2x20 du bus du 8088 : A0-A19, D0-D7, ALE, IO/M, RD, WR, INTA, INTR, CLK, PCLK, RESET',
+  J11: 'Connecteur 2x13 des ports du 8255 U7 : PA0-PA7, PB0-PB7, PC0-PC7',
+  J12: 'IRQ libres du 8259 : IR2, IR3, IR5, IR6, IR7 (INT 0Ah, 0Bh, 0Dh, 0Eh, 0Fh). Clic droit : déclencher',
+  R13: 'Tirage à la masse de IR2', R14: 'Tirage à la masse de IR3', R15: 'Tirage à la masse de IR5',
+  R16: 'Tirage à la masse de IR6', R17: 'Tirage à la masse de IR7',
 };
 
 import { t } from './i18n.js';

@@ -338,6 +338,7 @@ export class BoardView {
       [4, 8, 41, 62, t('HORLOGE · RESET')], [104, 9, 116, 47, t('DÉCODAGE')],
       [38, 63, 104, 34, t('MÉMOIRES')], [148, 63, 94, 34, t('INTERRUPTIONS · MINUTERIE')],
       [33, 100, 168, 46, t('DEL (U7)')], [5, 151, 165, 52, t('CLAVIER · UART · CARTE SD (U12)')],
+      [246, 12, 48, 70, t('EXTENSIONS (J10-J12)')], [6, 97, 24, 48, t('PORTS U7')],
     ];
     g.lineWidth = 0.22; g.strokeStyle = 'rgba(242,244,247,0.5)';
     for (const [x, y, w, h, txt] of zones) {
@@ -421,6 +422,18 @@ export class BoardView {
         g.fillStyle = '#5a4b25'; circ(g, bx + 1.2, c.place.y, 0.45); g.fill();
         g.fillStyle = '#3a3220'; g.font = '1.6px "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
         g.fillText(c.ref + ' ' + c.value + 'Ω', c.place.x + 1, c.place.y);
+        break;
+      }
+      case 'hdr': {
+        g.fillStyle = '#141414'; g.fillRect(bx, by, bw, bh);
+        g.strokeStyle = '#2a2a2a'; g.lineWidth = 0.12;
+        for (const p of c.pinList) { g.strokeRect(p.x - 1.15, p.y - 1.15, 2.3, 2.3); }
+        g.fillStyle = C.silk; g.font = 'bold 2.2px "Segoe UI", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+        g.fillText(c.ref, c.place.x, by - 3.6);
+        g.font = '1.7px "Segoe UI", sans-serif';
+        g.fillText(t(c.value), c.place.x, by - 1.2);
+        // repere de la broche 1
+        g.beginPath(); g.moveTo(bx - 1.6, by + 0.4); g.lineTo(bx - 0.5, by + 1.27); g.lineTo(bx - 1.6, by + 2.1); g.closePath(); g.fill();
         break;
       }
       case 'header': {

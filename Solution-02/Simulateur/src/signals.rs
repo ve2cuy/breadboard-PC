@@ -33,6 +33,8 @@ pub const NAMES: &[&str] = &[
     "U12-PC2", "U12-PC3", "U12-PC4", "U12-PC5", "U12-PC6", "U12-PC7",
     // 130-
     "U3-Q0", "U3-Q1", "U3-Q2", "U3-Q3", "U16-Q1", "U16-Q2n",
+    // 136-140 : entrees libres du 8259 (J12, tirees a la masse par R13-R17)
+    "IRQ2", "IRQ3", "IRQ5", "IRQ6", "IRQ7",
 ];
 
 pub const A0: usize = 0;
@@ -87,7 +89,11 @@ pub const U3_Q0: usize = 130;
 pub const U16_Q1: usize = 134;
 pub const U16_Q2N: usize = 135;
 
-pub const N: usize = 136;
+pub const IRQ2: usize = 136;
+/// Signal de l'entree IRn du 8259 (n = 2, 3, 5, 6, 7) : IRQ2 + index dans [2, 3, 5, 6, 7].
+pub const FREE_IRQS: [u8; 5] = [2, 3, 5, 6, 7];
+
+pub const N: usize = 141;
 const W: usize = N.div_ceil(64);
 
 /// Signal flottant (haute impedance) : bit dans `z`.

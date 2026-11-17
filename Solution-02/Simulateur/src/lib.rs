@@ -332,6 +332,42 @@ impl Sim {
         self.snap.is_some()
     }
 
+    // ------------------------------------------------------------ J12 : IRQ libres du 8259
+    /// Demasque de force IRn (2, 3, 5, 6, 7) : comme un programme qui ecrirait l'IMR.
+    pub fn irq_enable(&mut self, n: u8, on: bool) {
+        if n < 8 && 0xEC & (1 << n) != 0 {
+            let b = &mut self.m.b;
+            if on {
+                b.pic.force |= 1 << n;
+            } else {
+                b.pic.force &= !(1 << n);
+            }
+            b.next_ev = 0;
+        }
+    }
+    /// Fin d'interruption simulee pour les entrees libres (le BIOS les pointe sur un IRET seul).
+    pub fn irq_sim_eoi(&mut self, on: bool) {
+        self.m.b.pic.sim_eoi = if on { 0xEC } else { 0 };
+    }
+    /// Front montant sur IRn (J12), tenu jusqu'a INTA ou `ms` millisecondes.
+    pub fn irq_trigger(&mut self, n: u8, ms: f64) -> bool {
+        let hold = (ms * 1e-3 * CLK_HZ) as u64;
+        self.m.b.irq_trigger(n, hold.max(1))
+    }
+    /// Etat du 8259 : [IMR, forcage, ISR, IRR, niveaux IR, demandes J12, initialise].
+    pub fn irq_state(&self) -> Vec<u8> {
+        let p = &self.m.b.pic;
+        vec![p.imr, p.force, p.isr, p.irr(), p.ir, self.m.b.ext_irq, p.init as u8]
+    }
+    /// Interruptions libres servies depuis la derniere lecture : triplets (cycle, IRn, vecteur).
+    pub fn take_irq_events(&mut self) -> Vec<f64> {
+        let mut out = Vec::new();
+        for (t, n, v) in self.m.b.irq_events.drain(..) {
+            out.extend_from_slice(&[t as f64, n as f64, v as f64]);
+        }
+        out
+    }
+
     // ------------------------------------------------------------ diagnostic
     /// Messages des modeles (delais du LCD, modes inattendus...), vides apres lecture.
     pub fn take_log(&mut self) -> String {

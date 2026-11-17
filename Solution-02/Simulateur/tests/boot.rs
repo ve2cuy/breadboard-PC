@@ -236,3 +236,42 @@ fn dos_depuis_la_rom() {
     println!("{}", s.stats());
     assert!(tx.contains("COMMAND"), "DIR n'a pas liste COMMAND.COM");
 }
+
+/// J12 : IR2/IR3/IR5/IR6/IR7 du 8259. Le BIOS les masque (IMR = ECh) : un front n'est pas servi
+/// tant que le simulateur ne les demasque pas ; une fois demasquee, IR2 donne INT 0Ah.
+#[test]
+fn irq_libres_j12() {
+    let mut s = Sim::new(&rom());
+    secs(&mut s, 6.0);
+    let st = s.irq_state();
+    println!("IMR {:02X}h, ISR {:02X}h", st[0], st[2]);
+    assert_eq!(st[0] & 0xEC, 0xEC, "le BIOS devrait masquer les entrees libres");
+    // masquee : rien
+    assert!(s.irq_trigger(3, 50.0));
+    secs(&mut s, 0.1);
+    assert!(s.take_irq_events().is_empty(), "IR3 masquee servie");
+    // demasquee + EOI simulee : INT 0Ah, a repetition, sans bloquer l'UART (IR4)
+    s.irq_enable(2, true);
+    s.irq_sim_eoi(true);
+    for _ in 0..3 {
+        assert!(s.irq_trigger(2, 50.0));
+        secs(&mut s, 0.05);
+    }
+    let ev = s.take_irq_events();
+    println!("evenements : {:?}", ev);
+    assert_eq!(ev.len(), 9);
+    assert!(ev.chunks(3).all(|e| e[1] == 2.0 && e[2] == 0x0A as f64));
+    assert_eq!(s.irq_state()[2] & 0x04, 0, "ISR : IR2 devrait etre terminee");
+    // sans EOI : IR2 reste en service (le gestionnaire du BIOS est un IRET seul)
+    s.irq_sim_eoi(false);
+    s.irq_enable(7, true);
+    assert!(s.irq_trigger(7, 50.0));
+    secs(&mut s, 0.05);
+    let ev = s.take_irq_events();
+    assert_eq!(ev, vec![ev[0], 7.0, 0x0F as f64]);
+    assert!(s.irq_trigger(2, 50.0));
+    secs(&mut s, 0.05);
+    let ev = s.take_irq_events();
+    assert_eq!(ev[1..], [2.0, 0x0A as f64]);
+    assert_ne!(s.irq_state()[2] & 0x04, 0, "ISR : IR2 devrait rester en service sans EOI");
+}

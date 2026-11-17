@@ -69,6 +69,7 @@ async function main() {
   buildLaUi();
   buildSdPanel();
   buildFaults();
+  buildIrq();
   buildKeyboard();
   buildSplitter();
   buildDrop();
@@ -112,6 +113,7 @@ function frame(now) {
     }
   }
   pumpQueues();
+  pollIrq();
   const tx = sim.uart_take();
   if (tx.length) { S.term.write(tx); flash('ledTx'); }
   dispatchEvents();
@@ -531,6 +533,8 @@ function contextMenu(p, comp, e) {
     const d = chanDef(p);
     if (d) items.push(['◉', t("Sonder à l'oscilloscope"), () => { const was = S.tab; S.tab = 'scope'; probePin(p); if (was === 'la') selectTab('scope'); }]);
     if (d && d.sig !== null) items.push(['▤', t("Ajouter à l'analyseur logique"), () => { selectTab('la'); probePin(p); }]);
+    const fq = FREE_IRQ.find((q) => 'IRQ' + q.n === (p.net || '').replace(/^\//, ''));
+    if (fq) items.push(['⚡', t('Déclencher {0} (INT {1})', 'IR' + fq.n, hex2(fq.v)), () => irqTrigger(fq.n)]);
     items.push(['✦', t('Mettre le net en évidence'), () => { S.board.highlight = S.board.highlight === p.net ? null : p.net; }]);
     items.push(['hr']);
   }
@@ -546,6 +550,10 @@ function contextMenu(p, comp, e) {
       items.push(['⏏', out ? t('Remettre la puce') : t('Retirer la puce du montage'), () => { inp.checked = !out; inp.onchange(); }]);
     }
     if (comp.ref === 'SW1') items.push(['⟲', t('Appuyer sur RESET'), () => { resetButton(true); setTimeout(() => resetButton(false), 150); }]);
+    if (comp.ref === 'J12') {
+      for (const q of FREE_IRQ) items.push(['⚡', t('Déclencher {0} (INT {1})', 'IR' + q.n, hex2(q.v)), () => irqTrigger(q.n)]);
+      items.push(['⚙', t('Interruptions libres…'), () => selectTab('irq')]);
+    }
     if (comp.ref === 'J9') items.push(['💾', t('Gérer la carte SD…'), () => selectTab('sd')]);
     if (comp.ref === 'J5') items.push(['⌨', t('Ouvrir le terminal UART'), () => { selectTab('term'); setKbdMode('uart'); $('term').focus(); }]);
     if (comp.ref === 'J4') items.push(['⌨', t('Taper au clavier PS/2'), () => setKbdMode('ps2')]);
@@ -674,6 +682,94 @@ function selectTab(tb) {
   if (tb === 'log') renderStats();
   if (tb === 'sd') renderSdFiles(true);
   if (tb === 'scope') renderScopeUi();
+  if (tb === 'irq') renderIrq();
+}
+
+// ====================================================================== J12 : IRQ libres du 8259
+// vecteur = base 08h (ICW2 du BIOS) + n ; broche de J12 = position + 2 (1 = +5V)
+const FREE_IRQ = [2, 3, 5, 6, 7].map((n, k) => ({ n, v: 8 + n, pin: k + 2 }));
+const hex2 = (v) => v.toString(16).toUpperCase().padStart(2, '0') + 'h';
+S.irq = { en: new Set(), count: {} };
+function buildIrq() {
+  $('irqEoi').onchange = () => S.sim.irq_sim_eoi($('irqEoi').checked);
+  S.sim.irq_sim_eoi($('irqEoi').checked);
+  $('irqTbl').addEventListener('change', (e) => {
+    const c = e.target.closest('input[data-irq]');
+    if (!c) return;
+    const n = +c.dataset.irq;
+    if (c.checked) S.irq.en.add(n); else S.irq.en.delete(n);
+    S.sim.irq_enable(n, c.checked);
+    irqMsg('i', c.checked ? t('IR{0} activée (démasquée) : INT {1}', n, hex2(8 + n)) : t('IR{0} désactivée (masque du BIOS)', n));
+    renderIrq();
+  });
+  $('irqTbl').addEventListener('click', (e) => { const b = e.target.closest('button[data-trig]'); if (b) irqTrigger(+b.dataset.trig); });
+  renderIrq(true);
+}
+function irqTrigger(n) {
+  if (!S.powered) { toast(t('Carte hors tension'), 'w'); return; }
+  const st = S.sim.irq_state();
+  const masked = st[0] & (1 << n) && !(st[1] & (1 << n));
+  if (!S.sim.irq_trigger(n, 100)) { irqMsg('w', t('IR{0} déjà à 1 : attendre la reconnaissance', n)); return; }
+  const q = FREE_IRQ.find((x) => x.n === n);
+  if (masked) {
+    const m = t("IR{0} (J12.{1}) : front envoyé, mais l'entrée est masquée (IMR = {2}) : cocher « Activer »", n, q.pin, hex2(st[0]));
+    irqMsg('w', m); toast(m, 'w');
+  } else irqMsg('i', t('IR{0} (J12.{1}) : front montant', n, q.pin));
+  renderIrq();
+}
+function pollIrq() {
+  const ev = S.sim.take_irq_events();
+  for (let i = 0; i < ev.length; i += 3) {
+    const n = ev[i + 1], v = ev[i + 2];
+    S.irq.count[n] = (S.irq.count[n] || 0) + 1;
+    const q = FREE_IRQ.find((x) => x.n === n);
+    const m = t('INT {0} Déclenchée', hex2(v)) + ` (IR${n}, J12.${q ? q.pin : '?'})`;
+    toast(m, 'ok');
+    irqMsg('ok', m);
+    log('i', m);
+  }
+  if (ev.length && S.tab === 'irq') renderIrq();
+  if (S.tab === 'irq' && S.powered) {
+    const k = S.sim.irq_state().join(',');
+    if (k !== S.irq.key) renderIrq();
+  }
+}
+function renderIrq(force) {
+  const st = S.sim.irq_state();
+  S.irq.key = st.join(',');
+  const [imr, frc, isr, irr, ir, ext, init] = st;
+  const rows = FREE_IRQ.map((q) => {
+    const b = 1 << q.n;
+    const en = !!(frc & b);
+    let etat;
+    if (!init) etat = t('8259 non programmé');
+    else if (isr & b) etat = t('en service (ISR)');
+    else if (ir & b) etat = (imr & b) && !en ? t('demande masquée') : t('demande (IRR)');
+    else etat = (imr & b) && !en ? t('masquée (IMR)') : t('prête');
+    return `<tr><td><b>IR${q.n}</b></td><td>J12.${q.pin}</td><td class="mono">${hex2(q.v)}</td>
+      <td><input type="checkbox" data-irq="${q.n}" ${en ? 'checked' : ''}></td>
+      <td><button class="sbtn" data-trig="${q.n}">${esc(t('Déclencher'))}</button></td>
+      <td class="${isr & b ? 'irq-busy' : ir & b ? 'irq-req' : ''}">${esc(etat)}</td><td class="mono">${S.irq.count[q.n] || 0}</td></tr>`;
+  }).join('');
+  const tb = $('irqTbl').querySelector('tbody');
+  if (force || S.irq.rows !== rows) { tb.innerHTML = rows; S.irq.rows = rows; }
+}
+function irqMsg(kind, msg) {
+  const el = $('irqLog');
+  const tt = num(S.sim.cycles() / CLK, 3);
+  el.insertAdjacentHTML('beforeend', `<div class="${kind}" data-no-i18n><span class="t">[${tt} s]</span> ${esc(msg)}</div>`);
+  while (el.childElementCount > 200) el.firstChild.remove();
+  el.scrollTop = el.scrollHeight;
+}
+function toast(msg, kind) {
+  const box = $('toasts');
+  const el = document.createElement('div');
+  el.className = 'toast ' + (kind || '');
+  el.textContent = msg;
+  box.appendChild(el);
+  while (box.childElementCount > 4) box.firstChild.remove();
+  setTimeout(() => el.classList.add('out'), 2600);
+  setTimeout(() => el.remove(), 3100);
 }
 
 // ====================================================================== oscilloscope (commandes)

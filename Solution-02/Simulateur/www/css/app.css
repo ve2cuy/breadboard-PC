@@ -331,3 +331,19 @@ body.dragging .drop-hint { display: grid; }
   .dock { min-height: 80vh; }
   #lcdCanvas { width: min(448px, calc(100vw - 90px)); height: auto; }
 }
+
+/* IRQ libres (J12) et notifications */
+.log .ok { color: #39ff88; }
+.irq-tbl td { vertical-align: middle; }
+.irq-tbl input[type=checkbox] { width: 16px; height: 16px; accent-color: #39ff88; }
+.irq-tbl .irq-busy { color: var(--red); }
+.irq-tbl .irq-req { color: var(--acc2); }
+.irq-eoi { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+#irqLog { min-height: 90px; }
+.toasts { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+.toast { padding: 8px 16px; border-radius: 6px; background: #101418; border: 1px solid #39ff88; color: #e6ebf0; font: 600 14px "Segoe UI", sans-serif;
+  box-shadow: 0 4px 18px rgba(0,0,0,.55); animation: toastIn .18s ease-out; transition: opacity .45s, transform .45s; }
+.toast.ok { border-color: #39ff88; color: #39ff88; }
+.toast.w { border-color: var(--acc2); color: var(--acc2); }
+.toast.out { opacity: 0; transform: translateY(-8px); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }

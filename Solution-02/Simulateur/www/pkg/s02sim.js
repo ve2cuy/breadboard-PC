@@ -127,6 +127,41 @@ export class Sim {
         }
     }
     /**
+     * Demasque de force IRn (2, 3, 5, 6, 7) : comme un programme qui ecrirait l'IMR.
+     * @param {number} n
+     * @param {boolean} on
+     */
+    irq_enable(n, on) {
+        wasm.sim_irq_enable(this.__wbg_ptr, n, on);
+    }
+    /**
+     * Fin d'interruption simulee pour les entrees libres (le BIOS les pointe sur un IRET seul).
+     * @param {boolean} on
+     */
+    irq_sim_eoi(on) {
+        wasm.sim_irq_sim_eoi(this.__wbg_ptr, on);
+    }
+    /**
+     * Etat du 8259 : [IMR, forcage, ISR, IRR, niveaux IR, demandes J12, initialise].
+     * @returns {Uint8Array}
+     */
+    irq_state() {
+        const ret = wasm.sim_irq_state(this.__wbg_ptr);
+        var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+        return v1;
+    }
+    /**
+     * Front montant sur IRn (J12), tenu jusqu'a INTA ou `ms` millisecondes.
+     * @param {number} n
+     * @param {number} ms
+     * @returns {boolean}
+     */
+    irq_trigger(n, ms) {
+        const ret = wasm.sim_irq_trigger(this.__wbg_ptr, n, ms);
+        return ret !== 0;
+    }
+    /**
      * @param {Uint8Array | number[]} bytes
      */
     kbd(bytes) {
@@ -404,6 +439,16 @@ export class Sim {
         const ret = wasm.sim_take_events(this.__wbg_ptr);
         var v1 = getArrayU32FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+        return v1;
+    }
+    /**
+     * Interruptions libres servies depuis la derniere lecture : triplets (cycle, IRn, vecteur).
+     * @returns {Float64Array}
+     */
+    take_irq_events() {
+        const ret = wasm.sim_take_irq_events(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
         return v1;
     }
     /**

@@ -86,6 +86,12 @@ pub struct Board {
     /// Adresse et donnee du dernier cycle (pour l'affichage).
     pub last_addr: u32,
     pub last_data: u8,
+    /// J12 : entrees libres du 8259 tenues a 1 par le simulateur (bit n = IRn) jusqu'a INTA
+    /// ou jusqu'a `ext_until[n]` (cycle).
+    pub ext_irq: u8,
+    ext_until: [u64; 8],
+    /// Interruptions des entrees libres servies : (cycle, IRn, vecteur).
+    pub irq_events: Vec<(u64, u8, u8)>,
 }
 
 const IO_LOG: usize = 4096;
@@ -146,6 +152,9 @@ impl Board {
             reset_line: true,
             last_addr: 0,
             last_data: 0,
+            ext_irq: 0,
+            ext_until: [0; 8],
+            irq_events: Vec::new(),
         };
         b.init_signals();
         b
@@ -406,6 +415,18 @@ impl Board {
         self.next_ev = 0;
     }
 
+    /// J12 : met l'entree IRn (2, 3, 5, 6 ou 7) a 1 jusqu'a sa reconnaissance (INTA),
+    /// au plus `hold` cycles. Rend faux si elle etait deja a 1 (pas de nouveau front).
+    pub fn irq_trigger(&mut self, n: u8, hold: u64) -> bool {
+        if n > 7 || 0xEC & (1 << n) == 0 || self.ext_irq & (1 << n) != 0 {
+            return false;
+        }
+        self.ext_irq |= 1 << n;
+        self.ext_until[n as usize] = self.now + hold;
+        self.next_ev = 0;
+        true
+    }
+
     pub fn reset_peripherals(&mut self) {
         let t = self.tq(0);
         self.u7.reset();
@@ -493,9 +514,24 @@ impl Board {
         if self.term_connected {
             next = next.min(self.rx.next_change(now));
         }
-        // 8259 : IR0 = OUT0, IR1 = KBD_CLK inversee, IR4 = RX inversee (U14, 74LS14)
+        // J12 : entrees libres tenues par le simulateur (relachees a l'echeance)
+        if self.ext_irq != 0 {
+            for n in 0..8 {
+                if self.ext_irq & (1 << n) != 0 {
+                    if now >= self.ext_until[n] {
+                        self.ext_irq &= !(1 << n);
+                    } else {
+                        next = next.min(self.ext_until[n]);
+                    }
+                }
+            }
+        }
+        for (k, &n) in s::FREE_IRQS.iter().enumerate() {
+            self.sig.set(s::IRQ2 + k, self.ext_irq & (1 << n) != 0, tq);
+        }
+        // 8259 : IR0 = OUT0, IR1 = KBD_CLK inversee, IR4 = RX inversee (U14, 74LS14), J12
         if !self.faults.no_pic {
-            let lv = (self.out0 as u8) | ((!clk as u8) << 1) | ((!rx as u8) << 4);
+            let lv = (self.out0 as u8) | ((!clk as u8) << 1) | ((!rx as u8) << 4) | (self.ext_irq & 0xEC);
             if lv != self.pic.ir {
                 self.pic.set_inputs(lv);
             }
@@ -680,9 +716,21 @@ impl Bus for Board {
         self.acc += 2;
         let v = if self.faults.no_pic { 0xFF } else { self.pic.inta() };
         self.sig.set(s::INTR, self.pic.int_out, t0 + 28);
+        if !self.faults.no_pic {
+            if let Some(n) = self.pic.last_irq {
+                if s::FREE_IRQS.contains(&n) {
+                    if self.irq_events.len() < 256 {
+                        self.irq_events.push((self.now, n, v));
+                    }
+                    // la demande de J12 est relachee une fois reconnue
+                    self.ext_irq &= !(1 << n);
+                }
+            }
+        }
         self.next_ev = 0;
         v
     }
+
 }
 
 /// Raison de l'arret d'une execution.
@@ -739,7 +787,10 @@ impl Machine {
         let audio = self.b.audio_on;
         let probe = self.b.sig.probe;
         let any = self.b.sig.any_probe;
+        let (force, sim_eoi) = (self.b.pic.force, self.b.pic.sim_eoi);
         self.b = Board::new(self.rom_image.clone(), self.seed);
+        self.b.pic.force = force;
+        self.b.pic.sim_eoi = sim_eoi;
         self.b.faults = faults;
         self.b.sd = sd;
         // la carte est remise a zero comme a l'insertion (SPI au repos)
