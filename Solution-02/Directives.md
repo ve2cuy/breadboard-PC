@@ -217,3 +217,4 @@ Application écrite en Rust et éventuellement portable sous MACOS et Linux.* 20
   - Simulateur Python : basicdisque attendait la fin exacte 'A: change (Echap : rien).\r\n' : apres ce texte (deja en colonne 0), uart_recale n'envoie plus que ESC [ n C (rien en colonne 0). Suite complete : 0 echec. Essais Rust 10/10.
   - ROM : Z:/Partage/Alain/solution-02-bios-2.6-en-terminal.bin (md5 b84f26036b58ede5ce60219a0db28dc2) et solution-02-bios-2.6-fr-terminal.bin (md5 d3cf6bb9cae7d5094f1f4ad76d24ca8a).
   - BIOS 2.6 anglais grave sur la W29C020C (verification OK du premier coup).
+* 2026-11-17 Essai de l'usager (BIOS 2.6 anglais grave, CPM86_C.IMG) : CP/M-86 1.1 depuis C: au terminal : fonctionne (DIR, Entree, HELP corrects).
