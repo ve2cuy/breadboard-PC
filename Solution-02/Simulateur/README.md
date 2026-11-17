@@ -16,9 +16,9 @@ ANSI welcome on the UART and the menu.
 
 **Try it online: <https://ve2cuy.github.io/breadboard-PC/>**
 
-![Simulator demo: BIOS boot, LED Show, PC-DOS and DIR on the PS/2 keyboard, pin hover, oscilloscope, J12 interrupt, logic analyzer, English interface](docs/simulateur.gif)
+![Simulator demo: BIOS boot, LED Show, PC-DOS and DIR on the PS/2 keyboard, pin hover, oscilloscope, J12 interrupt, logic analyzer, English interface](docs/simulateur.svg)
 
-The animation above (37 s, 1.4 MB) was recorded in Edge with Playwright. It shows:
+The animation above (38 s, an SVG animated in CSS, 1.6 MB) was recorded in Edge with Playwright. It shows:
 1. power-up;
 2. the LED Show;
 3. choosing the image on the SD card;

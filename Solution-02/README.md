@@ -898,7 +898,7 @@ decoding with RD#/WR# (as for the LCD). Start with the U12 version: 4 wires and 
 
 Online: <https://ve2cuy.github.io/breadboard-PC/> (published by `Simulateur/publier.ps1`).
 
-![Simulator demo](Simulateur/docs/simulateur.gif)
+![Simulator demo](Simulateur/docs/simulateur.svg)
 
 The [Simulateur](Simulateur/README.md) folder contains a complete emulator of Solution-02 in
 Rust/WebAssembly that runs in the browser (`Simulateur/lancer.cmd`, then

@@ -16,9 +16,9 @@ RAM, puis affiche son écran d'ouverture, l'accueil ANSI sur l'UART et le menu.
 
 **Essayer en ligne : <https://ve2cuy.github.io/breadboard-PC/>**
 
-![Démonstration du simulateur : démarrage du BIOS, LED Show, PC-DOS et DIR au clavier PS/2, survol d'une broche, oscilloscope, interruption de J12, analyseur logique, interface anglaise](docs/simulateur.gif)
+![Démonstration du simulateur : démarrage du BIOS, LED Show, PC-DOS et DIR au clavier PS/2, survol d'une broche, oscilloscope, interruption de J12, analyseur logique, interface anglaise](docs/simulateur_fr.svg)
 
-L'animation ci-dessus (37 s, 1,4 Mo) a été filmée dans Edge avec Playwright. On y voit :
+L'animation ci-dessus (38 s, un SVG animé en CSS, 1,6 Mo) a été filmée dans Edge avec Playwright. On y voit :
 1. la mise sous tension ;
 2. le LED Show ;
 3. le choix de l'image sur la carte SD ;

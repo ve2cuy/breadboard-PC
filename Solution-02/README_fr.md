@@ -986,7 +986,7 @@ un module.
 
 En ligne : <https://ve2cuy.github.io/breadboard-PC/> (publié par `Simulateur/publier.ps1`).
 
-![Démonstration du simulateur](Simulateur/docs/simulateur.gif)
+![Démonstration du simulateur](Simulateur/docs/simulateur_fr.svg)
 
 Le dossier [Simulateur](Simulateur/README_fr.md) contient un émulateur complet de Solution-02 en
 Rust/WebAssembly qui tourne dans le navigateur (`Simulateur/lancer.cmd`, puis

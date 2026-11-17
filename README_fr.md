@@ -21,7 +21,7 @@ UART logiciel, carte SD) tourne aussi dans le navigateur, émulée en Rust/WebAs
 oscilloscope, analyseur logique 32 voies avec décodeurs, débogueur, pannes à simuler.
 
 <p align="center">
-  <a href="https://ve2cuy.github.io/breadboard-PC/"><img src="Solution-02/Simulateur/docs/simulateur.gif" alt="Le simulateur de Solution-02 : LCD, DEL, vue de la carte et terminal UART qui montre PC-DOS 2.1 et DIR" width="800"></a><br>
+  <a href="https://ve2cuy.github.io/breadboard-PC/"><img src="Solution-02/Simulateur/docs/simulateur_fr.svg" alt="Le simulateur de Solution-02 : LCD, DEL, vue de la carte et terminal UART qui montre PC-DOS 2.1 et DIR" width="800"></a><br>
   <em>Le simulateur sous PC-DOS 2.1 (DIR tapé au clavier PS/2). Cliquer sur l'animation pour ouvrir le simulateur.
   Plus de détails dans le <a href="Solution-02/Simulateur/README_fr.md">README du simulateur</a>.</em>
 </p>
