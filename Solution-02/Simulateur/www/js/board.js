@@ -2,6 +2,7 @@
 
 import { BOARD, PLACE, pinPositions, bodyRect, GATE_NAMES, role } from './layout.js';
 import { drawLcd } from './lcd.js';
+import { drawLogic, hasLogic } from './logic.js';
 import { t } from './i18n.js';
 
 const C = {
@@ -398,12 +399,19 @@ export class BoardView {
         // encoche et point de la broche 1
         g.fillStyle = '#0b0b0c'; g.beginPath(); g.arc(bx, c.place.y, Math.min(1.4, bh / 4), -Math.PI / 2, Math.PI / 2); g.fill();
         g.fillStyle = '#3a3b3e'; circ(g, bx + 1.6, by + bh - 1.4, 0.5); g.fill();
-        // marquage
-        const fs = Math.min(2.6, bh / 3.2);
-        g.fillStyle = '#d9dcdf'; g.font = `600 ${fs}px "Segoe UI", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(c.value, c.place.x, c.place.y - (bh > 8 ? fs * 0.45 : 0));
-        if (bh > 8) { g.fillStyle = '#8d9196'; g.font = `${fs * 0.75}px "Segoe UI", sans-serif`; g.fillText(c.ref, c.place.x, c.place.y + fs * 0.8); }
-        else { g.fillStyle = C.silk; g.font = `bold 2.2px "Segoe UI", sans-serif`; g.fillText(c.ref, bx - 2.6, c.place.y); }
+        // marquage : au centre des boitiers larges (les noms des broches l'entourent) ; les boitiers etroits
+        // portent leur schema logique ou le nom de leurs broches, leur marquage passe en serigraphie
+        g.textAlign = 'center'; g.textBaseline = 'middle';
+        if (bh > 8) {
+          g.fillStyle = '#d9dcdf'; g.font = `600 2.2px "Segoe UI", sans-serif`;
+          g.fillText(c.value, c.place.x, c.place.y - 0.6);
+          g.fillStyle = '#8d9196'; g.font = `1.5px "Segoe UI", sans-serif`; g.fillText(c.ref, c.place.x, c.place.y + 1.35);
+        } else {
+          g.textAlign = 'right';
+          g.fillStyle = C.silk; g.font = `bold 2.2px "Segoe UI", sans-serif`; g.fillText(c.ref, bx - 0.7, c.place.y - 0.9);
+          g.fillStyle = 'rgba(235,242,236,0.62)'; g.font = `600 1.15px "Segoe UI", sans-serif`; g.fillText(c.value, bx - 0.7, c.place.y + 1.2);
+        }
+        drawLogic(g, c);
         break;
       }
       case 'bar': {
@@ -552,24 +560,31 @@ export class BoardView {
       }
     }
     g.restore();
-    // noms des broches (zoom suffisant)
-    if (this.showNames && s > 9 && (k === 'dip')) {
+    // noms des broches sur le boitier (sauf les 74xx, qui portent leur schema logique) ;
+    // numeros des broches a cote des pastilles quand le zoom le permet
+    if (this.showNames && k === 'dip') {
       g.save();
-      const fs = 0.9;
-      g.font = `${fs}px "Cascadia Mono", Consolas, monospace`; g.fillStyle = 'rgba(220,225,230,0.75)';
-      g.textAlign = 'center';
+      const logic = hasLogic(c);
+      const fs = bh > 8 ? 1.15 : 0.82;
       for (const p of c.pinList) {
         const top = p.y < c.place.y;
-        g.save();
-        g.translate(p.x, top ? by + 0.4 : by + bh - 0.4);
-        g.rotate(-Math.PI / 2);
-        g.textAlign = top ? 'right' : 'left'; g.textBaseline = 'middle';
-        g.fillText(cleanName(p.name), 0, 0);
-        g.restore();
-        g.fillStyle = 'rgba(235,242,236,0.6)';
-        g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.fillText(p.n, p.x, top ? p.y - 1.5 : p.y + 1.5);
-        g.fillStyle = 'rgba(220,225,230,0.75)';
+        if (!logic) {
+          g.font = `600 ${fs}px "Cascadia Mono", Consolas, monospace`;
+          const power = p.net === '+5V' || p.net === 'GND';
+          g.fillStyle = power ? (p.net === 'GND' ? 'rgba(140,170,255,0.95)' : 'rgba(255,150,135,0.95)') : 'rgba(232,236,240,0.92)';
+          g.save();
+          g.translate(p.x, top ? by + 0.35 : by + bh - 0.35);
+          g.rotate(-Math.PI / 2);
+          g.textAlign = top ? 'right' : 'left'; g.textBaseline = 'middle';
+          g.fillText(cleanName(p.name), 0, 0);
+          g.restore();
+        }
+        if (s > 7) {
+          g.font = `0.9px "Cascadia Mono", Consolas, monospace`;
+          g.fillStyle = 'rgba(235,242,236,0.6)';
+          g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText(p.n, p.x, top ? p.y - 1.5 : p.y + 1.5);
+        }
       }
       g.restore();
     }

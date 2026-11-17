@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "Solution02")(type "KiCad")(uri "${KIPRJMOD}/Solution02.pretty")(options "")(descr "Empreintes propres a Solution-02"))
+)

@@ -395,6 +395,7 @@ export const EN = {
   'lecture': 'read',
   'écriture': 'write',
   'Bus de données : D0-D7, RD, WR, IO/M (décodeur ASCII)': 'Data bus: D0-D7, RD, WR, IO/M (ASCII decoder)',
+  'Masquer / afficher le panneau du haut (LCD, DEL)': 'Hide / show the top panel (LCD, LEDs)',
   // ---- IRQ libres (J12)
   "J12 donne accès aux entrées libres du 8259 (U13) : IR2, IR3, IR5, IR6 et IR7, tirées à la masse par R13-R17. Le BIOS les masque (IMR = ECh). « Activer » les démasque, comme un programme qui écrirait le port 21h ; « Déclencher » met la broche de J12 à +5 V jusqu'à la reconnaissance (INTA) : le 8088 exécute alors l'INT correspondante.": 'J12 gives access to the free inputs of the 8259 (U13): IR2, IR3, IR5, IR6 and IR7, pulled to ground by R13-R17. The BIOS masks them (IMR = ECh). “Enable” unmasks them, like a program writing port 21h; “Trigger” drives the J12 pin to +5 V until it is acknowledged (INTA): the 8088 then executes the matching INT.',
   "Le BIOS pointe ces vecteurs sur un IRET seul, sans EOI au 8259 : sans l'EOI simulée, l'entrée reste en service (ISR) et bloque les entrées de priorité plus basse, dont IR4 (UART) après IR2 ou IR3, comme sur la vraie carte.": 'The BIOS points these vectors to a bare IRET, with no EOI to the 8259: without the simulated EOI, the input stays in service (ISR) and blocks the lower-priority inputs, including IR4 (UART) after IR2 or IR3, just like on the real board.',

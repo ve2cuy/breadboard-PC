@@ -1,0 +1,2438 @@
+{
+    "$schema": "https://schemas.kicad.org/drc.v1.json",
+    "coordinate_units": "mm",
+    "date": "2026-11-17T14:26:47",
+    "ignored_checks": [
+        {
+            "description": "Footprint has no courtyard defined",
+            "key": "missing_courtyard"
+        },
+        {
+            "description": "Track endpoint not centered on via",
+            "key": "track_not_centered_on_via"
+        },
+        {
+            "description": "Tuning profile track geometries",
+            "key": "tuning_profile_track_geometries"
+        },
+        {
+            "description": "Footprint doesn't match symbol's footprint filters",
+            "key": "footprint_filters_mismatch"
+        },
+        {
+            "description": "Footprint component type doesn't match footprint pads",
+            "key": "footprint_type_mismatch"
+        },
+        {
+            "description": "Footprint not found in libraries",
+            "key": "lib_footprint_issues"
+        },
+        {
+            "description": "Footprint doesn't match copy in library",
+            "key": "lib_footprint_mismatch"
+        }
+    ],
+    "included_severities": [
+        "error",
+        "warning",
+        "exclusion"
+    ],
+    "kicad_version": "10.0.5",
+    "schematic_parity": [],
+    "source": "Solution02.kicad_pcb",
+    "unconnected_items": [],
+    "violations": [
+        {
+            "description": "Silkscreen clipped by board edge",
+            "items": [
+                {
+                    "description": "Segment sur Edge.Cuts",
+                    "pos": {
+                        "x": 40.0,
+                        "y": 137.0
+                    },
+                    "uuid": "2b6d810e-6f9b-4b9c-bf71-aab94ebeef03"
+                },
+                {
+                    "description": "Segment de J4 sur F.Silkscreen",
+                    "pos": {
+                        "x": 39.82,
+                        "y": 106.84
+                    },
+                    "uuid": "db1f1859-50ca-4387-a763-1986aa096bb5"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_edge_clearance"
+        },
+        {
+            "description": "Silkscreen clipped by board edge",
+            "items": [
+                {
+                    "description": "Segment sur Edge.Cuts",
+                    "pos": {
+                        "x": 40.0,
+                        "y": 137.0
+                    },
+                    "uuid": "2b6d810e-6f9b-4b9c-bf71-aab94ebeef03"
+                },
+                {
+                    "description": "Segment de J4 sur F.Silkscreen",
+                    "pos": {
+                        "x": 47.93,
+                        "y": 120.16
+                    },
+                    "uuid": "6741ecd4-9ccd-426a-91da-7a3a4fd7e344"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_edge_clearance"
+        },
+        {
+            "description": "Silkscreen clipped by board edge",
+            "items": [
+                {
+                    "description": "Segment sur Edge.Cuts",
+                    "pos": {
+                        "x": 209.0,
+                        "y": 140.0
+                    },
+                    "uuid": "1b7dc9c4-1b7b-4475-ba2c-0b08a7ea9b43"
+                },
+                {
+                    "description": "Segment de J6 sur F.Silkscreen",
+                    "pos": {
+                        "x": 47.6,
+                        "y": 140.8
+                    },
+                    "uuid": "022aba85-064a-4dea-bf47-bcbee13b7eba"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_edge_clearance"
+        },
+        {
+            "description": "Silkscreen clipped by board edge",
+            "items": [
+                {
+                    "description": "Segment sur Edge.Cuts",
+                    "pos": {
+                        "x": 209.0,
+                        "y": 140.0
+                    },
+                    "uuid": "1b7dc9c4-1b7b-4475-ba2c-0b08a7ea9b43"
+                },
+                {
+                    "description": "Segment de J6 sur F.Silkscreen",
+                    "pos": {
+                        "x": 56.8,
+                        "y": 132.0
+                    },
+                    "uuid": "8c07b5e0-1f68-4350-a42f-14114333b207"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_edge_clearance"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C18 sur F.Silkscreen",
+                    "pos": {
+                        "x": 178.67,
+                        "y": 128.88
+                    },
+                    "uuid": "4d1529c8-4910-431d-a56c-0de69a561ea8"
+                },
+                {
+                    "description": "Champ référence de U16",
+                    "pos": {
+                        "x": 178.67,
+                        "y": 132.19
+                    },
+                    "uuid": "d6e4ed7d-d073-4541-a8b0-75c79286842e"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de Y1",
+                    "pos": {
+                        "x": 169.52,
+                        "y": 116.94
+                    },
+                    "uuid": "6f7e74d3-bbb9-42d3-af15-b9cafddd82f8"
+                },
+                {
+                    "description": "Arc de U11 sur F.Silkscreen",
+                    "pos": {
+                        "x": 169.67,
+                        "y": 117.19
+                    },
+                    "uuid": "f857ab4f-e4e8-4aa9-8915-721dc182be12"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de C11",
+                    "pos": {
+                        "x": 154.9,
+                        "y": 131.5
+                    },
+                    "uuid": "15753183-e2ac-4172-b202-640641f76f0b"
+                },
+                {
+                    "description": "Arc de U8 sur F.Silkscreen",
+                    "pos": {
+                        "x": 154.67,
+                        "y": 132.19
+                    },
+                    "uuid": "94280387-db27-4777-8979-480258244d46"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de C11",
+                    "pos": {
+                        "x": 154.9,
+                        "y": 131.5
+                    },
+                    "uuid": "15753183-e2ac-4172-b202-640641f76f0b"
+                },
+                {
+                    "description": "Segment de U8 sur F.Silkscreen",
+                    "pos": {
+                        "x": 154.67,
+                        "y": 129.54
+                    },
+                    "uuid": "e91a932f-2b1c-4a34-a52b-5bdf44dec042"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C11 sur F.Silkscreen",
+                    "pos": {
+                        "x": 153.77,
+                        "y": 128.88
+                    },
+                    "uuid": "d3fe29cc-2dbf-469b-adbc-9c9ea8c8f084"
+                },
+                {
+                    "description": "Champ référence de U8",
+                    "pos": {
+                        "x": 153.67,
+                        "y": 132.19
+                    },
+                    "uuid": "ed90dbb4-c56b-4814-a44d-cab1bc3d83c4"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de C2",
+                    "pos": {
+                        "x": 163.1,
+                        "y": 114.8
+                    },
+                    "uuid": "321df2fd-8c3b-487c-bec6-c580d7fffb28"
+                },
+                {
+                    "description": "Segment de Y1 sur F.Silkscreen",
+                    "pos": {
+                        "x": 163.565,
+                        "y": 120.14
+                    },
+                    "uuid": "67e3cd15-db21-4cf6-9dc0-0f3a4c985923"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de Y1",
+                    "pos": {
+                        "x": 169.52,
+                        "y": 116.94
+                    },
+                    "uuid": "6f7e74d3-bbb9-42d3-af15-b9cafddd82f8"
+                },
+                {
+                    "description": "Champ référence de U11",
+                    "pos": {
+                        "x": 168.67,
+                        "y": 117.19
+                    },
+                    "uuid": "ef93eb87-e47b-4efb-8afc-1a384ef7dbde"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de Y1 sur F.Silkscreen",
+                    "pos": {
+                        "x": 168.435,
+                        "y": 113.74
+                    },
+                    "uuid": "860c837c-7566-4bc3-a21a-13181e89435f"
+                },
+                {
+                    "description": "Champ référence de U11",
+                    "pos": {
+                        "x": 168.67,
+                        "y": 117.19
+                    },
+                    "uuid": "ef93eb87-e47b-4efb-8afc-1a384ef7dbde"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de J5",
+                    "pos": {
+                        "x": 135.62,
+                        "y": 136.6
+                    },
+                    "uuid": "8e3c5409-14de-4add-8906-036a41790e5d"
+                },
+                {
+                    "description": "Segment de J9 sur F.Silkscreen",
+                    "pos": {
+                        "x": 135.58,
+                        "y": 137.98
+                    },
+                    "uuid": "d96fa331-7ff1-4693-bb27-996e4026c279"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Cercle de BZ1 sur F.Silkscreen",
+                    "pos": {
+                        "x": 201.8,
+                        "y": 106.5
+                    },
+                    "uuid": "bb660b87-a0eb-485c-bdc3-a713b1c504dc"
+                },
+                {
+                    "description": "Texte PCB 'RESET' surF.Silkscreen",
+                    "pos": {
+                        "x": 200.75,
+                        "y": 112.1
+                    },
+                    "uuid": "bf4f969e-5cba-4c29-8c24-169a39220b43"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de SW1",
+                    "pos": {
+                        "x": 200.75,
+                        "y": 112.5
+                    },
+                    "uuid": "959be7c8-00ad-49a1-ad54-704a91977bdf"
+                },
+                {
+                    "description": "Texte PCB 'RESET' surF.Silkscreen",
+                    "pos": {
+                        "x": 200.75,
+                        "y": 112.1
+                    },
+                    "uuid": "bf4f969e-5cba-4c29-8c24-169a39220b43"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de SW1",
+                    "pos": {
+                        "x": 200.75,
+                        "y": 112.5
+                    },
+                    "uuid": "959be7c8-00ad-49a1-ad54-704a91977bdf"
+                },
+                {
+                    "description": "Cercle de BZ1 sur F.Silkscreen",
+                    "pos": {
+                        "x": 201.8,
+                        "y": 106.5
+                    },
+                    "uuid": "bb660b87-a0eb-485c-bdc3-a713b1c504dc"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de U5 sur F.Silkscreen",
+                    "pos": {
+                        "x": 196.16,
+                        "y": 92.57
+                    },
+                    "uuid": "918fdf94-a30e-4fb8-9451-64befd57fa08"
+                },
+                {
+                    "description": "Champ référence de C8",
+                    "pos": {
+                        "x": 198.8,
+                        "y": 93.0
+                    },
+                    "uuid": "fad61a08-6ddc-468e-9d5d-49f54f07c5ed"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Arc de U2 sur F.Silkscreen",
+                    "pos": {
+                        "x": 169.67,
+                        "y": 103.69
+                    },
+                    "uuid": "3d6d2f27-b1b0-41f7-9757-f3d535251ddc"
+                },
+                {
+                    "description": "Champ référence de C5",
+                    "pos": {
+                        "x": 169.9,
+                        "y": 103.0
+                    },
+                    "uuid": "9db961e0-3cf5-4dc6-b998-55e68c1b039f"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de RV1 sur F.Silkscreen",
+                    "pos": {
+                        "x": 148.71,
+                        "y": 124.135
+                    },
+                    "uuid": "6c12e5ff-e3ee-4e41-8af1-2cdb094c4ca0"
+                },
+                {
+                    "description": "Champ référence de R12",
+                    "pos": {
+                        "x": 149.27,
+                        "y": 116.31
+                    },
+                    "uuid": "6e1cb412-5ded-4c0b-95ee-089e995b6c7b"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de R11",
+                    "pos": {
+                        "x": 146.07,
+                        "y": 116.31
+                    },
+                    "uuid": "4dc2908c-7283-4ef5-a1c7-7106da65155a"
+                },
+                {
+                    "description": "Segment de R12 sur F.Silkscreen",
+                    "pos": {
+                        "x": 145.53,
+                        "y": 113.04
+                    },
+                    "uuid": "d7a3ff70-9469-4305-a996-5aef615d1fdd"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de D2",
+                    "pos": {
+                        "x": 142.26,
+                        "y": 119.77
+                    },
+                    "uuid": "0f9b1706-685e-415f-a280-c9cc204f6ad6"
+                },
+                {
+                    "description": "Segment de R11 sur F.Silkscreen",
+                    "pos": {
+                        "x": 142.33,
+                        "y": 119.58
+                    },
+                    "uuid": "7badf6cc-53a4-4af4-a785-813049683c97"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de D2",
+                    "pos": {
+                        "x": 142.26,
+                        "y": 119.77
+                    },
+                    "uuid": "0f9b1706-685e-415f-a280-c9cc204f6ad6"
+                },
+                {
+                    "description": "Segment de R11 sur F.Silkscreen",
+                    "pos": {
+                        "x": 142.33,
+                        "y": 113.04
+                    },
+                    "uuid": "65bae69e-0c9a-451d-8d9b-6ac1358c70e5"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de R11 sur F.Silkscreen",
+                    "pos": {
+                        "x": 142.33,
+                        "y": 113.04
+                    },
+                    "uuid": "65bae69e-0c9a-451d-8d9b-6ac1358c70e5"
+                },
+                {
+                    "description": "Champ référence de D1",
+                    "pos": {
+                        "x": 142.26,
+                        "y": 113.27
+                    },
+                    "uuid": "f7c9c3a5-e519-4e87-9ece-04f866a33db3"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de R11 sur F.Silkscreen",
+                    "pos": {
+                        "x": 142.66,
+                        "y": 113.04
+                    },
+                    "uuid": "eea75e0a-522b-402e-bbbd-b69f76df6e6d"
+                },
+                {
+                    "description": "Champ référence de D1",
+                    "pos": {
+                        "x": 142.26,
+                        "y": 113.27
+                    },
+                    "uuid": "f7c9c3a5-e519-4e87-9ece-04f866a33db3"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de BAR3 sur F.Silkscreen",
+                    "pos": {
+                        "x": 136.67,
+                        "y": 120.81
+                    },
+                    "uuid": "adb86e07-b1bb-4f37-abc8-adb8ebaa1507"
+                },
+                {
+                    "description": "Champ référence de R7",
+                    "pos": {
+                        "x": 131.81,
+                        "y": 121.03
+                    },
+                    "uuid": "b14046aa-c0ed-439b-b02b-b1f73e1eb1c3"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de R17 sur F.Silkscreen",
+                    "pos": {
+                        "x": 129.43,
+                        "y": 94.54
+                    },
+                    "uuid": "095ed0e2-7672-46d6-9b22-09fcb41cc88d"
+                },
+                {
+                    "description": "Champ référence de R16",
+                    "pos": {
+                        "x": 129.97,
+                        "y": 97.81
+                    },
+                    "uuid": "1c250c19-05f7-4327-9e7c-682d5d9be140"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de R16 sur F.Silkscreen",
+                    "pos": {
+                        "x": 126.23,
+                        "y": 94.54
+                    },
+                    "uuid": "64dcc85e-c801-4da3-b70e-7554649701aa"
+                },
+                {
+                    "description": "Champ référence de R15",
+                    "pos": {
+                        "x": 126.77,
+                        "y": 97.81
+                    },
+                    "uuid": "8478c557-e854-4e1f-8bce-160af7af2675"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de R15 sur F.Silkscreen",
+                    "pos": {
+                        "x": 123.03,
+                        "y": 94.54
+                    },
+                    "uuid": "3e27ce17-f9d1-457b-b707-9eabc238d785"
+                },
+                {
+                    "description": "Champ référence de R14",
+                    "pos": {
+                        "x": 123.57,
+                        "y": 97.81
+                    },
+                    "uuid": "f6c57ec0-c566-4f76-a6b3-15add78bede9"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de U2",
+                    "pos": {
+                        "x": 168.67,
+                        "y": 103.69
+                    },
+                    "uuid": "8f2527ad-b75e-44c9-95e2-163acf2af524"
+                },
+                {
+                    "description": "Segment de C5 sur F.Silkscreen",
+                    "pos": {
+                        "x": 168.77,
+                        "y": 100.38
+                    },
+                    "uuid": "ef29d1f9-583d-4db4-8aa9-fab834b95581"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de U2 sur F.Silkscreen",
+                    "pos": {
+                        "x": 169.67,
+                        "y": 101.04
+                    },
+                    "uuid": "899143f9-2326-4cdd-b434-25840a5aebb6"
+                },
+                {
+                    "description": "Champ référence de C5",
+                    "pos": {
+                        "x": 169.9,
+                        "y": 103.0
+                    },
+                    "uuid": "9db961e0-3cf5-4dc6-b998-55e68c1b039f"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de U3",
+                    "pos": {
+                        "x": 197.31,
+                        "y": 44.17
+                    },
+                    "uuid": "ba0c6a62-51c0-435f-a9f6-b259dba9fc66"
+                },
+                {
+                    "description": "Segment de C6 sur F.Silkscreen",
+                    "pos": {
+                        "x": 200.12,
+                        "y": 44.57
+                    },
+                    "uuid": "c8797377-4dcf-4c41-938b-3a61e2c7a797"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C4 sur F.Silkscreen",
+                    "pos": {
+                        "x": 183.62,
+                        "y": 44.37
+                    },
+                    "uuid": "40472eb1-bad0-4521-9b85-43f06b74a190"
+                },
+                {
+                    "description": "Champ référence de U1",
+                    "pos": {
+                        "x": 181.12,
+                        "y": 44.17
+                    },
+                    "uuid": "fc1ace95-4119-40df-a416-9edd6961691f"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de J2 sur F.Silkscreen",
+                    "pos": {
+                        "x": 119.34,
+                        "y": 129.08
+                    },
+                    "uuid": "125d3d9f-5ec4-43d6-96f4-3b397622ceb3"
+                },
+                {
+                    "description": "Champ référence de J3",
+                    "pos": {
+                        "x": 119.32,
+                        "y": 127.7
+                    },
+                    "uuid": "7272d422-2875-4f46-9ac7-9f4e26ad1a50"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de C16",
+                    "pos": {
+                        "x": 115.1,
+                        "y": 70.24
+                    },
+                    "uuid": "447a9f5c-1d2e-4f0a-b55f-3eb1221736d3"
+                },
+                {
+                    "description": "Rectangle de R4 sur F.Silkscreen",
+                    "pos": {
+                        "x": 118.37,
+                        "y": 68.55
+                    },
+                    "uuid": "b988280b-9eb3-4b04-8a17-c6f6fdddea7b"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Texte empreinte de U10 (16)",
+                    "pos": {
+                        "x": 92.2,
+                        "y": 41.9
+                    },
+                    "uuid": "40b4dc27-a97c-40c6-8f76-c012af4ba337"
+                },
+                {
+                    "description": "Segment de C19 sur F.Silkscreen",
+                    "pos": {
+                        "x": 92.38,
+                        "y": 42.13
+                    },
+                    "uuid": "e6cd6289-9aee-44e1-9ce3-a91c8ce6c1be"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Texte empreinte de U10 (16)",
+                    "pos": {
+                        "x": 92.2,
+                        "y": 41.9
+                    },
+                    "uuid": "40b4dc27-a97c-40c6-8f76-c012af4ba337"
+                },
+                {
+                    "description": "Segment de C19 sur F.Silkscreen",
+                    "pos": {
+                        "x": 92.38,
+                        "y": 42.467
+                    },
+                    "uuid": "f9283f64-ce20-4f3f-b0ec-8b90388720d1"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de C17",
+                    "pos": {
+                        "x": 88.1,
+                        "y": 51.0
+                    },
+                    "uuid": "67fbe645-70cc-49b5-bf78-e707cb391d57"
+                },
+                {
+                    "description": "Segment de U15 sur F.Silkscreen",
+                    "pos": {
+                        "x": 87.67,
+                        "y": 48.66
+                    },
+                    "uuid": "f0245a4a-c9d0-4908-8322-08d5a438b672"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de R13",
+                    "pos": {
+                        "x": 120.37,
+                        "y": 97.81
+                    },
+                    "uuid": "a0905d5a-7643-4ad5-ad2c-9900fd3d8873"
+                },
+                {
+                    "description": "Segment de R14 sur F.Silkscreen",
+                    "pos": {
+                        "x": 119.83,
+                        "y": 94.54
+                    },
+                    "uuid": "c1bdd644-1d98-40d0-b18b-68c673fb156f"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de U6 sur F.Silkscreen",
+                    "pos": {
+                        "x": 122.16,
+                        "y": 88.43
+                    },
+                    "uuid": "1409072a-bd30-47c1-9b22-61c4f26bff52"
+                },
+                {
+                    "description": "Champ référence de C9",
+                    "pos": {
+                        "x": 124.0,
+                        "y": 88.7
+                    },
+                    "uuid": "15c2f984-ea71-4cb9-bc14-69cb4f087a8e"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de R3",
+                    "pos": {
+                        "x": 46.97,
+                        "y": 80.52
+                    },
+                    "uuid": "5e7a0184-707c-4471-a8f9-3747b251eb12"
+                },
+                {
+                    "description": "Segment de U12 sur F.Silkscreen",
+                    "pos": {
+                        "x": 47.17,
+                        "y": 75.86
+                    },
+                    "uuid": "cd1d56bc-07c7-44fa-99ba-f23a5eef9cae"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de R3",
+                    "pos": {
+                        "x": 46.97,
+                        "y": 80.52
+                    },
+                    "uuid": "5e7a0184-707c-4471-a8f9-3747b251eb12"
+                },
+                {
+                    "description": "Segment de U12 sur F.Silkscreen",
+                    "pos": {
+                        "x": 47.17,
+                        "y": 81.32
+                    },
+                    "uuid": "e85b6587-b02a-432f-b0b2-9718d443f253"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de U7 sur F.Silkscreen",
+                    "pos": {
+                        "x": 47.17,
+                        "y": 88.14
+                    },
+                    "uuid": "16be810b-931f-4276-bd93-9e772bafb315"
+                },
+                {
+                    "description": "Champ référence de C10",
+                    "pos": {
+                        "x": 47.7,
+                        "y": 90.48
+                    },
+                    "uuid": "da704765-0573-4670-9b14-09606e2db781"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de U12 sur F.Silkscreen",
+                    "pos": {
+                        "x": 47.17,
+                        "y": 68.4
+                    },
+                    "uuid": "1c912550-9dd5-4aa0-8410-eeeac8b66fca"
+                },
+                {
+                    "description": "Champ référence de C14",
+                    "pos": {
+                        "x": 47.7,
+                        "y": 70.74
+                    },
+                    "uuid": "629aa34f-f463-4a9e-abec-1c931b08487c"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de C15",
+                    "pos": {
+                        "x": 47.7,
+                        "y": 51.0
+                    },
+                    "uuid": "00412e50-ff95-4d2a-991e-40c9e10de4df"
+                },
+                {
+                    "description": "Segment de U13 sur F.Silkscreen",
+                    "pos": {
+                        "x": 47.17,
+                        "y": 48.66
+                    },
+                    "uuid": "3f2db1cb-f6ea-4462-a94e-4bbbc4748698"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de U13 sur F.Silkscreen",
+                    "pos": {
+                        "x": 47.17,
+                        "y": 56.12
+                    },
+                    "uuid": "2e1b49d2-2805-4d83-9198-e4eb944c6d90"
+                },
+                {
+                    "description": "Champ référence de R2",
+                    "pos": {
+                        "x": 46.97,
+                        "y": 60.78
+                    },
+                    "uuid": "38b9012b-e993-45c0-8ba1-c2809c4a78b2"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de R2",
+                    "pos": {
+                        "x": 46.97,
+                        "y": 60.78
+                    },
+                    "uuid": "38b9012b-e993-45c0-8ba1-c2809c4a78b2"
+                },
+                {
+                    "description": "Segment de U13 sur F.Silkscreen",
+                    "pos": {
+                        "x": 47.17,
+                        "y": 61.58
+                    },
+                    "uuid": "9ac16087-b63d-4993-a6a4-a94d100dd742"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de BAR1 sur F.Silkscreen",
+                    "pos": {
+                        "x": 84.27,
+                        "y": 120.81
+                    },
+                    "uuid": "d97c94fa-d4fd-404a-b6be-06280b859c96"
+                },
+                {
+                    "description": "Champ référence de R5",
+                    "pos": {
+                        "x": 81.81,
+                        "y": 121.03
+                    },
+                    "uuid": "dd85c071-dd14-4fee-9e43-62dc3ebc8839"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de BAR2",
+                    "pos": {
+                        "x": 83.83,
+                        "y": 118.93
+                    },
+                    "uuid": "62761bcc-0a0a-45bb-8ad5-625bd6084bcf"
+                },
+                {
+                    "description": "Segment de BAR1 sur F.Silkscreen",
+                    "pos": {
+                        "x": 84.27,
+                        "y": 110.37
+                    },
+                    "uuid": "c6087171-86ce-4e2d-b6cf-2c1c2bf0d354"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de J12",
+                    "pos": {
+                        "x": 99.62,
+                        "y": 136.6
+                    },
+                    "uuid": "09c249e9-be61-4622-948e-3b76ddb89d70"
+                },
+                {
+                    "description": "Segment de J11 sur F.Silkscreen",
+                    "pos": {
+                        "x": 99.36,
+                        "y": 137.98
+                    },
+                    "uuid": "0d579540-2483-4788-916c-f2f3fb3b71f0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de J1 sur F.Silkscreen",
+                    "pos": {
+                        "x": 92.74,
+                        "y": 129.08
+                    },
+                    "uuid": "68f7387e-3d88-4444-83b1-77fc8010a469"
+                },
+                {
+                    "description": "Champ référence de J2",
+                    "pos": {
+                        "x": 92.72,
+                        "y": 127.7
+                    },
+                    "uuid": "f3c07a4b-3731-4680-b021-c79c6a8b01c0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de R6",
+                    "pos": {
+                        "x": 108.01,
+                        "y": 121.03
+                    },
+                    "uuid": "09232b24-2412-4034-979f-528d8894b7bb"
+                },
+                {
+                    "description": "Segment de BAR2 sur F.Silkscreen",
+                    "pos": {
+                        "x": 110.47,
+                        "y": 120.81
+                    },
+                    "uuid": "726b1753-5da5-4573-9ae2-d4825cf76771"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de BAR3",
+                    "pos": {
+                        "x": 110.03,
+                        "y": 118.93
+                    },
+                    "uuid": "5c18fe69-fce4-4810-a33b-5221dbe43056"
+                },
+                {
+                    "description": "Segment de BAR2 sur F.Silkscreen",
+                    "pos": {
+                        "x": 110.47,
+                        "y": 110.37
+                    },
+                    "uuid": "fd1e23ad-ab8e-4ecd-9cac-9cee4d964954"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de J9",
+                    "pos": {
+                        "x": 119.12,
+                        "y": 136.6
+                    },
+                    "uuid": "1ef76057-6886-4a4e-8ba3-550abf83d9bc"
+                },
+                {
+                    "description": "Segment de J12 sur F.Silkscreen",
+                    "pos": {
+                        "x": 118.62,
+                        "y": 137.98
+                    },
+                    "uuid": "99f282fd-9a26-45af-ad3b-e82c676c33ba"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de D3",
+                    "pos": {
+                        "x": 44.27,
+                        "y": 121.64
+                    },
+                    "uuid": "5c88df80-a5ac-49c8-9d75-2ef16047fbca"
+                },
+                {
+                    "description": "Texte PCB '5V' surF.Silkscreen",
+                    "pos": {
+                        "x": 44.269999,
+                        "y": 121.699999
+                    },
+                    "uuid": "a4151cb8-ec65-43e9-b95e-7a04533cf253"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de R18 sur F.Silkscreen",
+                    "pos": {
+                        "x": 55.46,
+                        "y": 111.04
+                    },
+                    "uuid": "617aefbe-c818-4493-90e7-f067b86367fb"
+                },
+                {
+                    "description": "Champ référence de J4",
+                    "pos": {
+                        "x": 55.59,
+                        "y": 113.5
+                    },
+                    "uuid": "cdb46fae-6a6a-4730-88b5-f1827bc2be1c"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de BAR1 sur F.Silkscreen",
+                    "pos": {
+                        "x": 58.59,
+                        "y": 120.81
+                    },
+                    "uuid": "94cc5284-32a1-4a7d-9e9e-38cf351dee7f"
+                },
+                {
+                    "description": "Champ référence de R18",
+                    "pos": {
+                        "x": 59.2,
+                        "y": 114.31
+                    },
+                    "uuid": "9657041c-b99e-4968-91c4-477540e60f0b"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de R18 sur F.Silkscreen",
+                    "pos": {
+                        "x": 58.2,
+                        "y": 111.04
+                    },
+                    "uuid": "01c5cb0a-20e0-49a1-a7b3-b55696ce2f89"
+                },
+                {
+                    "description": "Champ référence de BAR1",
+                    "pos": {
+                        "x": 57.63,
+                        "y": 118.93
+                    },
+                    "uuid": "4fa4fceb-54eb-4860-99c5-35bc2759c333"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de BAR1",
+                    "pos": {
+                        "x": 57.63,
+                        "y": 118.93
+                    },
+                    "uuid": "4fa4fceb-54eb-4860-99c5-35bc2759c333"
+                },
+                {
+                    "description": "Segment de R18 sur F.Silkscreen",
+                    "pos": {
+                        "x": 58.2,
+                        "y": 117.58
+                    },
+                    "uuid": "fca09972-f0b3-4be0-9ebd-facb4f89fc4f"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.45,
+                        "y": 125.64
+                    },
+                    "uuid": "5f941036-6758-4d42-b88e-144b8e0f8b91"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.49,
+                        "y": 125.64
+                    },
+                    "uuid": "d93e4f93-cc79-49c1-9bc6-d1a6dd566792"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.53,
+                        "y": 125.64
+                    },
+                    "uuid": "cb9469b1-c3ce-44d7-b43a-66ae46622bd4"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.57,
+                        "y": 125.64
+                    },
+                    "uuid": "72f14d93-1850-404a-939c-8e06e21cc162"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.61,
+                        "y": 125.64
+                    },
+                    "uuid": "afd4b8dd-c51e-4de6-b277-3b9132238b24"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.65,
+                        "y": 125.64
+                    },
+                    "uuid": "d244b1c3-bbd3-47fc-8a59-d5c875a4f8e4"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.69,
+                        "y": 125.64
+                    },
+                    "uuid": "cf100f20-f229-4ec1-afdf-97ad4159896e"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.73,
+                        "y": 125.64
+                    },
+                    "uuid": "188071be-a2be-4feb-98f5-63efab0091d3"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.77,
+                        "y": 125.64
+                    },
+                    "uuid": "2804089f-1b89-4318-9f92-ea637fe22887"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.81,
+                        "y": 125.64
+                    },
+                    "uuid": "5c731202-30b5-4b24-bf29-2e9e2958d67d"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.85,
+                        "y": 125.64
+                    },
+                    "uuid": "5a9f8001-c898-436e-8fed-d549b0110d23"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.89,
+                        "y": 125.64
+                    },
+                    "uuid": "4e440025-2836-4b67-851d-3c572cbfc471"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.93,
+                        "y": 125.64
+                    },
+                    "uuid": "5a35e75a-65d4-4306-863b-aa9f95c486ea"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.97,
+                        "y": 125.64
+                    },
+                    "uuid": "e3da5341-23e1-48a7-b99d-2fbc806654df"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                },
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 64.01,
+                        "y": 125.64
+                    },
+                    "uuid": "f94d7369-ffe8-488f-9bae-5cfe9b8fadeb"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                },
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 64.05,
+                        "y": 125.64
+                    },
+                    "uuid": "ff9dd027-2278-4c8c-a592-9b4361042b75"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 64.09,
+                        "y": 125.64
+                    },
+                    "uuid": "a5a7bf36-12de-4bbe-837f-c3167adc4d49"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 64.13,
+                        "y": 125.64
+                    },
+                    "uuid": "d418224b-a4ec-423a-b3a5-4e870b4c25ca"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 64.17,
+                        "y": 125.64
+                    },
+                    "uuid": "dddfd900-cac7-422b-ac46-5ca954487b16"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.05,
+                        "y": 125.64
+                    },
+                    "uuid": "4e002dfb-6694-49bb-bbf6-9da7d8c2475c"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.09,
+                        "y": 125.64
+                    },
+                    "uuid": "26da70b8-39fc-45e9-b332-f3db75319e50"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.13,
+                        "y": 125.64
+                    },
+                    "uuid": "97061ce7-0b93-4459-a926-e1900fa645e2"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.17,
+                        "y": 125.64
+                    },
+                    "uuid": "a6f5d2e4-756c-4edc-86e5-592f3d056e42"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.21,
+                        "y": 125.64
+                    },
+                    "uuid": "6b6e88ba-1d55-4d0e-a749-3b5bd03fa84b"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.25,
+                        "y": 125.64
+                    },
+                    "uuid": "e7adbf8f-f035-4569-a594-a358635fe71b"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Cercle de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 62.45,
+                        "y": 124.6
+                    },
+                    "uuid": "30f6e273-e47c-4deb-8116-e52b2012a3db"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 64.21,
+                        "y": 125.64
+                    },
+                    "uuid": "0d5d2e24-668f-47a9-bcce-bcb6ae9af000"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 64.25,
+                        "y": 125.64
+                    },
+                    "uuid": "d653326c-24ce-4b02-90e6-790ee49f4385"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 64.29,
+                        "y": 125.64
+                    },
+                    "uuid": "aac27b63-6dde-4a4c-9a89-5f7c28cc8a22"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 64.33,
+                        "y": 125.64
+                    },
+                    "uuid": "2239677c-9995-44a6-b94c-5dac7ce5d7ec"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de C20 sur F.Silkscreen",
+                    "pos": {
+                        "x": 63.29,
+                        "y": 125.64
+                    },
+                    "uuid": "ce71d4f5-a50a-4c4b-a34c-7b742d5d44ea"
+                },
+                {
+                    "description": "Champ référence de J7",
+                    "pos": {
+                        "x": 63.5,
+                        "y": 127.62
+                    },
+                    "uuid": "f0f3b758-a938-4f94-978c-76b815c785a0"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de U16 sur F.Silkscreen",
+                    "pos": {
+                        "x": 197.57,
+                        "y": 134.84
+                    },
+                    "uuid": "02f4e4e4-60f4-465c-98c2-a14b88d07bfc"
+                },
+                {
+                    "description": "Texte PCB 'VE2CUY 2026 rev. A' surF.Silkscreen",
+                    "pos": {
+                        "x": 203.2,
+                        "y": 132.199999
+                    },
+                    "uuid": "259eb7e4-5155-4a30-af00-92cb323ad5b5"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de C18",
+                    "pos": {
+                        "x": 179.8,
+                        "y": 131.5
+                    },
+                    "uuid": "63155e48-c936-40d1-8ac1-3f0fcee990fa"
+                },
+                {
+                    "description": "Arc de U16 sur F.Silkscreen",
+                    "pos": {
+                        "x": 179.67,
+                        "y": 132.19
+                    },
+                    "uuid": "a685eb97-f08a-4d8d-a544-e3f4c4ec585c"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Champ référence de C18",
+                    "pos": {
+                        "x": 179.8,
+                        "y": 131.5
+                    },
+                    "uuid": "63155e48-c936-40d1-8ac1-3f0fcee990fa"
+                },
+                {
+                    "description": "Champ référence de U16",
+                    "pos": {
+                        "x": 178.67,
+                        "y": 132.19
+                    },
+                    "uuid": "d6e4ed7d-d073-4541-a8b0-75c79286842e"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clearance",
+            "items": [
+                {
+                    "description": "Segment de U16 sur F.Silkscreen",
+                    "pos": {
+                        "x": 179.67,
+                        "y": 129.54
+                    },
+                    "uuid": "5cbbca35-70a3-4b4f-8463-7bfcacbd1657"
+                },
+                {
+                    "description": "Champ référence de C18",
+                    "pos": {
+                        "x": 179.8,
+                        "y": 131.5
+                    },
+                    "uuid": "63155e48-c936-40d1-8ac1-3f0fcee990fa"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_overlap"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de J5",
+                    "pos": {
+                        "x": 135.62,
+                        "y": 136.6
+                    },
+                    "uuid": "8e3c5409-14de-4add-8906-036a41790e5d"
+                },
+                {
+                    "description": "Pad métallisé 6 [GND] de J9",
+                    "pos": {
+                        "x": 134.2,
+                        "y": 136.6
+                    },
+                    "uuid": "303859bb-bcd2-4c49-a6b9-a8db6eac7606"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de J3",
+                    "pos": {
+                        "x": 119.32,
+                        "y": 127.7
+                    },
+                    "uuid": "7272d422-2875-4f46-9ac7-9f4e26ad1a50"
+                },
+                {
+                    "description": "Pad métallisé 10 [GND] de J2",
+                    "pos": {
+                        "x": 117.96,
+                        "y": 127.7
+                    },
+                    "uuid": "5023187e-038b-4a16-a31b-4aa7cac96372"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de U15",
+                    "pos": {
+                        "x": 86.67,
+                        "y": 55.12
+                    },
+                    "uuid": "045bdba0-c235-46f7-8514-07600d10b07f"
+                },
+                {
+                    "description": "Pad métallisé 2 [GND] de C17",
+                    "pos": {
+                        "x": 85.6,
+                        "y": 53.5
+                    },
+                    "uuid": "c38c0ef6-03b1-48fb-bd69-caa3c993243d"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de U13",
+                    "pos": {
+                        "x": 46.17,
+                        "y": 55.12
+                    },
+                    "uuid": "488091e9-a82c-4328-95c6-3908caaa5329"
+                },
+                {
+                    "description": "Pad métallisé 2 [GND] de C15",
+                    "pos": {
+                        "x": 45.2,
+                        "y": 53.5
+                    },
+                    "uuid": "345ffe3f-7ee5-4be1-82c1-8debbfaebfc4"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de U12",
+                    "pos": {
+                        "x": 46.17,
+                        "y": 74.86
+                    },
+                    "uuid": "ebe3ec33-dcd6-4717-982e-9bc4bffe0c54"
+                },
+                {
+                    "description": "Pad métallisé 2 [GND] de C14",
+                    "pos": {
+                        "x": 45.2,
+                        "y": 73.24
+                    },
+                    "uuid": "28baaba0-36f1-4c92-9b77-20cd68af822e"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de J2",
+                    "pos": {
+                        "x": 92.72,
+                        "y": 127.7
+                    },
+                    "uuid": "f3c07a4b-3731-4680-b021-c79c6a8b01c0"
+                },
+                {
+                    "description": "Pad métallisé 10 [GND] de J1",
+                    "pos": {
+                        "x": 91.36,
+                        "y": 127.7
+                    },
+                    "uuid": "4e27d6c2-651f-46f4-ab2c-78312b6802fe"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de BAR2",
+                    "pos": {
+                        "x": 83.83,
+                        "y": 118.93
+                    },
+                    "uuid": "62761bcc-0a0a-45bb-8ad5-625bd6084bcf"
+                },
+                {
+                    "description": "Pad métallisé 10 [/PC4] de BAR1",
+                    "pos": {
+                        "x": 82.86,
+                        "y": 119.4
+                    },
+                    "uuid": "3dc4da44-26b6-47d2-b515-78507ca76910"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de BAR3",
+                    "pos": {
+                        "x": 110.03,
+                        "y": 118.93
+                    },
+                    "uuid": "5c18fe69-fce4-4810-a33b-5221dbe43056"
+                },
+                {
+                    "description": "Pad métallisé 10 [/PA2] de BAR2",
+                    "pos": {
+                        "x": 109.06,
+                        "y": 119.4
+                    },
+                    "uuid": "fad38de7-9c39-4d1a-a069-a879db359a8c"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de U7",
+                    "pos": {
+                        "x": 46.17,
+                        "y": 94.6
+                    },
+                    "uuid": "9b75c655-bd13-4498-84aa-db1b3a44979b"
+                },
+                {
+                    "description": "Pad métallisé 2 [GND] de C10",
+                    "pos": {
+                        "x": 45.2,
+                        "y": 92.98
+                    },
+                    "uuid": "7f313813-2b5a-48ec-8b41-df66cbfefb02"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de BAR1",
+                    "pos": {
+                        "x": 57.63,
+                        "y": 118.93
+                    },
+                    "uuid": "4fa4fceb-54eb-4860-99c5-35bc2759c333"
+                },
+                {
+                    "description": "Pad métallisé 2 [Net-(D3-A)] de R18",
+                    "pos": {
+                        "x": 56.83,
+                        "y": 118.12
+                    },
+                    "uuid": "a74ac285-ae73-47bd-b59f-b88d4f9c05ae"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        },
+        {
+            "description": "Silkscreen clipped by solder mask",
+            "items": [
+                {
+                    "description": "Champ référence de C20",
+                    "pos": {
+                        "x": 62.45,
+                        "y": 120.2
+                    },
+                    "uuid": "c5029ba5-3a08-4a4b-9907-ff16714cdbb9"
+                },
+                {
+                    "description": "Pad métallisé 2 [unconnected-(BAR1-A-Pad2)] de BAR1",
+                    "pos": {
+                        "x": 62.54,
+                        "y": 119.4
+                    },
+                    "uuid": "08677e19-debe-4566-a94d-e263ccc0b95f"
+                }
+            ],
+            "severity": "warning",
+            "type": "silk_over_copper"
+        }
+    ]
+}

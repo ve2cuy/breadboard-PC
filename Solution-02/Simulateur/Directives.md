@@ -30,3 +30,18 @@ Directives pour Claude
 * Produire une application testée et fonctionnelle
 * Générer une interface utilisateur hautement professionnelle et ergonomique.
 * Donner au visuel un look de laboratoire électronique
+
+
+## PCB
+
+### Produire un PCB pour solution-02
+
+* Produire un PCB le plus compacte possible
+* 2 couches
+* Respectant les contraintes de JLCPCB
+* Réaliser le routage
+* Tester toutes les traces et confirmer que la solution fonctionne
+* Me présenter le résultat
+* Ajouter le schéma au README
+* Ajouter le rendu 3D dur PCB avec ses composants
+* Prévoir des troues pour monter le LCD sur le PCB

@@ -1255,6 +1255,16 @@ function hex(v, n = 4) { return (v >>> 0).toString(16).toUpperCase().padStart(n,
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 $('btnFit').onclick = () => S.board.fit();
+// panneau du haut (LCD, DEL) : masquer / afficher ; le choix est retenu dans ce navigateur
+function setFrontPanel(show) {
+  document.body.classList.toggle('no-front', !show);
+  $('btnPanel').textContent = show ? '▴' : '▾';
+  $('btnPanel').classList.toggle('on', !show);
+  try { localStorage.setItem('s02.front', show ? '1' : '0'); } catch (e) { /* stockage indisponible */ }
+  setTimeout(() => { if (S.board) { onResize(); S.board.fit(); } }, 0);
+}
+$('btnPanel').onclick = () => setFrontPanel(document.body.classList.contains('no-front'));
+try { if (localStorage.getItem('s02.front') === '0') setFrontPanel(false); } catch (e) { /* stockage indisponible */ }
 $('btnZoomIn').onclick = () => S.board.zoom(1.3, S.board.cv.width / 2, S.board.cv.height / 2);
 $('btnZoomOut').onclick = () => S.board.zoom(1 / 1.3, S.board.cv.width / 2, S.board.cv.height / 2);
 $('chkAir').onchange = (e) => { S.board.showAir = e.target.checked; S.board.staticDirty = true; };

@@ -19,7 +19,13 @@ the processor drives its LCD and its memory directly.
   20 × 4 window on the LCD
 
 Schematic: [Solution02.kicad_sch](Solution02.kicad_sch).
+PCB: [Solution02.kicad_pcb](Solution02.kicad_pcb) (172 × 100 mm, 2 layers; see [PCB](#pcb)).
 Log of the steps: [Directives.md](Directives.md) (French).
+
+<p align="center">
+  <a href="medias/schema.png"><img src="medias/schema.png" alt="KiCad schematic of Solution-02: 8088, 82C84, latches, ROM, RAM, two 8255s, 8259, 8253, LCD, bar graphs, keyboard, UART, SD card, expansion headers, power and decoupling" width="900"></a><br>
+  <em>Solution-02 schematic (click to enlarge).</em>
+</p>
 
 ## Memory map
 
@@ -894,6 +900,67 @@ PA7 (UART TX).
 by O4 or O5 of the 74LS138 would give ~50–100 KB/s, at the cost of 3 or 4 chips and a
 decoding with RD#/WR# (as for the LCD). Start with the U12 version: 4 wires and a module.
 
+## PCB
+
+<p align="center">
+  <img src="medias/pcb-3d.jpg" alt="3D render of the Solution-02 PCB with its components: 20×4 LCD above the chips, ROM ZIF socket, 8088, bar graphs, connectors" width="800"><br>
+  <em>The PCB with its components (KiCad 3D render): 172 × 100 mm.</em>
+</p>
+
+A **172 × 100 mm** board, 2 layers, 1.6 mm, through-hole parts only, routed and verified:
+[Solution02.kicad_pcb](Solution02.kicad_pcb). The fabrication files for JLCPCB (Gerbers, drills,
+zip, reports) are in [fabrication/](fabrication/README.md).
+
+**Compactness.** The LCD module (98 × 60 mm) is mounted **above the chips**, on a 1 × 16 female
+header and four 12 mm M3 standoffs (holes at 93 × 55 mm). Underneath: the RAM, both 8255s, the
+8259, the 8253, two 74xx chips and resistors. What you look at or touch stays uncovered: the 8088
+(or V20), the ROM in its ZIF socket, the bar graphs right below the screen, the indicators, the
+RESET button, the contrast trimmer and all the connectors.
+
+<p align="center">
+  <img src="medias/pcb-3d-sans-lcd.jpg" alt="The same PCB without the LCD module: RAM, 8255s, 8259, 8253 and 74xx chips under the screen area" width="800"><br>
+  <em>Without the LCD module: the chips housed under the screen.</em>
+</p>
+
+| Area | Components |
+|---|---|
+| Under the LCD (top left corner) | U13 (8259), U15 (8253), U12 and U7 (8255), U6 (RAM), U14, U9, pull-up resistors |
+| Below the screen, visible | BAR1–BAR3 (PC7 … PB0 from left to right), RN1–RN3, indicators D1 (A:), D2 (C:) |
+| Right of the LCD | U4 (ROM, ZIF socket), U1 (8088), U3, U5, J10 (bus) on the right edge |
+| Below the ROM and the 8088 | U2, U11 + crystal, RESET, contrast (RV1), piezo, U8, U16 |
+| Bottom edge | J11 (U7 ports), J12 (free IRQs), J9 (SD card), J5 (UART), J1–J3 (LEDs) |
+| Bottom left corner | J4 (keyboard, USB-A), J6 (5 V jack), J7 (+5 V / GND), indicator D3 |
+
+**Schematic additions for the PCB**: power (J6, regulated 5 V center-positive barrel jack; J7;
+C20 100 µF; indicator D3 + R18), decoupling (C4–C19, 100 nF, one per IC and one at the LCD),
+footprints for the parts that had none (ZIF socket for U4), project-specific footprint and 3D
+model of the 2004A LCD module (`Solution02.pretty`, `Solution02.3dshapes`). The bar graph pads
+are reduced to 1.6 mm: those of the KiCad footprint (2.03 mm) let no track pass between two pins.
+**The supply must be regulated 5 V**: there is no regulator and no reverse-polarity protection.
+
+**Routing** (Freerouting, scripted placement: `pcb/place.py`): 0.2 mm tracks (0.6 mm for +5 V and
+ground), 0.18 mm spacing, 0.8 / 0.4 mm vias, ground planes on both sides; 15.5 m of tracks,
+227 vias. On the back, the silkscreen gives the J10 and J11 pinouts.
+
+<p align="center">
+  <img src="medias/pcb-routage.png" alt="PCB routing: top copper in red, bottom copper in blue, silkscreen" width="800"><br>
+  <em>Routing: top copper in red, bottom copper in blue.</em>
+</p>
+
+**Checks** (details in [fabrication/](fabrication/README.md)):
+
+- KiCad DRC with schematic/PCB parity: 0 errors, 0 unconnected items, 0 mismatches;
+- independent check of every trace (`pcb/verif_pistes.py`), from the copper geometry alone: each
+  of the 142 nets to connect is continuous, no short, smallest measured spacing 0.182 mm;
+- the netlist extracted from the copper is the schematic's (183 nets, 685 pins) and, for the
+  57 original components, the one the [simulator](Simulateur/README.md) runs: the board is wired
+  like the build that boots the BIOS and DOS;
+- JLCPCB limits met (track ≥ 0.127 mm, spacing ≥ 0.127 mm, vias, edges).
+
+**To check before ordering**: the dimensions of your LCD module (header at 10 mm from the left edge
+and 2.5 mm from the top edge, holes at 93 × 55 mm) and the height under the module (12 mm
+standoffs: machined or low-profile sockets under the screen). The board has not been fabricated yet.
+
 ## Simulator
 
 Online: <https://ve2cuy.github.io/breadboard-PC/> (published by `Simulateur/publier.ps1`).
@@ -923,6 +990,7 @@ files).
 
 ## Status
 
+- 2026-11-17: **PCB**, 172 × 100 mm, 2 layers, routed and verified (DRC with parity, independent trace check, copper netlist = schematic = simulator); LCD mounted above the chips; schematic completed (power J6/J7/C20/D3, decoupling C4–C19, footprints); JLCPCB fabrication files in `fabrication/`. Not fabricated yet.
 - 2026-11-17: schematic: expansion headers J10 (2 × 20, 8088 bus), J11 (2 × 13, ports of 8255 U7) and J12 (1 × 7, IR2/IR3/IR5/IR6/IR7 of the 8259, pulled down by R13–R17); simulator: IRQ tab (enable, trigger, "INT XX Triggered"), more compact oscilloscope.
 - 2026-11-17: BIOS 2.4 in French and English: menu 7) = LED animations ON/OFF, more robust keyboard (an unreadable frame clears the F0/E0 prefixes); Rust/WebAssembly simulator published on GitHub Pages. English BIOS burned.
 - 2026-11-16: BIOS 2.3: menu 2) = exhaustive RAM test of Solution-01 (Trace, MAP, Loop; UART and LCD), address lines first; startup test unchanged. Burned.
@@ -964,5 +1032,5 @@ files).
 - 2026-11-13: working build with an **NMOS 8088** and the **74HC573s
   without pull-up resistors** (cause of the first failures: A8–A10 not
   connected). The 4 lines display and the counter increments.
-- To add to the schematic: decoupling capacitors (100 nF per integrated
-  circuit) and a power connector.
+- Decoupling capacitors (100 nF per integrated circuit) and power
+  connector: added to the schematic with the PCB (2026-11-17).

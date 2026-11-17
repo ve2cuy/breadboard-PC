@@ -19,7 +19,13 @@ le processeur pilote directement son LCD et sa mémoire.
   logicielles, écran DOS de 24 × 80 vu par une fenêtre de 20 × 4 sur le LCD
 
 Schéma : [Solution02.kicad_sch](Solution02.kicad_sch).
+PCB : [Solution02.kicad_pcb](Solution02.kicad_pcb) (172 × 100 mm, 2 couches ; voir [PCB](#pcb)).
 Journal des étapes : [Directives.md](Directives.md).
+
+<p align="center">
+  <a href="medias/schema.png"><img src="medias/schema.png" alt="Schéma KiCad de Solution-02 : 8088, 82C84, verrous, ROM, RAM, deux 8255, 8259, 8253, LCD, bargraphes, clavier, UART, carte SD, connecteurs d'extension, alimentation et découplage" width="900"></a><br>
+  <em>Schéma de Solution-02 (cliquer pour l'agrandir).</em>
+</p>
 
 ## Carte mémoire
 
@@ -982,6 +988,69 @@ donnerait ~50–100 Ko/s, au prix de 3 ou 4 puces et d'un décodage avec
 RD#/WR# (comme pour le LCD). Commencer par la version sur U12 : 4 fils et
 un module.
 
+## PCB
+
+<p align="center">
+  <img src="medias/pcb-3d.jpg" alt="Rendu 3D du PCB de Solution-02 avec ses composants : LCD 20×4 au-dessus des circuits, support ZIF de la ROM, 8088, bargraphes, connecteurs" width="800"><br>
+  <em>Le PCB avec ses composants (rendu 3D de KiCad) : 172 × 100 mm.</em>
+</p>
+
+Carte de **172 × 100 mm**, 2 couches, 1,6 mm, entièrement en composants traversants, routée et
+vérifiée : [Solution02.kicad_pcb](Solution02.kicad_pcb). Le dossier de fabrication pour JLCPCB
+(Gerber, perçages, zip, rapports) est dans [fabrication/](fabrication/README_fr.md).
+
+**Compacité.** Le module LCD (98 × 60 mm) est monté **au-dessus des circuits**, sur une barrette
+femelle 1 × 16 et quatre entretoises M3 de 12 mm (trous à 93 × 55 mm). Dessous : la RAM, les deux
+8255, le 8259, la 8253, deux 74xx et des résistances. Reste à découvert ce qu'on regarde ou qu'on
+touche : le 8088 (ou le V20), la ROM sur son support ZIF, les bargraphes juste sous l'écran, les
+voyants, le bouton RESET, le réglage du contraste et tous les connecteurs.
+
+<p align="center">
+  <img src="medias/pcb-3d-sans-lcd.jpg" alt="Le même PCB sans le module LCD : RAM, 8255, 8259, 8253 et 74xx sous l'emplacement de l'écran" width="800"><br>
+  <em>Sans le module LCD : les circuits logés sous l'écran.</em>
+</p>
+
+| Zone | Composants |
+|---|---|
+| Sous le LCD (coin supérieur gauche) | U13 (8259), U15 (8253), U12 et U7 (8255), U6 (RAM), U14, U9, résistances de tirage |
+| Sous l'écran, visibles | BAR1–BAR3 (PC7 … PB0 de gauche à droite), RN1–RN3, voyants D1 (A:), D2 (C:) |
+| À droite du LCD | U4 (ROM, support ZIF), U1 (8088), U3, U5, J10 (bus) au bord droit |
+| Sous la ROM et le 8088 | U2, U11 + quartz, RESET, contraste (RV1), piézo, U8, U16 |
+| Bord inférieur | J11 (ports de U7), J12 (IRQ libres), J9 (carte SD), J5 (UART), J1–J3 (DEL) |
+| Coin inférieur gauche | J4 (clavier, USB-A), J6 (jack 5 V), J7 (+5 V / GND), voyant D3 |
+
+**Ajouts au schéma pour le PCB** : alimentation (J6, jack 5 V régulé à centre positif ; J7 ;
+C20 100 µF ; voyant D3 + R18), découplage (C4–C19, 100 nF, un par circuit intégré et un au LCD),
+empreintes des composants qui n'en avaient pas (support ZIF pour U4), empreinte et modèle 3D du
+module LCD 2004A propres au projet (`Solution02.pretty`, `Solution02.3dshapes`). Les pastilles des
+bargraphes sont réduites à 1,6 mm : celles de l'empreinte de KiCad (2,03 mm) ne laissent passer
+aucune piste entre deux broches. **L'alimentation doit être de 5 V régulés** : il n'y a ni
+régulateur ni protection contre l'inversion.
+
+**Routage** (Freerouting, placement fait par script : `pcb/place.py`) : pistes de 0,2 mm (0,6 mm
+pour le +5 V et la masse), isolement de 0,18 mm, vias de 0,8 / 0,4 mm, plans de masse sur les deux
+faces ; 15,5 m de pistes, 227 vias. Au verso, la sérigraphie donne le brochage de J10 et de J11.
+
+<p align="center">
+  <img src="medias/pcb-routage.png" alt="Routage du PCB : cuivre du dessus en rouge, du dessous en bleu, sérigraphie" width="800"><br>
+  <em>Routage : cuivre du dessus en rouge, du dessous en bleu.</em>
+</p>
+
+**Vérifications** (détail dans [fabrication/](fabrication/README_fr.md)) :
+
+- DRC de KiCad avec parité schéma/PCB : 0 erreur, 0 liaison manquante, 0 écart ;
+- contrôle indépendant de toutes les pistes (`pcb/verif_pistes.py`), à partir de la seule géométrie
+  du cuivre : chacun des 142 nets à relier est continu, aucun court-circuit, isolement minimal
+  mesuré de 0,182 mm ;
+- la netliste extraite du cuivre est celle du schéma (183 nets, 685 broches) et, pour les
+  57 composants d'origine, celle que le [simulateur](Simulateur/README_fr.md) exécute : la carte est
+  câblée comme le montage qui démarre le BIOS et le DOS ;
+- limites de JLCPCB respectées (piste ≥ 0,127 mm, isolement ≥ 0,127 mm, vias, bords).
+
+**À vérifier avant de commander** : les cotes de votre module LCD (barrette à 10 mm du bord gauche
+et 2,5 mm du bord supérieur, trous à 93 × 55 mm) et la hauteur sous le module (12 mm d'entretoise :
+supports tulipe ou à profil bas sous l'écran). La carte n'a pas encore été fabriquée.
+
 ## Simulateur
 
 En ligne : <https://ve2cuy.github.io/breadboard-PC/> (publié par `Simulateur/publier.ps1`).
@@ -1010,6 +1079,7 @@ Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 f
 
 ## État
 
+- 2026-11-17 : **PCB** de 172 × 100 mm, 2 couches, routé et vérifié (DRC avec parité, contrôle indépendant des pistes, netliste du cuivre = schéma = simulateur) ; LCD monté au-dessus des circuits ; schéma complété (alimentation J6/J7/C20/D3, découplage C4–C19, empreintes) ; dossier de fabrication JLCPCB dans `fabrication/`. Pas encore fabriqué.
 - 2026-11-17 : schéma : connecteurs d'extension J10 (2 × 20, bus du 8088), J11 (2 × 13, ports du 8255 U7) et J12 (1 × 7, IR2/IR3/IR5/IR6/IR7 du 8259, tirées à la masse par R13–R17) ; simulateur : onglet IRQ (activer, déclencher, « INT XX Déclenchée »), oscilloscope plus compact.
 - 2026-11-17 : BIOS 2.4 en français et en anglais : menu 7) = animations des DEL ON/OFF, clavier plus robuste (une trame illisible efface les préfixes F0/E0) ; simulateur Rust/WebAssembly publié sur GitHub Pages. BIOS anglais gravé.
 - 2026-11-16 : BIOS 2.3 : menu 2) = test RAM exhaustif de Solution-01 (Trace, MAP, Loop ; UART et LCD), lignes d'adresse d'abord ; test du démarrage inchangé. Gravé.
@@ -1051,5 +1121,5 @@ Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 f
 - 2026-11-13 : montage fonctionnel avec un **8088 NMOS** et les **74HC573
   sans résistances de tirage** (cause des premiers échecs : A8–A10 non
   reliées). Les 4 lignes s'affichent et le compteur s'incrémente.
-- À ajouter au schéma : condensateurs de découplage (100 nF par circuit
-  intégré) et connecteur d'alimentation.
+- Condensateurs de découplage (100 nF par circuit intégré) et connecteur
+  d'alimentation : ajoutés au schéma avec le PCB (2026-11-17).

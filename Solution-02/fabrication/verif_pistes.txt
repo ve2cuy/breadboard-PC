@@ -1,0 +1,9 @@
+Controle independant des pistes : Solution02.kicad_pcb
+  cuivre : 688 pastilles, 4247 segments de piste, 227 vias ; plans de masse ignores
+  netliste du schema : 183 nets, dont 142 a relier (2 broches ou plus), 685 broches
+1. Continuite : 0 net(s) coupe(s) ; courts-circuits : 0 ; cuivre sans net : 0
+2. Isolement minimal entre nets differents : 0.182 mm (via [/D6] / piste [/D4])
+3. Netliste extraite du cuivre identique a celle du schema : OUI
+   longueur totale des pistes : 15480 mm ; largeur minimale : 0.13 mm ; alimentation (+5V, GND) : 0.45 mm minimum
+   nets les plus longs : GND 925 mm, +5V 770 mm, /D1 339 mm, /A1 320 mm, /D0 309 mm, /A0 296 mm
+RESULTAT : CONFORME

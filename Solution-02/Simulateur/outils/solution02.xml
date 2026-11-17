@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <export version="E">
   <design>
-    <source>C:\Users\alin_\github\breadboard-PC\Solution-02\Solution02.kicad_sch</source>
-    <date>2026-11-17T12:23:31</date>
+    <source>c:\Users\alin_\github\breadboard-PC\Solution-02\Solution02.kicad_sch</source>
+    <date>2026-11-17T13:56:42</date>
     <tool>Eeschema 10.0.5</tool>
     <sheet number="1" name="/" tstamps="/">
       <title_block>
@@ -176,8 +176,9 @@
     </comp>
     <comp ref="C1">
       <value>10u</value>
+      <footprint>Capacitor_THT:CP_Radial_D5.0mm_P2.50mm</footprint>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Capacitor_THT:CP_Radial_D5.0mm_P2.50mm</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
@@ -199,8 +200,9 @@
     </comp>
     <comp ref="C2">
       <value>27p</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
@@ -222,8 +224,9 @@
     </comp>
     <comp ref="C3">
       <value>27p</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
@@ -234,6 +237,414 @@
       <property name="ki_fp_filters" value="C_*"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>7e6ba7b1-adb1-4a1f-8ea5-d1f8db25426f</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C4">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>cf9fbf94-1d28-4901-bb57-35979bde150f</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C5">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>20ef18af-4ed3-4a38-ac87-1169d05051ed</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C6">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>d71a12be-86d1-4232-8e9a-79408868c58b</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C7">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>918774a2-0afa-4890-b150-f03d39ed0526</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C8">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>b1464ec0-7b3d-4238-9106-088c52906752</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C9">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>9582d9c4-9580-4ad6-8e20-7e9b5f76a528</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C10">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>bfa7775f-a22c-48a6-94de-b7186408f323</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C11">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>9fdc599d-cd2a-436d-a5a3-bbd7bc72c74d</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C12">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>5a81d17e-40e0-4341-b69d-e7b614d4ed0d</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C13">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>8f0d98cd-43b4-41fa-aa4e-82da8a618f45</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C14">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>819459fa-a350-4611-b1ab-542dba034568</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C15">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>43906b7b-0063-4e3a-be77-64b02b0780b9</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C16">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>d64f787e-0ef8-487f-9bbe-dc8ac1bc6316</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C17">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>828ecd56-c5a1-4df6-9a0a-1431a4a2a71e</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C18">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>b97d3fd0-2909-4aed-9c08-3f1911ebf32c</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C19">
+      <value>100n</value>
+      <footprint>Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P5.00mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C" description="Unpolarized capacitor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="C_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>b7e2a758-48df-45fb-a166-f530347e3034</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="C20">
+      <value>100u</value>
+      <footprint>Capacitor_THT:CP_Radial_D6.3mm_P2.50mm</footprint>
+      <fields>
+        <field name="Footprint">Capacitor_THT:CP_Radial_D6.3mm_P2.50mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="C_Polarized_Small" description="Polarized capacitor, small symbol"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="cap capacitor"/>
+      <property name="ki_fp_filters" value="CP_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>cd847135-7a0c-4edc-b222-ce6c046be6d4</tstamps>
       <units>
         <unit name="A">
           <pins>
@@ -282,6 +693,30 @@
       <property name="ki_fp_filters" value="LED* LED_SMD:* LED_THT:*"/>
       <sheetpath names="/" tstamps="/"/>
       <tstamps>82b71a90-f2bf-4348-be66-bd0c21ebe75b</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="D3">
+      <value>DEL +5V</value>
+      <footprint>LED_THT:LED_D3.0mm</footprint>
+      <fields>
+        <field name="Footprint">LED_THT:LED_D3.0mm</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="LED" description="Light emitting diode"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="LED diode"/>
+      <property name="ki_fp_filters" value="LED* LED_SMD:* LED_THT:*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>97df8f1e-6884-4661-907b-d0b68bc6df58</tstamps>
       <units>
         <unit name="A">
           <pins>
@@ -435,6 +870,55 @@
             <pin num="1"/>
             <pin num="2"/>
             <pin num="3"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="J6">
+      <value>ALIM 5V</value>
+      <footprint>Connector_BarrelJack:BarrelJack_Horizontal</footprint>
+      <fields>
+        <field name="Footprint">Connector_BarrelJack:BarrelJack_Horizontal</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Connector" part="Barrel_Jack_Switch" description="DC Barrel Jack with an internal switch"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="DC power barrel jack connector"/>
+      <property name="ki_fp_filters" value="BarrelJack*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>1b36479e-c7fa-4304-b50e-158d415953ff</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="3"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
+    <comp ref="J7">
+      <value>+5V GND</value>
+      <footprint>Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</footprint>
+      <fields>
+        <field name="Footprint">Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Connector_Generic" part="Conn_01x02" description="Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="connector"/>
+      <property name="ki_fp_filters" value="Connector*:*_1x??_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>a5724b58-9bac-473d-a36d-2f42aadb9b00</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
           </pins>
         </unit>
       </units>
@@ -608,8 +1092,9 @@
     </comp>
     <comp ref="R1">
       <value>10k</value>
+      <footprint>Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal</footprint>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
@@ -1013,6 +1498,30 @@
         </unit>
       </units>
     </comp>
+    <comp ref="R18">
+      <value>1k</value>
+      <footprint>Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal</footprint>
+      <fields>
+        <field name="Footprint">Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal</field>
+        <field name="Datasheet"/>
+        <field name="Description"/>
+      </fields>
+      <libsource lib="Device" part="R" description="Resistor"/>
+      <property name="Sheetname" value="Solution02"/>
+      <property name="Sheetfile" value="Solution02.kicad_sch"/>
+      <property name="ki_keywords" value="R res resistor"/>
+      <property name="ki_fp_filters" value="R_*"/>
+      <sheetpath names="/" tstamps="/"/>
+      <tstamps>a1820221-a319-4e96-8575-43c3044379e0</tstamps>
+      <units>
+        <unit name="A">
+          <pins>
+            <pin num="1"/>
+            <pin num="2"/>
+          </pins>
+        </unit>
+      </units>
+    </comp>
     <comp ref="RN1">
       <value>390</value>
       <footprint>Resistor_THT:R_Array_SIP10</footprint>
@@ -1111,8 +1620,9 @@
     </comp>
     <comp ref="RV1">
       <value>R_Potentiometer</value>
+      <footprint>Potentiometer_THT:Potentiometer_Bourns_3386P_Vertical</footprint>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Potentiometer_THT:Potentiometer_Bourns_3386P_Vertical</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
@@ -1135,8 +1645,9 @@
     </comp>
     <comp ref="SW1">
       <value>RESET</value>
+      <footprint>Button_Switch_THT:SW_PUSH_6mm</footprint>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Button_Switch_THT:SW_PUSH_6mm</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
@@ -1220,9 +1731,10 @@
     </comp>
     <comp ref="U2">
       <value>74HC573</value>
+      <footprint>Package_DIP:DIP-20_W7.62mm</footprint>
       <datasheet>74xx/74hc573.pdf</datasheet>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Package_DIP:DIP-20_W7.62mm</field>
         <field name="Datasheet">74xx/74hc573.pdf</field>
         <field name="Description"/>
       </fields>
@@ -1262,9 +1774,10 @@
     </comp>
     <comp ref="U3">
       <value>74HC573</value>
+      <footprint>Package_DIP:DIP-20_W7.62mm</footprint>
       <datasheet>74xx/74hc573.pdf</datasheet>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Package_DIP:DIP-20_W7.62mm</field>
         <field name="Datasheet">74xx/74hc573.pdf</field>
         <field name="Description"/>
       </fields>
@@ -1304,8 +1817,9 @@
     </comp>
     <comp ref="U4">
       <value>29C020</value>
+      <footprint>Socket:DIP_Socket-32_W11.9mm_W12.7mm_W15.24mm_W17.78mm_W18.5mm_3M_232-1285-00-0602J</footprint>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Socket:DIP_Socket-32_W11.9mm_W12.7mm_W15.24mm_W17.78mm_W18.5mm_3M_232-1285-00-0602J</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
@@ -1356,9 +1870,10 @@
     </comp>
     <comp ref="U5">
       <value>74LS00</value>
+      <footprint>Package_DIP:DIP-14_W7.62mm</footprint>
       <datasheet>http://www.ti.com/lit/gpn/sn74hct00</datasheet>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Package_DIP:DIP-14_W7.62mm</field>
         <field name="Datasheet">http://www.ti.com/lit/gpn/sn74hct00</field>
         <field name="Description"/>
       </fields>
@@ -1368,7 +1883,7 @@
       <property name="ki_keywords" value="TTL nand 2-input"/>
       <property name="ki_fp_filters" value="DIP*W7.62mm* SO14*"/>
       <sheetpath names="/" tstamps="/"/>
-      <tstamps>d2b287bc-2f46-4c35-bfa6-97b6a4a32736 ec13d830-67f1-4408-9fd2-96be273e8b39 c99db9f3-3b5c-42fb-950a-bd5c7323cae5 c0650eb2-979b-4bda-ab40-56676fbfe3b8 04facc9c-a234-4b79-b939-a9e57196cf61</tstamps>
+      <tstamps>ec13d830-67f1-4408-9fd2-96be273e8b39 c99db9f3-3b5c-42fb-950a-bd5c7323cae5 d2b287bc-2f46-4c35-bfa6-97b6a4a32736 c0650eb2-979b-4bda-ab40-56676fbfe3b8 04facc9c-a234-4b79-b939-a9e57196cf61</tstamps>
       <units>
         <unit name="A">
           <pins>
@@ -1524,8 +2039,9 @@
     </comp>
     <comp ref="U8">
       <value>74LS138</value>
+      <footprint>Package_DIP:DIP-16_W7.62mm</footprint>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Package_DIP:DIP-16_W7.62mm</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
@@ -1614,10 +2130,10 @@
     </comp>
     <comp ref="U10">
       <value>LCD 4x20</value>
-      <footprint>Display:NHD-0420H1Z</footprint>
+      <footprint>Solution02:LCD_2004A</footprint>
       <datasheet>http://www.newhavendisplay.com/specs/NHD-0420H1Z-FSW-GBW-33V3.pdf</datasheet>
       <fields>
-        <field name="Footprint">Display:NHD-0420H1Z</field>
+        <field name="Footprint">Solution02:LCD_2004A</field>
         <field name="Datasheet">http://www.newhavendisplay.com/specs/NHD-0420H1Z-FSW-GBW-33V3.pdf</field>
         <field name="Description"/>
       </fields>
@@ -1818,7 +2334,7 @@
       <property name="ki_keywords" value="HCMOS not inverter"/>
       <property name="ki_fp_filters" value="DIP*W7.62mm*"/>
       <sheetpath names="/" tstamps="/"/>
-      <tstamps>81c0a08e-4f5f-4ca7-a9a9-f1a7cf536f56 f0eae3e5-1ddb-4bf1-acd2-39a62ee23fca e880d22f-4437-4bd4-b5c6-c1143a0132e8 802f4b8e-048f-4daa-80cd-0113309c6b00 d772ab9a-f2ca-41a7-8f26-c70c7ef88d66 642b654d-d739-44cf-88af-b386c114e626 2c964698-1f4e-4876-a939-e4261ff013a8</tstamps>
+      <tstamps>d772ab9a-f2ca-41a7-8f26-c70c7ef88d66 642b654d-d739-44cf-88af-b386c114e626 81c0a08e-4f5f-4ca7-a9a9-f1a7cf536f56 f0eae3e5-1ddb-4bf1-acd2-39a62ee23fca e880d22f-4437-4bd4-b5c6-c1143a0132e8 802f4b8e-048f-4daa-80cd-0113309c6b00 2c964698-1f4e-4876-a939-e4261ff013a8</tstamps>
       <units>
         <unit name="A">
           <pins>
@@ -1956,8 +2472,9 @@
     </comp>
     <comp ref="Y1">
       <value>16MHz</value>
+      <footprint>Crystal:Crystal_HC49-4H_Vertical</footprint>
       <fields>
-        <field name="Footprint"/>
+        <field name="Footprint">Crystal:Crystal_HC49-4H_Vertical</field>
         <field name="Datasheet"/>
         <field name="Description"/>
       </fields>
@@ -2169,6 +2686,24 @@
         <pin num="14" name="VCC" type="power_in"/>
       </pins>
     </libpart>
+    <libpart lib="Connector" part="Barrel_Jack_Switch">
+      <description>DC Barrel Jack with an internal switch</description>
+      <footprints>
+        <fp>BarrelJack*</fp>
+      </footprints>
+      <fields>
+        <field name="Reference">J</field>
+        <field name="Value">Barrel_Jack_Switch</field>
+        <field name="Footprint"/>
+        <field name="Datasheet"/>
+        <field name="Description">DC Barrel Jack with an internal switch</field>
+      </fields>
+      <pins>
+        <pin num="1" name="" type="passive"/>
+        <pin num="2" name="" type="passive"/>
+        <pin num="3" name="" type="passive"/>
+      </pins>
+    </libpart>
     <libpart lib="Connector" part="USB_A">
       <description>USB Type A connector</description>
       <footprints>
@@ -2187,6 +2722,23 @@
         <pin num="3" name="D+" type="bidirectional"/>
         <pin num="4" name="GND" type="power_in"/>
         <pin num="SH" name="Shield" type="passive"/>
+      </pins>
+    </libpart>
+    <libpart lib="Connector_Generic" part="Conn_01x02">
+      <description>Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)</description>
+      <footprints>
+        <fp>Connector*:*_1x??_*</fp>
+      </footprints>
+      <fields>
+        <field name="Reference">J</field>
+        <field name="Value">Conn_01x02</field>
+        <field name="Footprint"/>
+        <field name="Datasheet"/>
+        <field name="Description">Generic connector, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)</field>
+      </fields>
+      <pins>
+        <pin num="1" name="Pin_1" type="passive"/>
+        <pin num="2" name="Pin_2" type="passive"/>
       </pins>
     </libpart>
     <libpart lib="Connector_Generic" part="Conn_01x03">
@@ -2966,6 +3518,23 @@
   </libraries>
   <nets>
     <net code="1" name="+5V" class="Default">
+      <node ref="C10" pin="1" pintype="passive"/>
+      <node ref="C11" pin="1" pintype="passive"/>
+      <node ref="C12" pin="1" pintype="passive"/>
+      <node ref="C13" pin="1" pintype="passive"/>
+      <node ref="C14" pin="1" pintype="passive"/>
+      <node ref="C15" pin="1" pintype="passive"/>
+      <node ref="C16" pin="1" pintype="passive"/>
+      <node ref="C17" pin="1" pintype="passive"/>
+      <node ref="C18" pin="1" pintype="passive"/>
+      <node ref="C19" pin="1" pintype="passive"/>
+      <node ref="C20" pin="1" pintype="passive"/>
+      <node ref="C4" pin="1" pintype="passive"/>
+      <node ref="C5" pin="1" pintype="passive"/>
+      <node ref="C6" pin="1" pintype="passive"/>
+      <node ref="C7" pin="1" pintype="passive"/>
+      <node ref="C8" pin="1" pintype="passive"/>
+      <node ref="C9" pin="1" pintype="passive"/>
       <node ref="J1" pin="9" pinfunction="Pin_9_9" pintype="passive"/>
       <node ref="J10" pin="1" pinfunction="Pin_1_1" pintype="passive"/>
       <node ref="J11" pin="1" pinfunction="Pin_1_1" pintype="passive"/>
@@ -2973,9 +3542,12 @@
       <node ref="J2" pin="9" pinfunction="Pin_9_9" pintype="passive"/>
       <node ref="J3" pin="9" pinfunction="Pin_9_9" pintype="passive"/>
       <node ref="J4" pin="1" pinfunction="VBUS_1" pintype="power_in"/>
+      <node ref="J6" pin="1" pintype="passive"/>
+      <node ref="J7" pin="1" pinfunction="Pin_1_1" pintype="passive"/>
       <node ref="J9" pin="5" pinfunction="Pin_5_5" pintype="passive"/>
       <node ref="R1" pin="1" pintype="passive"/>
       <node ref="R10" pin="1" pintype="passive"/>
+      <node ref="R18" pin="1" pintype="passive"/>
       <node ref="R2" pin="1" pintype="passive"/>
       <node ref="R3" pin="1" pintype="passive"/>
       <node ref="R4" pin="1" pintype="passive"/>
@@ -3712,8 +4284,26 @@
     <net code="127" name="GND" class="Default">
       <node ref="BZ1" pin="2" pinfunction="-_2" pintype="passive"/>
       <node ref="C1" pin="2" pintype="passive"/>
+      <node ref="C10" pin="2" pintype="passive"/>
+      <node ref="C11" pin="2" pintype="passive"/>
+      <node ref="C12" pin="2" pintype="passive"/>
+      <node ref="C13" pin="2" pintype="passive"/>
+      <node ref="C14" pin="2" pintype="passive"/>
+      <node ref="C15" pin="2" pintype="passive"/>
+      <node ref="C16" pin="2" pintype="passive"/>
+      <node ref="C17" pin="2" pintype="passive"/>
+      <node ref="C18" pin="2" pintype="passive"/>
+      <node ref="C19" pin="2" pintype="passive"/>
       <node ref="C2" pin="2" pintype="passive"/>
+      <node ref="C20" pin="2" pintype="passive"/>
       <node ref="C3" pin="2" pintype="passive"/>
+      <node ref="C4" pin="2" pintype="passive"/>
+      <node ref="C5" pin="2" pintype="passive"/>
+      <node ref="C6" pin="2" pintype="passive"/>
+      <node ref="C7" pin="2" pintype="passive"/>
+      <node ref="C8" pin="2" pintype="passive"/>
+      <node ref="C9" pin="2" pintype="passive"/>
+      <node ref="D3" pin="1" pinfunction="K_1" pintype="passive"/>
       <node ref="J1" pin="10" pinfunction="Pin_10_10" pintype="passive"/>
       <node ref="J10" pin="2" pinfunction="Pin_2_2" pintype="passive"/>
       <node ref="J10" pin="39" pinfunction="Pin_39_39" pintype="passive"/>
@@ -3724,6 +4314,9 @@
       <node ref="J4" pin="4" pinfunction="GND_4" pintype="power_in"/>
       <node ref="J4" pin="SH" pinfunction="Shield_SH" pintype="passive"/>
       <node ref="J5" pin="3" pinfunction="Pin_3_3" pintype="passive"/>
+      <node ref="J6" pin="2" pintype="passive"/>
+      <node ref="J6" pin="3" pintype="passive"/>
+      <node ref="J7" pin="2" pinfunction="Pin_2_2" pintype="passive"/>
       <node ref="J9" pin="6" pinfunction="Pin_6_6" pintype="passive"/>
       <node ref="R11" pin="2" pintype="passive"/>
       <node ref="R12" pin="2" pintype="passive"/>
@@ -3787,188 +4380,192 @@
       <node ref="D2" pin="1" pinfunction="K_1" pintype="passive"/>
       <node ref="R12" pin="1" pintype="passive"/>
     </net>
-    <net code="130" name="Net-(U1-A16/S3)" class="Default">
+    <net code="130" name="Net-(D3-A)" class="Default">
+      <node ref="D3" pin="2" pinfunction="A_2" pintype="passive"/>
+      <node ref="R18" pin="2" pintype="passive"/>
+    </net>
+    <net code="131" name="Net-(U1-A16/S3)" class="Default">
       <node ref="U1" pin="38" pinfunction="A16/S3_38" pintype="output"/>
       <node ref="U3" pin="6" pinfunction="D4_6" pintype="input"/>
     </net>
-    <net code="131" name="Net-(U1-A17/S4)" class="Default">
+    <net code="132" name="Net-(U1-A17/S4)" class="Default">
       <node ref="U1" pin="37" pinfunction="A17/S4_37" pintype="output"/>
       <node ref="U3" pin="7" pinfunction="D5_7" pintype="input"/>
     </net>
-    <net code="132" name="Net-(U1-A18/S5)" class="Default">
+    <net code="133" name="Net-(U1-A18/S5)" class="Default">
       <node ref="U1" pin="36" pinfunction="A18/S5_36" pintype="output"/>
       <node ref="U3" pin="8" pinfunction="D6_8" pintype="input"/>
     </net>
-    <net code="133" name="Net-(U1-A19/S6)" class="Default">
+    <net code="134" name="Net-(U1-A19/S6)" class="Default">
       <node ref="U1" pin="35" pinfunction="A19/S6_35" pintype="output"/>
       <node ref="U3" pin="9" pinfunction="D7_9" pintype="input"/>
     </net>
-    <net code="134" name="Net-(U4-CE)" class="Default">
+    <net code="135" name="Net-(U4-CE)" class="Default">
       <node ref="U4" pin="22" pinfunction="CE_22" pintype="input"/>
       <node ref="U5" pin="6" pintype="output"/>
     </net>
-    <net code="135" name="Net-(U5-Pad3)" class="Default">
+    <net code="136" name="Net-(U5-Pad3)" class="Default">
       <node ref="U5" pin="3" pintype="output"/>
       <node ref="U5" pin="9" pintype="input"/>
     </net>
-    <net code="136" name="Net-(U5-Pad10)" class="Default">
+    <net code="137" name="Net-(U5-Pad10)" class="Default">
       <node ref="U5" pin="10" pintype="input"/>
       <node ref="U5" pin="11" pintype="output"/>
       <node ref="U5" pin="5" pintype="input"/>
     </net>
-    <net code="137" name="Net-(U6-CE#)" class="Default">
+    <net code="138" name="Net-(U6-CE#)" class="Default">
       <node ref="U5" pin="8" pintype="output"/>
       <node ref="U6" pin="22" pinfunction="CE#_22" pintype="input"/>
     </net>
-    <net code="138" name="Net-(U8-O0)" class="Default">
+    <net code="139" name="Net-(U8-O0)" class="Default">
       <node ref="U8" pin="15" pinfunction="O0_15" pintype="output"/>
       <node ref="U9" pin="12" pintype="input"/>
     </net>
-    <net code="139" name="Net-(U10-E)" class="Default">
+    <net code="140" name="Net-(U10-E)" class="Default">
       <node ref="U10" pin="6" pinfunction="E_6" pintype="input"/>
       <node ref="U9" pin="13" pintype="output"/>
     </net>
-    <net code="140" name="Net-(U10-VO)" class="Default">
+    <net code="141" name="Net-(U10-VO)" class="Default">
       <node ref="RV1" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="U10" pin="3" pinfunction="VO_3" pintype="power_in"/>
     </net>
-    <net code="141" name="Net-(U11-X1)" class="Default">
+    <net code="142" name="Net-(U11-X1)" class="Default">
       <node ref="C3" pin="1" pintype="passive"/>
       <node ref="U11" pin="17" pinfunction="X1_17" pintype="input"/>
       <node ref="Y1" pin="1" pinfunction="1_1" pintype="passive"/>
     </net>
-    <net code="142" name="Net-(U11-X2)" class="Default">
+    <net code="143" name="Net-(U11-X2)" class="Default">
       <node ref="C2" pin="1" pintype="passive"/>
       <node ref="U11" pin="16" pinfunction="X2_16" pintype="output"/>
       <node ref="Y1" pin="2" pinfunction="2_2" pintype="passive"/>
     </net>
-    <net code="143" name="Net-(U11-~{RES})" class="Default">
+    <net code="144" name="Net-(U11-~{RES})" class="Default">
       <node ref="C1" pin="1" pintype="passive"/>
       <node ref="R1" pin="2" pintype="passive"/>
       <node ref="SW1" pin="2" pinfunction="2_2" pintype="passive"/>
       <node ref="U11" pin="11" pinfunction="~{RES}_11" pintype="input"/>
     </net>
-    <net code="144" name="unconnected-(BAR1-A-Pad1)" class="Default">
+    <net code="145" name="unconnected-(BAR1-A-Pad1)" class="Default">
       <node ref="BAR1" pin="1" pinfunction="A_1" pintype="passive+no_connect"/>
     </net>
-    <net code="145" name="unconnected-(BAR1-A-Pad2)" class="Default">
+    <net code="146" name="unconnected-(BAR1-A-Pad2)" class="Default">
       <node ref="BAR1" pin="2" pinfunction="A_2" pintype="passive+no_connect"/>
     </net>
-    <net code="146" name="unconnected-(BAR1-A-Pad3)" class="Default">
+    <net code="147" name="unconnected-(BAR1-A-Pad3)" class="Default">
       <node ref="BAR1" pin="3" pinfunction="A_3" pintype="passive+no_connect"/>
     </net>
-    <net code="147" name="unconnected-(BAR1-A-Pad4)" class="Default">
+    <net code="148" name="unconnected-(BAR1-A-Pad4)" class="Default">
       <node ref="BAR1" pin="4" pinfunction="A_4" pintype="passive+no_connect"/>
     </net>
-    <net code="148" name="unconnected-(BAR1-A-Pad5)" class="Default">
+    <net code="149" name="unconnected-(BAR1-A-Pad5)" class="Default">
       <node ref="BAR1" pin="5" pinfunction="A_5" pintype="passive+no_connect"/>
     </net>
-    <net code="149" name="unconnected-(BAR1-A-Pad6)" class="Default">
+    <net code="150" name="unconnected-(BAR1-A-Pad6)" class="Default">
       <node ref="BAR1" pin="6" pinfunction="A_6" pintype="passive+no_connect"/>
     </net>
-    <net code="150" name="unconnected-(U1-DEN-Pad26)" class="Default">
+    <net code="151" name="unconnected-(U1-DEN-Pad26)" class="Default">
       <node ref="U1" pin="26" pinfunction="DEN_26" pintype="output"/>
     </net>
-    <net code="151" name="unconnected-(U1-DT/~{R}-Pad27)" class="Default">
+    <net code="152" name="unconnected-(U1-DT/~{R}-Pad27)" class="Default">
       <node ref="U1" pin="27" pinfunction="DT/~{R}_27" pintype="output"/>
     </net>
-    <net code="152" name="unconnected-(U1-HLDA-Pad30)" class="Default">
+    <net code="153" name="unconnected-(U1-HLDA-Pad30)" class="Default">
       <node ref="U1" pin="30" pinfunction="HLDA_30" pintype="output"/>
     </net>
-    <net code="153" name="unconnected-(U1-~{SSO}-Pad34)" class="Default">
+    <net code="154" name="unconnected-(U1-~{SSO}-Pad34)" class="Default">
       <node ref="U1" pin="34" pinfunction="~{SSO}_34" pintype="output"/>
     </net>
-    <net code="154" name="unconnected-(U3-Q0-Pad19)" class="Default">
+    <net code="155" name="unconnected-(U3-Q0-Pad19)" class="Default">
       <node ref="U3" pin="19" pinfunction="Q0_19" pintype="tri_state"/>
     </net>
-    <net code="155" name="unconnected-(U3-Q1-Pad18)" class="Default">
+    <net code="156" name="unconnected-(U3-Q1-Pad18)" class="Default">
       <node ref="U3" pin="18" pinfunction="Q1_18" pintype="tri_state"/>
     </net>
-    <net code="156" name="unconnected-(U3-Q2-Pad17)" class="Default">
+    <net code="157" name="unconnected-(U3-Q2-Pad17)" class="Default">
       <node ref="U3" pin="17" pinfunction="Q2_17" pintype="tri_state"/>
     </net>
-    <net code="157" name="unconnected-(U3-Q3-Pad16)" class="Default">
+    <net code="158" name="unconnected-(U3-Q3-Pad16)" class="Default">
       <node ref="U3" pin="16" pinfunction="Q3_16" pintype="tri_state"/>
     </net>
-    <net code="158" name="unconnected-(U4-NC-Pad1)" class="Default">
+    <net code="159" name="unconnected-(U4-NC-Pad1)" class="Default">
       <node ref="U4" pin="1" pinfunction="NC_1" pintype="input"/>
     </net>
-    <net code="159" name="unconnected-(U8-O5-Pad10)" class="Default">
+    <net code="160" name="unconnected-(U8-O5-Pad10)" class="Default">
       <node ref="U8" pin="10" pinfunction="O5_10" pintype="output"/>
     </net>
-    <net code="160" name="unconnected-(U8-O7-Pad7)" class="Default">
+    <net code="161" name="unconnected-(U8-O7-Pad7)" class="Default">
       <node ref="U8" pin="7" pinfunction="O7_7" pintype="output"/>
     </net>
-    <net code="161" name="unconnected-(U11-OSC-Pad12)" class="Default">
+    <net code="162" name="unconnected-(U11-OSC-Pad12)" class="Default">
       <node ref="U11" pin="12" pinfunction="OSC_12" pintype="output"/>
     </net>
-    <net code="162" name="unconnected-(U11-READY-Pad5)" class="Default">
+    <net code="163" name="unconnected-(U11-READY-Pad5)" class="Default">
       <node ref="U11" pin="5" pinfunction="READY_5" pintype="output"/>
     </net>
-    <net code="163" name="unconnected-(U12-PA2-Pad2)" class="Default">
+    <net code="164" name="unconnected-(U12-PA2-Pad2)" class="Default">
       <node ref="U12" pin="2" pinfunction="PA2_2" pintype="bidirectional"/>
     </net>
-    <net code="164" name="unconnected-(U12-PA3-Pad1)" class="Default">
+    <net code="165" name="unconnected-(U12-PA3-Pad1)" class="Default">
       <node ref="U12" pin="1" pinfunction="PA3_1" pintype="bidirectional"/>
     </net>
-    <net code="165" name="unconnected-(U12-PA4-Pad40)" class="Default">
+    <net code="166" name="unconnected-(U12-PA4-Pad40)" class="Default">
       <node ref="U12" pin="40" pinfunction="PA4_40" pintype="bidirectional"/>
     </net>
-    <net code="166" name="unconnected-(U12-PA5-Pad39)" class="Default">
+    <net code="167" name="unconnected-(U12-PA5-Pad39)" class="Default">
       <node ref="U12" pin="39" pinfunction="PA5_39" pintype="bidirectional"/>
     </net>
-    <net code="167" name="unconnected-(U12-PA6-Pad38)" class="Default">
+    <net code="168" name="unconnected-(U12-PA6-Pad38)" class="Default">
       <node ref="U12" pin="38" pinfunction="PA6_38" pintype="bidirectional"/>
     </net>
-    <net code="168" name="unconnected-(U12-PB4-Pad22)" class="Default">
+    <net code="169" name="unconnected-(U12-PB4-Pad22)" class="Default">
       <node ref="U12" pin="22" pinfunction="PB4_22" pintype="bidirectional"/>
     </net>
-    <net code="169" name="unconnected-(U12-PB5-Pad23)" class="Default">
+    <net code="170" name="unconnected-(U12-PB5-Pad23)" class="Default">
       <node ref="U12" pin="23" pinfunction="PB5_23" pintype="bidirectional"/>
     </net>
-    <net code="170" name="unconnected-(U12-PB6-Pad24)" class="Default">
+    <net code="171" name="unconnected-(U12-PB6-Pad24)" class="Default">
       <node ref="U12" pin="24" pinfunction="PB6_24" pintype="bidirectional"/>
     </net>
-    <net code="171" name="unconnected-(U12-PB7-Pad25)" class="Default">
+    <net code="172" name="unconnected-(U12-PB7-Pad25)" class="Default">
       <node ref="U12" pin="25" pinfunction="PB7_25" pintype="bidirectional"/>
     </net>
-    <net code="172" name="unconnected-(U12-PC0-Pad14)" class="Default">
+    <net code="173" name="unconnected-(U12-PC0-Pad14)" class="Default">
       <node ref="U12" pin="14" pinfunction="PC0_14" pintype="bidirectional"/>
     </net>
-    <net code="173" name="unconnected-(U12-PC1-Pad15)" class="Default">
+    <net code="174" name="unconnected-(U12-PC1-Pad15)" class="Default">
       <node ref="U12" pin="15" pinfunction="PC1_15" pintype="bidirectional"/>
     </net>
-    <net code="174" name="unconnected-(U12-PC2-Pad16)" class="Default">
+    <net code="175" name="unconnected-(U12-PC2-Pad16)" class="Default">
       <node ref="U12" pin="16" pinfunction="PC2_16" pintype="bidirectional"/>
     </net>
-    <net code="175" name="unconnected-(U12-PC3-Pad17)" class="Default">
+    <net code="176" name="unconnected-(U12-PC3-Pad17)" class="Default">
       <node ref="U12" pin="17" pinfunction="PC3_17" pintype="bidirectional"/>
     </net>
-    <net code="176" name="unconnected-(U12-PC7-Pad10)" class="Default">
+    <net code="177" name="unconnected-(U12-PC7-Pad10)" class="Default">
       <node ref="U12" pin="10" pinfunction="PC7_10" pintype="bidirectional"/>
     </net>
-    <net code="177" name="unconnected-(U13-CAS0-Pad12)" class="Default">
+    <net code="178" name="unconnected-(U13-CAS0-Pad12)" class="Default">
       <node ref="U13" pin="12" pinfunction="CAS0_12" pintype="input+no_connect"/>
     </net>
-    <net code="178" name="unconnected-(U13-CAS1-Pad13)" class="Default">
+    <net code="179" name="unconnected-(U13-CAS1-Pad13)" class="Default">
       <node ref="U13" pin="13" pinfunction="CAS1_13" pintype="output+no_connect"/>
     </net>
-    <net code="179" name="unconnected-(U13-CAS2-Pad15)" class="Default">
+    <net code="180" name="unconnected-(U13-CAS2-Pad15)" class="Default">
       <node ref="U13" pin="15" pinfunction="CAS2_15" pintype="output+no_connect"/>
     </net>
-    <net code="180" name="unconnected-(U14-Pad10)" class="Default">
+    <net code="181" name="unconnected-(U14-Pad10)" class="Default">
       <node ref="U14" pin="10" pintype="output+no_connect"/>
     </net>
-    <net code="181" name="unconnected-(U14-Pad12)" class="Default">
+    <net code="182" name="unconnected-(U14-Pad12)" class="Default">
       <node ref="U14" pin="12" pintype="output+no_connect"/>
     </net>
-    <net code="182" name="unconnected-(U15-OUT1-Pad13)" class="Default">
+    <net code="183" name="unconnected-(U15-OUT1-Pad13)" class="Default">
       <node ref="U15" pin="13" pinfunction="OUT1_13" pintype="output+no_connect"/>
     </net>
-    <net code="183" name="unconnected-(U16A-~{Q}-Pad6)" class="Default">
+    <net code="184" name="unconnected-(U16A-~{Q}-Pad6)" class="Default">
       <node ref="U16" pin="6" pinfunction="~{Q}_6" pintype="output+no_connect"/>
     </net>
-    <net code="184" name="unconnected-(U16B-Q-Pad9)" class="Default">
+    <net code="185" name="unconnected-(U16B-Q-Pad9)" class="Default">
       <node ref="U16" pin="9" pinfunction="Q_9" pintype="output+no_connect"/>
     </net>
   </nets>
