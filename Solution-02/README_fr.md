@@ -46,7 +46,8 @@ Contenu de la ROM et de la RAM avec le BIOS 2.3 :
 |---|---|
 | 00000h–003FFh | table des vecteurs d'interruption (remplie par « Load DOS ») |
 | 00400h–004FFh | zone de données du BIOS (BDA) : équipement, mémoire, mode vidéo |
-| 00500h–5EFFFh | DOS et programmes (**380 Ko** annoncés par INT 12h ; **508 Ko** quand B: est l'image DOS 2.1 de la carte) |
+| 00500h–5EBFFh | DOS et programmes (**379 Ko** annoncés par INT 12h ; **507 Ko** quand B: est l'image DOS 2.1 de la carte) |
+| 5EC00h–5EFFFh | pile privée d'INT 10h (1 Ko, BIOS 2.5 ; en 7EC00h–7EFFFh quand le DOS a 507 Ko) |
 | 10000h–1FFFFh | (hors DOS) segment du **BASIC** (menu 6) : programme, variables, pile |
 | 5F000h–7EFFFh | **lecteur B:** : disque virtuel de 128 Ko (conservé après Ctrl + Alt + Suppr) |
 | 7F000h–7FFFFh | données du BIOS (DSEG = 7F00h) : écran 24 × 80, variables, files, copie du LCD, pile des animations (900h–AFFh), pile du menu |
@@ -578,7 +579,7 @@ la carte (00500h, au DOS) est sauvé puis remis ; pile propre en DSEG.
 **B: = image DOS 2.1 de la carte** : si l'on choisit `ROM PC-DOS 2.1` et que la
 carte porte une image PC-DOS 2.x (secteur d'amorce OEM `IBM  2.`, la première
 trouvée), elle devient **B:** (lecture-écriture) à la place du disque virtuel en
-RAM, et le DOS reçoit **508 Ko** au lieu de 380. On a ainsi, à côté de la
+RAM, et le DOS reçoit **507 Ko** au lieu de 379. On a ainsi, à côté de la
 disquette réduite de la ROM, la disquette complète (BASICA, utilitaires, et
 DEBUG si on l'y ajoute).
 
@@ -592,7 +593,7 @@ tiendrait pas (il manquerait 2 amas) ; le mettre sur l'image de la carte (B:).
 
 Le BIOS remplit la table des vecteurs (256 vecteurs vers un `IRET`, puis les
 siens), la zone de données (BDA : 2 lecteurs de disquette, vidéo 80 colonnes,
-380 Ko), prépare le lecteur B:, vide l'écran et amorce A: (INT 19h : secteur 0
+379 Ko), prépare le lecteur B:, vide l'écran et amorce A: (INT 19h : secteur 0
 en 0000:7C00). Les
 services du BIOS rétablissent les interruptions (STI) : IRQ1 et IRQ4 sont
 servies même pendant l'affichage. PC-DOS 2.1 demande la date et l'heure (il n'y a
@@ -614,7 +615,7 @@ Ctrl + Alt + Suppr, pas à la mise hors tension ni au test de la RAM.
 |---|---|
 | 10h | écran : AH = 00h, 02h, 03h, 06h, 07h, 08h, 09h, 0Ah, **0Eh (télétype, recopié sur l'UART si console ON)**, 0Fh |
 | 08h / 1Ch | IRQ0 (8253) : temps et animations ; INT 1Ch à chaque top (18,2 Hz) |
-| 11h / 12h | équipement (0061h : 2 lecteurs) / mémoire (380 Ko) |
+| 11h / 12h | équipement (0061h : 2 lecteurs) / mémoire (379 Ko) |
 | 13h | A: **en ROM**, lecture seule : AH = 00h, 01h, 02h, 04h, 08h, 15h, 16h ; écriture/formatage → erreur 03h (protégée). B: **en RAM** : lecture, **écriture** (AH = 03h), formatage sans effet ; secteur au-delà de 128 Ko → erreur 04h. Autre lecteur → erreur |
 | 09h / 0Ch / 0Fh | IRQ1 clavier / IRQ4 UART / IRQ7 parasite (8259) |
 | 14h | AH = 01h : envoi sur l'UART logiciel ; AH = 02h : octet reçu par IRQ4 (attente ~0,5 s, sinon AH = 80h) ; AH = 03h : état (AH bit 0 = octet en attente) — réception seulement avec le 8259 |
@@ -693,6 +694,25 @@ sons des programmes du PC trop aigus (voir « Son »), pas de mémoire vidéo (u
 qui écrit directement en B800h n'affiche rien), A: en lecture seule (`COPY`,
 `DEL`… vers A: → « Write protect error » ; utiliser B:), disposition de
 clavier US.
+
+### CP/M-86 (BIOS 2.5)
+
+CP/M-86 pour l'IBM PC passe par le BIOS (INT 10h, 13h, 16h) : il tourne sur la carte.
+
+- **Disque dur** : copier `PC-DOS/CPM86_C.IMG` (30 Mo, hors de git) sur la carte SD,
+  puis 1) Load DOS → ligne `C:CPM86_C.IMG` → Entrée : *Loading CPM.SYS...*, invite `C>`.
+  CP/M-86 1.1 pour PC/XT (Digital Research, 1983), installé dans le simulateur comme sur
+  un XT : HDMAINT (partition CP/M de type DBh, cylindres 0–15, 8064 Ko, 896 entrées de
+  répertoire, testée), PIP de tous les fichiers de la disquette (CPM.SYS, ASM86, DDT86,
+  ED, PIP, STAT, SUBMIT, HDMAINT, SETUP…) et HELP.CMD/HELP.HLP de la 2e disquette DRI,
+  partition rendue amorçable. CP/M-86 ne lit pas plus de 8 Mo par volume : les
+  cylindres 16–60 (≈ 22 Mo) restent libres (Concurrent CP/M-86 ou une partition DOS).
+- **Disquettes** : `PC-DOS/CPM86_11.IMG` (1.1, 320 Ko, amorçable) et `PC-DOS/CPM86.IMG`
+  (1.0, 160 Ko) ; Ctrl+\ change la disquette de A: (puis Ctrl+C sous CP/M).
+- **Terminal** : la ligne d'état de CP/M (25e ligne : heure, date) n'est pas affichée ;
+  HDMAINT et SETUP se servent de F1–F10 (PuTTY : `ESC [ 11 ~`…`21 ~` ou `ESC O P`…`S`).
+- Les tests de surface de HDMAINT (lecture/écriture de chaque cylindre par la carte SD)
+  prennent ~7 min par cylindre sur le montage.
 
 ### 2) Test memory
 
@@ -886,7 +906,7 @@ B:** : `COPY EDLIN.COM B:` puis `DIR B:` (122 880 octets libres) ; **BASIC**
 (menu 6, `PRINT 2+3` au terminal, `SYSTEM`) ; **Maj + flèche sans E0** puis
 Maj + 8 du pavé : la fenêtre remonte, aucun chiffre ; **accents** (`PRINT
 CHR$(130);CHR$(135);CHR$(129)` : UTF-8 sur le terminal, CGRAM sur le LCD) ; **ROM + carte** : B: = l'image
-PC-DOS 2.1 de la carte (`DIR B:` montre BASICA.COM) et 508 Ko pour le DOS ; **carte
+PC-DOS 2.1 de la carte (`DIR B:` montre BASICA.COM) et 507 Ko pour le DOS ; **carte
 SD** : Load DOS, choix de `PCDOS21.IMG` (flèche bas au terminal, Entrée), le DOS
 démarre depuis la carte, `dir > liste.txt` écrit dans l'image (relue sur la
 carte), l'autre image intacte ; **image fragmentée** refusée. La ROM de
@@ -1079,6 +1099,7 @@ Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 f
 
 ## État
 
+- 2026-11-17 : BIOS 2.5 : **CP/M-86** — 1.0 (disquette de 160 Ko) et 1.1 pour PC/XT installé sur un disque dur de 30 Mo (`PC-DOS/CPM86_C.IMG`, hors de git : partition CP/M de 16 cylindres, 8 Mo, la limite de CP/M-86, créée par HDMAINT ; démarrage depuis C:). INT 1Ch jamais réentré, INT 10h sur une pile privée (le DOS a 379 Ko), 25e ligne invisible (ligne d'état de CP/M), défilement AH=06h et écriture AH=09h plus rapides au terminal, F1–F10 de PuTTY (`ESC [ 11 ~`…`21 ~`). Simulé ; BIOS anglais gravé.
 - 2026-11-17 : **PCB** de 172 × 100 mm, 2 couches, routé et vérifié (DRC avec parité, contrôle indépendant des pistes, netliste du cuivre = schéma = simulateur) ; LCD monté au-dessus des circuits ; schéma complété (alimentation J6/J7/C20/D3, découplage C4–C19, empreintes) ; dossier de fabrication JLCPCB dans `fabrication/`. Pas encore fabriqué.
 - 2026-11-17 : schéma : connecteurs d'extension J10 (2 × 20, bus du 8088), J11 (2 × 13, ports du 8255 U7) et J12 (1 × 7, IR2/IR3/IR5/IR6/IR7 du 8259, tirées à la masse par R13–R17) ; simulateur : onglet IRQ (activer, déclencher, « INT XX Déclenchée »), oscilloscope plus compact.
 - 2026-11-17 : BIOS 2.4 en français et en anglais : menu 7) = animations des DEL ON/OFF, clavier plus robuste (une trame illisible efface les préfixes F0/E0) ; simulateur Rust/WebAssembly publié sur GitHub Pages. BIOS anglais gravé.

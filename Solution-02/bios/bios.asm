@@ -87,8 +87,11 @@ LIGNE4          equ     54h
 ; donnees du BIOS en haut de la RAM (4 Ko) : 7F000h-7FFFFh
 DSEG            equ     7F00h
 DSEG_SP         equ     1000h           ; pile du menu : DSEG:1000h (premier PUSH en 7FFFEh)
-RAM_KO          equ     380             ; memoire annoncee au DOS (INT 12h) : sous le disque B:
-RAM_KO_SANS_B   equ     508             ; ... quand B: est une image de la carte (pas de disque en RAM)
+RAM_KO          equ     379             ; memoire annoncee au DOS (INT 12h) : sous la pile d'INT 10h
+RAM_KO_SANS_B   equ     507             ; ... quand B: est une image de la carte (pas de disque en RAM)
+; pile privee d'INT 10h : le Ko juste au-dessus de la memoire du DOS (deux cadres de 512 o)
+P10_SEG         equ     RAM_KO * 64     ; 5EC0h : 5EC00h-5EFFFh, sous le disque B:
+P10_SEG_SANS_B  equ     RAM_KO_SANS_B * 64 ; 7EC0h : 7EC00h-7EFFFh, sous DSEG
 ECRAN           equ     0               ; tampon d'ecran 24 x 80 en DSEG:0000
 LIGNES          equ     24
 COLS            equ     80
@@ -118,6 +121,11 @@ V_UCON          equ     7B5h            ; 1 = console du DOS sur l'UART (menu 5)
 V_IRQ7          equ     7B6h            ; (mot) IRQ7 parasites comptees (SysInfo)
 V_LED_OFF       equ     7B8h            ; 1 = animations des DEL coupees hors de l'ecran LED Show (menu 7)
 V_LED_ECRAN     equ     7B9h            ; 1 = ecran LED Show (menu 3) : animations meme si V_LED_OFF
+V_1C_OCC        equ     7BAh            ; 1 = INT 1Ch en cours (appele par IRQ0) : pas de 2e appel
+V_P10_N         equ     7BBh            ; INT 10h en cours sur la pile privee (0-2)
+V_P10_SEG       equ     7BCh            ; (mot) segment de la pile privee d'INT 10h
+V_HORS          equ     7BEh            ; INT 10h : ligne du curseur hors ecran (24 = 25e ligne du PC), 0 = sur l'ecran
+V_HORS_COL      equ     7BFh            ;           sa colonne
 V_UFILE         equ     7C0h            ; file de l'UART : UFILE_N octets
 V_PIT           equ     7E0h            ; 1 = 8253 present
 V_QUART         equ     7E1h            ; IRQ0 modulo 4 (un top du PC sur 4)
@@ -136,6 +144,7 @@ V_LCDADR        equ     7F4h            ; adresse DDRAM courante du LCD (copie V
 V_IT0           equ     7F5h            ; IRQ0 comptees (attentes du son, 13,7 ms chacune)
 V_P61           equ     7F6h            ; copie du port 61h (le verrou ne se relit pas)
 V_MELODIE       equ     7F7h            ; 1 = melodie de demarrage jouee
+V_TDEC          equ     7F8h            ; console UART : le terminal est V_TDEC colonnes a droite de V_CUR (AH=09h)
 V_OMBRE         equ     800h            ; copie des 4 lignes du LCD (80 octets) pour l'UART
 TACHE_PILE      equ     0B00h           ; pile de la tache des animations : 900h-AFFh
 UFILE_N         equ     32
@@ -977,6 +986,11 @@ tache_init:
         mov     word [es:di + 18], anim_tache
         mov     byte [es:V_TACHE_ATT], 1
         mov     byte [es:V_TACHE_OCC], 0
+        mov     byte [es:V_1C_OCC], 0
+        mov     byte [es:V_P10_N], 0
+        mov     word [es:V_P10_SEG], P10_SEG
+        mov     byte [es:V_HORS], 0
+        mov     byte [es:V_TDEC], 0
         mov     word [es:V_ANIM], anim_table
         mov     [es:V_CYCLES], ax
         popf
@@ -2096,7 +2110,7 @@ anim_vumetre:
 ;                12345678901234567890
 %ifdef LANG_EN
 ;                12345678901234567890      (BIOS anglais : make LANG=en)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.4'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.5'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 KB  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2123,7 +2137,7 @@ txt_led:    db  'LED SHOW   Esc=menu '
             db  '                    '
             db  'PS/2 keyboard >     '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.4'
+txt_sys:    db  'SOLUTION-02 BIOS 2.5'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512KB  ROM 256KB'
             db  '8259 absent         '
@@ -2135,12 +2149,12 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.4 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.5 - VE2CUY 2026', 13, 10
             db  'Menu (PS/2 keyboard): 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) LED Show ON/OFF', 13, 10, 0
 %else
 ;                12345678901234567890      (BIOS francais, par defaut)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.4'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.5'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2167,7 +2181,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.4'
+txt_sys:    db  'SOLUTION-02 BIOS 2.5'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2179,7 +2193,7 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.4 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.5 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) DOS  2) Test memoire  3) Anim. DEL  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF', 13, 10, 0
 %endif

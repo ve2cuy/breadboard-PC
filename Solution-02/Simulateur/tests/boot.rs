@@ -206,6 +206,118 @@ fn carte_sd_dos622_sur_c() {
     assert!(tx2.contains("6.2") || tx.contains("6.2") || tx2.contains("MS-DOS"), "MS-DOS 6.22 n'a pas repondu");
 }
 
+/// CP/M-86 1.0 (IBM PC, 160 Ko) depuis la carte SD : CPM86.IMG en A:, puis DIR.
+#[test]
+fn cpm86_depuis_la_carte() {
+    let Some(a) = image("CPM86.IMG") else {
+        println!("image absente : essai saute");
+        return;
+    };
+    let mut s = Sim::new(&rom());
+    s.sd_add_file("CPM86.IMG", &a);
+    s.sd_insert_built();
+    secs(&mut s, 6.0);
+    texte_uart(&mut s);
+    appuyer(&mut s, 0x16);
+    secs(&mut s, 8.0);
+    show(&s, "liste de la carte");
+    println!("UART :\n{}", texte_uart(&mut s));
+    etendue(&mut s, 0x72);
+    secs(&mut s, 0.5);
+    show(&s, "CPM86 choisi ?");
+    appuyer(&mut s, 0x5A);
+    secs(&mut s, 30.0);
+    show(&s, "demarrage de CP/M-86");
+    let tx = texte_uart(&mut s);
+    println!("UART :\n{}", tx);
+    // au terminal (UART) : l'horloge de la ligne d'etat ecrit chaque seconde, une trame
+    // PS/2 qui arrive pendant un envoi a l'UART est perdue (limite connue du montage)
+    for c in b"dir\r" {
+        s.uart_send(&[*c]);
+        secs(&mut s, 0.2);
+    }
+    secs(&mut s, 8.0);
+    show(&s, "apres dir");
+    let tx2 = texte_uart(&mut s);
+    println!("UART :\n{}", tx2);
+    println!("{}", s.stats());
+    println!("journal : {}", s.take_log());
+    // CP/M ecrit caractere par caractere (AH=09h puis AH=02h) : sequences ESC [ n X a retirer
+    let mut net = String::new();
+    let mut it = tx2.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '\x1b' {
+            while let Some(d) = it.next() {
+                if d.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            net.push(c);
+        }
+    }
+    println!("texte : {}", net);
+    assert!(tx.contains("CP/M-86") || tx.contains("Bootstrap"), "CP/M-86 n'a pas demarre");
+    assert!(net.contains("PIP      CMD") && net.contains("STAT     CMD"), "CP/M-86 : DIR n'a pas liste PIP et STAT");
+    assert!(!tx2.contains("02/10/82"), "la ligne d'etat (25e ligne) ne doit pas aller au terminal");
+}
+
+/// CP/M-86 1.1 installe sur C: (PC-DOS/CPM86_C.IMG, 30 Mo, partition CP/M de 16 cylindres
+/// creee par HDMAINT) : demarrage depuis C:, DIR et STAT au terminal.
+#[test]
+fn cpm86_sur_c() {
+    let Some(c) = image("CPM86_C.IMG") else {
+        println!("image absente : essai saute");
+        return;
+    };
+    let mut s = Sim::new(&rom());
+    s.sd_add_file("CPM86_C.IMG", &c);
+    s.sd_insert_built();
+    secs(&mut s, 6.0);
+    appuyer(&mut s, 0x16);
+    secs(&mut s, 8.0);
+    show(&s, "liste de la carte");
+    for _ in 0..2 {
+        etendue(&mut s, 0x72);
+        secs(&mut s, 0.5);
+    }
+    show(&s, "C: choisi ?");
+    texte_uart(&mut s);
+    appuyer(&mut s, 0x5A);
+    secs(&mut s, 40.0);
+    show(&s, "demarrage de C:");
+    let tx = texte_uart(&mut s);
+    println!("UART :\n{}", tx);
+    for c in b"dir\r" {
+        s.uart_send(&[*c]);
+        secs(&mut s, 0.2);
+    }
+    secs(&mut s, 10.0);
+    for c in b"stat\r" {
+        s.uart_send(&[*c]);
+        secs(&mut s, 0.2);
+    }
+    secs(&mut s, 15.0);
+    let tx2 = texte_uart(&mut s);
+    let mut net = String::new();
+    let mut it = tx2.chars();
+    while let Some(c) = it.next() {
+        if c == '\x1b' {
+            for d in it.by_ref() {
+                if d.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            net.push(c);
+        }
+    }
+    println!("texte : {}", net);
+    assert!(tx.contains("Version 1.1"), "CP/M-86 1.1 n'a pas demarre depuis C:");
+    assert!(net.contains("HDMAINT  CMD") && net.contains("HELP     HLP"), "DIR de C: incomplet");
+    assert!(net.contains("C: RW, Free Space:"), "STAT de C: absent");
+}
+
 #[test]
 fn dos_depuis_la_rom() {
     let mut s = Sim::new(&rom());

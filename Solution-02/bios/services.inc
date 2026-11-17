@@ -141,11 +141,15 @@ dos_charger:
         push    ds
         mov     ax, DSEG
         mov     ds, ax
+        mov     byte [V_P10_N], 0
+        mov     byte [V_TDEC], 0
+        mov     word [V_P10_SEG], P10_SEG
         cmp     byte [V_IMGB_ACTIF], 0  ; B: = image de la carte : le disque en RAM est
-        pop     ds                      ; inutile, sa place va au DOS
-        je      .memoire
+        je      .memoire                ; inutile, sa place va au DOS
         mov     word [es:13h], RAM_KO_SANS_B
+        mov     word [V_P10_SEG], P10_SEG_SANS_B
 .memoire:
+        pop     ds
         mov     word [es:1Ah], 1Eh      ; file du clavier du BDA (vide ; la vraie est en DSEG)
         mov     word [es:1Ch], 1Eh
         mov     word [es:80h], 1Eh
@@ -317,7 +321,8 @@ it_init:
 ; =============================================================================
 ; IRQ0 (INT 08h) : 72,83 Hz (8253). EOI et STI tout de suite (IRQ1/IRQ4 ne doivent pas
 ; attendre : le 8259 en mode front perd la demande si elle retombe avant INTA). Un
-; appel sur 4 : top du PC (0040:006C, minuit en 0040:0070, INT 1Ch). Puis, si c'est
+; appel sur 4 : top du PC (0040:006C, minuit en 0040:0070, INT 1Ch). Sur un PC, l'EOI vient
+; apres INT 1Ch : jamais d'INT 1Ch imbrique ; ici, V_1C_OCC le garantit. Puis, si c'est
 ; l'heure, un pas de la tache des animations, sur sa propre pile, jusqu'a ce qu'elle
 ; cede la main (tache_cede, depuis del_aff). Pas de pas si la tache tourne deja.
 ; =============================================================================
@@ -356,7 +361,13 @@ irq_temps:
         mov     [6Eh], ax
         mov     byte [70h], 1
 .jour:  pop     ds
+        cmp     byte [es:V_1C_OCC], 0   ; INT 1Ch pas encore revenu (EOI deja donne) : pas
+        jne     .anim                   ; d'appel imbrique (CP/M-86 : pile privee ecrasee)
+        mov     byte [es:V_1C_OCC], 1
         int     1Ch
+        mov     ax, DSEG                ; ES rendu par le gestionnaire ? on ne s'y fie pas
+        mov     es, ax
+        mov     byte [es:V_1C_OCC], 0
 .anim:  cmp     byte [es:V_TACHE_ON], 0
         je      .retour
         cmp     byte [es:V_LED_OFF], 0  ; animations coupees (menu 7), sauf a l'ecran
@@ -558,7 +569,8 @@ irq_uart:
 ; CR -> Entree, BS ou DEL -> retour arriere, TAB, ESC ; LF et NUL ignores ; autres :
 ; AL = caractere, AH = 0. Sequences ANSI du terminal (envoyees d'un trait, lues ici
 ; par scrutation) : ESC [ ou ESC O suivi de A B C D (fleches), H F (debut, fin),
-; P Q R S (F1-F4), ou de 1-6 puis ~ (debut, inser, suppr, fin, page prec/suiv).
+; P Q R S (F1-F4), ou de 1-6 puis ~ (debut, inser, suppr, fin, page prec/suiv), ou de
+; 11-15, 17-21 puis ~ (F1-F10 de PuTTY ; HDMAINT de CP/M-86 se sert de F1-F10).
 ; ESC seul (rien dans les ~2,7 ms) : touche Echap. ES = DSEG. Detruit AX.
 ucon_entree:
         push    bx
@@ -628,8 +640,19 @@ ucon_entree:
         jne     .fin
         cmp     bx, '2' | ('4' << 8)    ; ESC [ 2 4 ~ = F12 : changement de A:
         je      .chg_a
-        or      bh, bh                  ; autres touches a 2 chiffres : ignorees
-        jnz     .fin
+        or      bh, bh
+        jz      .un_chiffre
+        mov     al, bl                  ; 2 chiffres : F1-F10 de PuTTY (ESC [ 1 1 ~ a 2 1 ~)
+        sub     al, '0'
+        mov     ah, 10
+        mul     ah
+        add     al, bh
+        sub     al, '0'
+        mov     bx, ucon_tilde2
+        call    ucon_table
+        jc      .fin
+        jmp     .etendue
+.un_chiffre:
         mov     al, bl
         mov     bx, ucon_tilde
         call    ucon_table
@@ -748,6 +771,9 @@ ucon_csi:
         db      'P', 3Bh, 'Q', 3Ch, 'R', 3Dh, 'S', 3Eh, 0
 ucon_tilde:
         db      '1', 47h, '2', 52h, '3', 53h, '4', 4Fh, '5', 49h, '6', 51h, 0
+ucon_tilde2:                            ; ESC [ nn ~ : F1-F10 (codes XT 3Bh-44h)
+        db      11, 3Bh, 12, 3Ch, 13, 3Dh, 14, 3Eh, 15, 3Fh
+        db      17, 40h, 18, 41h, 19, 42h, 20, 43h, 21, 44h, 0
 
 ; ucon_code : AL = octet simple -> AX = touche (AH = code XT des touches de commande).
 ; CF = 1 : octet ignore (LF, NUL).
@@ -838,11 +864,98 @@ nav_traite:
 ; =============================================================================
 ; INT 10h - ecran
 ; =============================================================================
+;
+; Pile privee : l'appelant ne fournit que 14 octets (IRET 6 + DS, AX, BP, BX), comme le BIOS
+; d'IBM (~22). Le service lui-meme (ecran, LCD, UART) et les IRQ servies pendant (STI) en
+; prennent ~120 : CP/M-86 appelle INT 10h depuis INT 1Ch sur une pile de 64 octets
+; (0051:37DF-381F) et ecrasait la pile voisine. Pas de bascule si SS = DSEG (menu,
+; changement de A:) ; deux niveaux (INT 10h -> IRQ0 -> INT 1Ch -> INT 10h), au-dela : la pile
+; de l'appelant. Registres rendus : AX, BX, CX, DX (les autres inchanges).
 int10h:
+        sti                             ; (comme le BIOS d'IBM : INT a mis IF = 0 ; CLI
+        push    ds                      ; seulement autour du changement de pile : un
+        push    ax                      ; masquage plus long retardait l'IRQ4 de l'UART
+        push    bp                      ; au-dela d'un demi-bit, octet mal lu)
+        mov     ax, DSEG
+        mov     ds, ax
+        mov     ax, ss
+        cmp     ax, DSEG
+        je      .direct
+        push    bx
+        mov     bx, sp                  ; SS:BX = BX, BP, AX, DS, IP, CS, FL de l'appelant
+        cli
+        mov     al, [V_P10_N]
+        cmp     al, 2
+        jae     .direct_bx
+        inc     byte [V_P10_N]
+        mov     bp, 400h                ; 1er niveau : 400h-201h ; 2e : 200h-001h
+        or      al, al
+        jz      .haut
+        mov     bp, 200h
+.haut:  mov     ax, ss
+        mov     ss, [V_P10_SEG]
+        mov     sp, bp
+        sti
+        push    ax                      ; SS et SP de l'appelant
+        push    bx
+        mov     ds, ax
+        push    word [bx + 12]          ; faux cadre d'interruption : FL, CS, .retour
+        push    cs
+        mov     ax, .retour
+        push    ax
+        mov     ax, [bx + 4]            ; registres de l'appelant
+        mov     bp, [bx + 2]
+        push    word [bx + 6]
+        mov     bx, [bx]
+        pop     ds
+        jmp     int10_corps
+.direct_bx:
+        sti
+        pop     bx
+.direct:
+        pop     bp
+        pop     ax
+        pop     ds
+        jmp     int10_corps
+.retour:                                ; AX-DX = resultats ; DS, BP... de l'appelant
+        cli
+        pop     bp                      ; SP de l'appelant
+        pop     ss                      ; (pas d'interruption avant le MOV qui suit)
+        mov     sp, bp
+        sti
+        push    ds
+        mov     bp, DSEG
+        mov     ds, bp
+        dec     byte [V_P10_N]
+        pop     ds
+        add     sp, 2                   ; BX sauve (le resultat reste)
+        pop     bp
+        add     sp, 4                   ; AX et DS sauves (DS deja rendu par bios_sortie)
+        iret
+
+int10_corps:
         BIOS_ENTREE
         mov     byte [es:V_SORTIE], 1
         mov     byte [es:V_SUIT], 1
-        cmp     ah, 0Eh
+        cmp     byte [es:V_HORS], 0     ; curseur sur la 25e ligne (ligne d'etat de CP/M-86) :
+        je      .vu                     ; invisible ici, rien a l'ecran ni a l'UART
+        cmp     ah, 02h
+        je      .pos
+        cmp     ah, 03h
+        je      .lit_pos
+        cmp     ah, 00h
+        je      .efface
+        cmp     ah, 06h
+        je      .defile
+        cmp     ah, 07h
+        je      .defile
+        cmp     ah, 0Fh
+        je      .mode
+        cmp     ah, 08h
+        jne     .rien
+        mov     word [bp + R_AX], 0720h ; AH=08h : un espace
+.rien:  jmp     bios_sortie
+.vu:    cmp     ah, 0Eh
         je      .tty
         cmp     ah, 02h
         je      .pos
@@ -865,6 +978,7 @@ int10h:
         jmp     bios_sortie             ; 01h, 05h, 0Bh, ... : sans effet
 .tty:   cmp     byte [es:V_UCON], 0     ; console UART : copie sur TX (80h-FFh en UTF-8)
         je      .t1
+        call    uart_rattrape
         call    uart_tx_cp437
 .t1:    cmp     al, 7                   ; BEL : bip de 880 Hz, ~0,25 s
         jne     .t2
@@ -876,9 +990,15 @@ int10h:
 .t2:    call    ecran_tty
 .fin:   call    ecran_fin
         jmp     bios_sortie
-.pos:   cmp     dh, LIGNES - 1
+.pos:   mov     byte [es:V_HORS], 0
+        cmp     dh, LIGNES - 1
         jbe     .p1
-        mov     dh, LIGNES - 1
+        cmp     dh, LIGNES              ; 25e ligne : position retenue, curseur visible inchange
+        jne     .p0
+        mov     [es:V_HORS], dh
+        mov     [es:V_HORS_COL], dl
+        jmp     bios_sortie
+.p0:    mov     dh, LIGNES - 1
 .p1:    cmp     dl, COLS - 1
         jbe     .p2
         mov     dl, COLS - 1
@@ -887,10 +1007,15 @@ int10h:
         jmp     .fin
 .lit_pos:
         mov     ax, [es:V_CUR]
-        mov     [bp + R_DX], ax
+        cmp     byte [es:V_HORS], 0
+        je      .lp
+        mov     ah, [es:V_HORS]
+        mov     al, [es:V_HORS_COL]
+.lp:    mov     [bp + R_DX], ax
         mov     word [bp + R_CX], 0607h
         jmp     bios_sortie
 .defile:
+        call    uart_defile
         call    ecran_defile
         jmp     .fin
 .ecrit: call    uart_ecrit              ; console UART : les caracteres aussi
@@ -917,6 +1042,8 @@ int10h:
         mov     byte [bp + R_BX + 1], 0
         jmp     bios_sortie
 .efface:
+        mov     byte [es:V_HORS], 0
+        mov     byte [es:V_TDEC], 0
         call    ecran_vide
         jmp     .fin
 
@@ -929,6 +1056,8 @@ uart_curseur:
         push    ax
         push    bx
         mov     bx, [es:V_CUR]          ; BL = colonne, BH = ligne actuelles
+        add     bl, [es:V_TDEC]         ; (le terminal est apres les caracteres d'AH=09h)
+        mov     byte [es:V_TDEC], 0
         mov     al, dh
         mov     ah, 'B'                 ; vers le bas
         sub     al, bh
@@ -949,12 +1078,58 @@ uart_curseur:
         pop     ax
 .r:     ret
 
-; uart_ecrit : (INT 10h AH=09h/0Ah) console UART : AL, CX fois (jusqu'a la fin de la ligne),
-; puis le curseur du terminal revient (ces fonctions ne le deplacent pas). Preserve tout.
+; uart_defile : (INT 10h AH=06h) console UART : l'ecran entier monte de AL lignes (CP/M-86
+; defile ainsi au lieu d'ecrire CR LF) : le terminal descend en bas, AL x LF, puis remonte a
+; la ligne du curseur (sinon la ligne du bas etait recrite sur place). Fenetre partielle ou
+; effacement (AL = 0) : rien au terminal. Preserve tout.
+uart_defile:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        cmp     ah, 06h
+        jne     .r
+        call    uart_rattrape
+        or      al, al
+        jz      .r
+        cmp     al, LIGNES
+        jae     .r
+        or      cx, cx                  ; coin haut gauche = 0,0
+        jnz     .r
+        cmp     dh, LIGNES - 1
+        jb      .r
+        cmp     dl, COLS - 1
+        jb      .r
+        push    ax
+        push    cx
+        mov     cl, al                  ; CL = lignes
+        mov     al, LIGNES - 1
+        sub     al, [es:V_CUR + 1]      ; AL = descente jusqu'en bas
+        push    ax
+        jz      .lf
+        mov     ah, 'B'
+        call    uart_csi
+.lf:    mov     al, 0Ah
+.l:     call    uart_tx
+        dec     cl
+        jnz     .l
+        pop     ax
+        or      al, al
+        jz      .f
+        mov     ah, 'A'
+        call    uart_csi
+.f:     pop     cx
+        pop     ax
+.r:     ret
+
+; uart_ecrit : (INT 10h AH=09h/0Ah) console UART : AL, CX fois (jusqu'a la fin de la ligne).
+; Ces fonctions ne deplacent pas le curseur : le retour du terminal (ESC [ n D) est reporte
+; (V_TDEC) ; CP/M-86 ecrit chaque caractere par AH=09h puis avance par AH=02h : 1 octet
+; au lieu de 9 (caractere, ESC [ 1 D, ESC [ 1 C). En fin de ligne : retour tout de suite.
+; Preserve tout.
 uart_ecrit:
         cmp     byte [es:V_UCON], 0
         je      .r
         jcxz    .r
+        call    uart_rattrape
         push    ax
         push    bx
         push    cx
@@ -962,17 +1137,31 @@ uart_ecrit:
         sub     bl, [es:V_CUR]          ; colonnes restantes
         xor     bh, bh
         cmp     cx, bx
-        jbe     .n
+        jb      .n
         mov     cx, bx
+        mov     bh, 1                   ; jusqu'a la derniere colonne
 .n:     push    cx
 .c:     call    uart_tx_cp437
         loop    .c
         pop     cx
-        mov     al, cl
-        mov     ah, 'D'
-        call    uart_csi
-        pop     cx
+        mov     [es:V_TDEC], cl
+        or      bh, bh
+        jz      .f
+        call    uart_rattrape
+.f:     pop     cx
         pop     bx
+        pop     ax
+.r:     ret
+
+; uart_rattrape : retour du terminal en V_CUR apres AH=09h/0Ah (ESC [ V_TDEC D). Preserve tout.
+uart_rattrape:
+        cmp     byte [es:V_TDEC], 0
+        je      .r
+        push    ax
+        mov     al, [es:V_TDEC]
+        mov     ah, 'D'
+        mov     byte [es:V_TDEC], 0
+        call    uart_csi
         pop     ax
 .r:     ret
 

@@ -46,7 +46,8 @@ ROM and RAM contents with BIOS 2.3:
 |---|---|
 | 00000h–003FFh | interrupt vector table (filled by "Load DOS") |
 | 00400h–004FFh | BIOS data area (BDA): equipment, memory, video mode |
-| 00500h–5EFFFh | DOS and programs (**380 KB** reported by INT 12h; **508 KB** when B: is the card's DOS 2.1 image) |
+| 00500h–5EBFFh | DOS and programs (**379 KB** reported by INT 12h; **507 KB** when B: is the card's DOS 2.1 image) |
+| 5EC00h–5EFFFh | private INT 10h stack (1 KB, BIOS 2.5; at 7EC00h–7EFFFh when DOS gets 507 KB) |
 | 10000h–1FFFFh | (outside DOS) **BASIC** segment (menu 6): program, variables, stack |
 | 5F000h–7EFFFh | **drive B:**: 128 KB virtual disk (kept after Ctrl + Alt + Del) |
 | 7F000h–7FFFFh | BIOS data (DSEG = 7F00h): 24 × 80 screen, variables, queues, LCD copy, animation stack (900h–AFFh), menu stack |
@@ -542,7 +543,7 @@ DSEG.
 
 **B: = the card's DOS 2.1 image**: if `ROM PC-DOS 2.1` is chosen and the card holds a
 PC-DOS 2.x image (boot sector OEM `IBM  2.`, the first one found), it becomes **B:**
-(read-write) instead of the RAM virtual disk, and DOS gets **508 KB** instead of 380. Next
+(read-write) instead of the RAM virtual disk, and DOS gets **507 KB** instead of 379. Next
 to the reduced ROM floppy, you thus have the complete floppy (BASICA, utilities, and DEBUG
 if you add it).
 
@@ -554,7 +555,7 @@ Linker 1.08) from `PC-DOS/MASM/` (MASM1.EXE, LINK1.EXE: the versions for DOS 1.1
 (2 clusters short); put it on the card's image (B:).
 
 The BIOS fills the vector table (256 vectors to an `IRET`, then its own), the data area
-(BDA: 2 floppy drives, 80-column video, 380 KB), prepares drive B:, clears the screen and
+(BDA: 2 floppy drives, 80-column video, 379 KB), prepares drive B:, clears the screen and
 boots A: (INT 19h: sector 0 at 0000:7C00). The BIOS services re-enable interrupts (STI):
 IRQ1 and IRQ4 are serviced even during display. PC-DOS 2.1 asks for the date and time
 (there is no battery-backed clock: the counter restarts from 0:00:00; the time typed is
@@ -573,7 +574,7 @@ Ctrl + Alt + Del, not power-off or the RAM test.
 |---|---|
 | 10h | screen: AH = 00h, 02h, 03h, 06h, 07h, 08h, 09h, 0Ah, **0Eh (teletype, copied to the UART if the console is ON)**, 0Fh |
 | 08h / 1Ch | IRQ0 (8253): time and animations; INT 1Ch on each tick (18.2 Hz) |
-| 11h / 12h | equipment (0061h: 2 drives) / memory (380 KB) |
+| 11h / 12h | equipment (0061h: 2 drives) / memory (379 KB) |
 | 13h | A: **in ROM**, read only: AH = 00h, 01h, 02h, 04h, 08h, 15h, 16h; write/format → error 03h (protected). B: **in RAM**: read, **write** (AH = 03h), format has no effect; sector beyond 128 KB → error 04h. Other drive → error |
 | 09h / 0Ch / 0Fh | IRQ1 keyboard / IRQ4 UART / IRQ7 spurious (8259) |
 | 14h | AH = 01h: send on the software UART; AH = 02h: byte received through IRQ4 (waits ~0.5 s, otherwise AH = 80h); AH = 03h: status (AH bit 0 = byte waiting) — reception only with the 8259 |
@@ -642,6 +643,25 @@ Limitations: no battery-backed clock (the time restarts from 0 at each boot), PC
 sounds too high-pitched (see "Sound"), no video memory (a program that writes directly at
 B800h displays nothing), A: read only (`COPY`, `DEL`… to A: → "Write protect error"; use
 B:), US keyboard layout.
+
+### CP/M-86 (BIOS 2.5)
+
+CP/M-86 for the IBM PC goes through the BIOS (INT 10h, 13h, 16h), so it runs on the board.
+
+- **Hard disk**: copy `PC-DOS/CPM86_C.IMG` (30 MB, outside git) to the SD card, then
+  1) Load DOS → line `C:CPM86_C.IMG` → Enter: *Loading CPM.SYS...*, `C>` prompt.
+  CP/M-86 1.1 for the PC/XT (Digital Research, 1983), installed in the simulator as on an
+  XT: HDMAINT (type DBh CP/M partition, cylinders 0–15, 8064 KB, 896 directory entries,
+  surface-tested), PIP of every file of the floppy (CPM.SYS, ASM86, DDT86, ED, PIP, STAT,
+  SUBMIT, HDMAINT, SETUP…) plus HELP.CMD/HELP.HLP from the second DRI disk, partition made
+  bootable. CP/M-86 reads at most 8 MB per volume: cylinders 16–60 (≈ 22 MB) are left free
+  (Concurrent CP/M-86 or a DOS partition).
+- **Floppies**: `PC-DOS/CPM86_11.IMG` (1.1, 320 KB, bootable) and `PC-DOS/CPM86.IMG`
+  (1.0, 160 KB); Ctrl+\ changes the A: floppy (then Ctrl+C under CP/M).
+- **Terminal**: the CP/M status line (25th row: time, date) is not shown; HDMAINT and SETUP
+  use F1–F10 (PuTTY: `ESC [ 11 ~`…`21 ~` or `ESC O P`…`S`).
+- HDMAINT's surface test (read/write of each cylinder through the SD card) takes ~7 min
+  per cylinder on the board.
 
 ### 2) Test memory
 
@@ -808,7 +828,7 @@ LEDs change under DOS; **drive B:**: `COPY EDLIN.COM B:` then `DIR B:` (122,880 
 free); **BASIC** (menu 6, `PRINT 2+3` on the terminal, `SYSTEM`); **Shift + arrow without
 E0** then Shift + keypad 8: the window moves up, no digit; **accents** (`PRINT
 CHR$(130);CHR$(135);CHR$(129)`: UTF-8 on the terminal, CGRAM on the LCD); **ROM + card**:
-B: = the card's PC-DOS 2.1 image (`DIR B:` shows BASICA.COM) and 508 KB for DOS; **SD
+B: = the card's PC-DOS 2.1 image (`DIR B:` shows BASICA.COM) and 507 KB for DOS; **SD
 card**: Load DOS, choice of `PCDOS21.IMG` (down arrow on the terminal, Enter), DOS boots from
 the card, `dir > liste.txt` writes into the image (read back from the card), the other image
 intact; **fragmented image** refused. The diagnostic ROM has its scenario: `python
@@ -990,6 +1010,7 @@ files).
 
 ## Status
 
+- 2026-11-17: BIOS 2.5: **CP/M-86** — 1.0 (160 KB floppy) and 1.1 for the PC/XT installed on a 30 MB hard disk (`PC-DOS/CPM86_C.IMG`, outside git: 16-cylinder CP/M partition, 8 MB, the CP/M-86 limit, created with HDMAINT; boots from C:). INT 1Ch never re-entered, INT 10h on a private stack (DOS gets 379 KB), invisible 25th row (CP/M status line), faster AH=06h scrolling and AH=09h writes on the terminal, PuTTY F1–F10 (`ESC [ 11 ~`…`21 ~`). Simulated; English BIOS burned.
 - 2026-11-17: **PCB**, 172 × 100 mm, 2 layers, routed and verified (DRC with parity, independent trace check, copper netlist = schematic = simulator); LCD mounted above the chips; schematic completed (power J6/J7/C20/D3, decoupling C4–C19, footprints); JLCPCB fabrication files in `fabrication/`. Not fabricated yet.
 - 2026-11-17: schematic: expansion headers J10 (2 × 20, 8088 bus), J11 (2 × 13, ports of 8255 U7) and J12 (1 × 7, IR2/IR3/IR5/IR6/IR7 of the 8259, pulled down by R13–R17); simulator: IRQ tab (enable, trigger, "INT XX Triggered"), more compact oscilloscope.
 - 2026-11-17: BIOS 2.4 in French and English: menu 7) = LED animations ON/OFF, more robust keyboard (an unreadable frame clears the F0/E0 prefixes); Rust/WebAssembly simulator published on GitHub Pages. English BIOS burned.
