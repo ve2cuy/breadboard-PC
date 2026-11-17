@@ -1010,6 +1010,7 @@ files).
 
 ## Status
 
+- 2026-11-17: BIOS 2.6: terminal closer to the BIOS screen (CP/M-86 on the terminal): the cursor moves down with LF (scrolls at the bottom of the terminal), screen clears (CLS, CP/M HELP) and line clears sent to the terminal, cursor re-aligned after BIOS messages (load progress, A: change). English BIOS burned.
 - 2026-11-17: BIOS 2.5: **CP/M-86** — 1.0 (160 KB floppy) and 1.1 for the PC/XT installed on a 30 MB hard disk (`PC-DOS/CPM86_C.IMG`, outside git: 16-cylinder CP/M partition, 8 MB, the CP/M-86 limit, created with HDMAINT; boots from C:). INT 1Ch never re-entered, INT 10h on a private stack (DOS gets 379 KB), invisible 25th row (CP/M status line), faster AH=06h scrolling and AH=09h writes on the terminal, PuTTY F1–F10 (`ESC [ 11 ~`…`21 ~`). Simulated; English BIOS burned.
 - 2026-11-17: **PCB**, 172 × 100 mm, 2 layers, routed and verified (DRC with parity, independent trace check, copper netlist = schematic = simulator); LCD mounted above the chips; schematic completed (power J6/J7/C20/D3, decoupling C4–C19, footprints); JLCPCB fabrication files in `fabrication/`. Not fabricated yet.
 - 2026-11-17: schematic: expansion headers J10 (2 × 20, 8088 bus), J11 (2 × 13, ports of 8255 U7) and J12 (1 × 7, IR2/IR3/IR5/IR6/IR7 of the 8259, pulled down by R13–R17); simulator: IRQ tab (enable, trigger, "INT XX Triggered"), more compact oscilloscope.

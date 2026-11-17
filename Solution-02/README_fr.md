@@ -1099,6 +1099,7 @@ Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 f
 
 ## État
 
+- 2026-11-17 : BIOS 2.6 : terminal plus fidèle à l'écran du BIOS (CP/M-86 au terminal) : le curseur descend par LF (défile en bas du terminal), effacement d'écran (CLS, HELP de CP/M) et de lignes envoyé au terminal, curseur recalé après les messages du BIOS (progression du chargement, changement de A:). BIOS anglais gravé.
 - 2026-11-17 : BIOS 2.5 : **CP/M-86** — 1.0 (disquette de 160 Ko) et 1.1 pour PC/XT installé sur un disque dur de 30 Mo (`PC-DOS/CPM86_C.IMG`, hors de git : partition CP/M de 16 cylindres, 8 Mo, la limite de CP/M-86, créée par HDMAINT ; démarrage depuis C:). INT 1Ch jamais réentré, INT 10h sur une pile privée (le DOS a 379 Ko), 25e ligne invisible (ligne d'état de CP/M), défilement AH=06h et écriture AH=09h plus rapides au terminal, F1–F10 de PuTTY (`ESC [ 11 ~`…`21 ~`). Simulé ; BIOS anglais gravé.
 - 2026-11-17 : **PCB** de 172 × 100 mm, 2 couches, routé et vérifié (DRC avec parité, contrôle indépendant des pistes, netliste du cuivre = schéma = simulateur) ; LCD monté au-dessus des circuits ; schéma complété (alimentation J6/J7/C20/D3, découplage C4–C19, empreintes) ; dossier de fabrication JLCPCB dans `fabrication/`. Pas encore fabriqué.
 - 2026-11-17 : schéma : connecteurs d'extension J10 (2 × 20, bus du 8088), J11 (2 × 13, ports du 8255 U7) et J12 (1 × 7, IR2/IR3/IR5/IR6/IR7 du 8259, tirées à la masse par R13–R17) ; simulateur : onglet IRQ (activer, déclencher, « INT XX Déclenchée »), oscilloscope plus compact.

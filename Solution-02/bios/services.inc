@@ -1045,6 +1045,7 @@ int10_corps:
         mov     byte [es:V_HORS], 0
         mov     byte [es:V_TDEC], 0
         call    ecran_vide
+        call    uart_efface
         jmp     .fin
 
 ; uart_curseur : (INT 10h AH=02h) console UART : deplacement RELATIF du curseur du terminal
@@ -1059,14 +1060,15 @@ uart_curseur:
         add     bl, [es:V_TDEC]         ; (le terminal est apres les caracteres d'AH=09h)
         mov     byte [es:V_TDEC], 0
         mov     al, dh
-        mov     ah, 'B'                 ; vers le bas
         sub     al, bh
         je      .h
-        jnc     .v
+        jnc     .bas
         neg     al
-        mov     ah, 'A'
-.v:     call    uart_csi
-.h:     mov     al, dl
+        mov     ah, 'A'                 ; vers le haut
+        call    uart_csi
+        jmp     .h
+.bas:   call    uart_lf                 ; vers le bas : LF (ESC [ n B s'arrete en bas du
+.h:     mov     al, dl                  ; terminal, LF le fait defiler)
         mov     ah, 'C'                 ; vers la droite
         sub     al, bl
         je      .f
@@ -1078,47 +1080,130 @@ uart_curseur:
         pop     ax
 .r:     ret
 
-; uart_defile : (INT 10h AH=06h) console UART : l'ecran entier monte de AL lignes (CP/M-86
-; defile ainsi au lieu d'ecrire CR LF) : le terminal descend en bas, AL x LF, puis remonte a
-; la ligne du curseur (sinon la ligne du bas etait recrite sur place). Fenetre partielle ou
-; effacement (AL = 0) : rien au terminal. Preserve tout.
+; uart_defile : (INT 10h AH=06h/07h) console UART. Ecran entier (0,0 - 23,79 ou plus) :
+; AL = 0 (ou >= 24) : effacement (uart_efface : ESC [ 2 J, curseur replace) ; AH=06h, AL
+; lignes : le terminal descend en bas, AL x LF, puis remonte a la ligne du curseur (CP/M-86
+; defile ainsi au lieu d'ecrire CR LF). Lignes entieres (CL = 0, DL >= 79) effacees :
+; ESC [ 2 K sur chacune (curseur garde par ESC 7 / ESC 8). Autres fenetres : rien au
+; terminal. Preserve tout.
 uart_defile:
         cmp     byte [es:V_UCON], 0
         je      .r
-        cmp     ah, 06h
-        jne     .r
-        call    uart_rattrape
-        or      al, al
-        jz      .r
-        cmp     al, LIGNES
-        jae     .r
-        or      cx, cx                  ; coin haut gauche = 0,0
-        jnz     .r
-        cmp     dh, LIGNES - 1
-        jb      .r
-        cmp     dl, COLS - 1
-        jb      .r
         push    ax
         push    cx
+        cmp     dl, COLS - 1
+        jb      .f                      ; pas sur toute la largeur
+        or      cl, cl
+        jnz     .f
+        or      ch, ch
+        jnz     .lignes
+        cmp     dh, LIGNES - 1          ; ecran entier
+        jb      .lignes
+        or      al, al
+        jz      .tout
+        cmp     al, LIGNES
+        jae     .tout
+        cmp     ah, 06h
+        jne     .f                      ; vers le bas : rien
+        call    uart_rattrape
         mov     cl, al                  ; CL = lignes
         mov     al, LIGNES - 1
         sub     al, [es:V_CUR + 1]      ; AL = descente jusqu'en bas
         push    ax
-        jz      .lf
-        mov     ah, 'B'
-        call    uart_csi
-.lf:    mov     al, 0Ah
-.l:     call    uart_tx
-        dec     cl
-        jnz     .l
+        call    uart_lf
+        mov     al, cl
+        call    uart_lf
         pop     ax
         or      al, al
         jz      .f
         mov     ah, 'A'
         call    uart_csi
+        jmp     .f
+.tout:  call    uart_efface
+        jmp     .f
+.lignes:                                ; lignes CH..DH effacees (AL = 0 ou >= hauteur)
+        mov     cl, dh
+        cmp     cl, LIGNES - 1
+        jbe     .l1
+        mov     cl, LIGNES - 1
+.l1:    sub     cl, ch
+        jb      .f
+        inc     cl                      ; CL = hauteur
+        or      al, al
+        jz      .l2
+        cmp     al, cl
+        jb      .f                      ; defilement partiel : rien
+.l2:    call    uart_rattrape
+        mov     al, '7'                 ; ESC 7 : curseur garde
+        call    uart_esc
+        mov     al, ch
+        sub     al, [es:V_CUR + 1]
+        je      .l4
+        jnc     .l3
+        neg     al
+        mov     ah, 'A'
+        call    uart_csi
+        jmp     .l4
+.l3:    call    uart_lf
+.l4:    mov     al, 2                   ; ESC [ 2 K
+        mov     ah, 'K'
+        call    uart_csi
+        dec     cl
+        jz      .l5
+        mov     al, 1
+        call    uart_lf
+        jmp     .l4
+.l5:    mov     al, '8'                 ; ESC 8 : curseur rendu
+        call    uart_esc
 .f:     pop     cx
         pop     ax
 .r:     ret
+
+; uart_efface : console UART : ESC [ 2 J (terminal efface), ESC [ H, puis le curseur du
+; terminal en V_CUR (LF x ligne, ESC [ n C) : la ligne 0 du BIOS = la 1re du terminal.
+; Preserve tout.
+uart_efface:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        push    ax
+        mov     byte [es:V_TDEC], 0
+        mov     ax, ('J' << 8) | 2
+        call    uart_csi
+        mov     ax, ('H' << 8) | 1
+        call    uart_csi
+        mov     al, [es:V_CUR + 1]
+        call    uart_lf
+        mov     al, [es:V_CUR]
+        or      al, al
+        jz      .f
+        mov     ah, 'C'
+        call    uart_csi
+.f:     pop     ax
+.r:     ret
+
+; uart_lf : AL x LF au terminal (AL = 0 : rien). Preserve tout.
+uart_lf:
+        push    ax
+        push    cx
+        mov     cl, al
+        or      cl, cl
+        jz      .f
+        mov     al, 0Ah
+.l:     call    uart_tx
+        dec     cl
+        jnz     .l
+.f:     pop     cx
+        pop     ax
+        ret
+
+; uart_esc : ESC puis AL au terminal. Preserve tout.
+uart_esc:
+        push    ax
+        mov     al, 1Bh
+        call    uart_tx
+        pop     ax
+        call    uart_tx
+        ret
 
 ; uart_ecrit : (INT 10h AH=09h/0Ah) console UART : AL, CX fois (jusqu'a la fin de la ligne).
 ; Ces fonctions ne deplacent pas le curseur : le retour du terminal (ESC [ n D) est reporte

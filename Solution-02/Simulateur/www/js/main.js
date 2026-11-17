@@ -602,8 +602,8 @@ function showHelp() {
 Le BIOS de la ROM s'exécute tel quel, au cycle près pour les délais logiciels (UART à 9600 bauds, trames PS/2, délais du LCD).</p>
 <h3>Démarrage</h3>
 <p><b>ALIM</b> met sous tension (RAM au contenu quelconque, LCD non initialisé). <b>RESET</b> (ou SW1 sur la carte) se maintient appuyé.
-Menu du BIOS 2.5 : <kbd>1</kbd> DOS, <kbd>2</kbd> test mémoire, <kbd>3</kbd> animations des DEL, <kbd>4</kbd> Info, <kbd>5</kbd> console UART, <kbd>6</kbd> BASIC, <kbd>7</kbd> animations des DEL ON/OFF.
-Deux ROM : BIOS 2.5 français et anglais (sélecteur « ROM U4 »).</p>
+Menu du BIOS 2.6 : <kbd>1</kbd> DOS, <kbd>2</kbd> test mémoire, <kbd>3</kbd> animations des DEL, <kbd>4</kbd> Info, <kbd>5</kbd> console UART, <kbd>6</kbd> BASIC, <kbd>7</kbd> animations des DEL ON/OFF.
+Deux ROM : BIOS 2.6 français et anglais (sélecteur « ROM U4 »).</p>
 <h3>Claviers</h3>
 <table>
 <tr><td><b>PS/2 (J4)</b></td><td>par défaut ; cliquer sur la carte ou le LCD. Les touches partent en trames PS/2 réelles (jeu 2, 10 kHz) vers PB0/PB1 de U12 et IRQ1.</td></tr>
@@ -636,8 +636,8 @@ Deux ROM : BIOS 2.5 français et anglais (sélecteur « ROM U4 »).</p>
 The ROM BIOS runs unmodified, cycle-accurate for its software delays (9600 baud UART, PS/2 frames, LCD delays).</p>
 <h3>Power-up</h3>
 <p><b>PWR</b> powers the board (random RAM content, uninitialized LCD). <b>RESET</b> (or SW1 on the board) can be held down.
-BIOS 2.5 menu: <kbd>1</kbd> Load DOS, <kbd>2</kbd> memory test, <kbd>3</kbd> LED Show, <kbd>4</kbd> Info, <kbd>5</kbd> UART console, <kbd>6</kbd> BASIC, <kbd>7</kbd> LED Show ON/OFF.
-Two ROMs: BIOS 2.5 English and French (« ROM U4 » selector).</p>
+BIOS 2.6 menu: <kbd>1</kbd> Load DOS, <kbd>2</kbd> memory test, <kbd>3</kbd> LED Show, <kbd>4</kbd> Info, <kbd>5</kbd> UART console, <kbd>6</kbd> BASIC, <kbd>7</kbd> LED Show ON/OFF.
+Two ROMs: BIOS 2.6 English and French (« ROM U4 » selector).</p>
 <h3>Keyboards</h3>
 <table>
 <tr><td><b>PS/2 (J4)</b></td><td>default; click on the board or the LCD. Keys are sent as real PS/2 frames (set 2, 10 kHz) to PB0/PB1 of U12 and IRQ1.</td></tr>

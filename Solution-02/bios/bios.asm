@@ -2110,7 +2110,7 @@ anim_vumetre:
 ;                12345678901234567890
 %ifdef LANG_EN
 ;                12345678901234567890      (BIOS anglais : make LANG=en)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.5'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.6'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 KB  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2137,7 +2137,7 @@ txt_led:    db  'LED SHOW   Esc=menu '
             db  '                    '
             db  'PS/2 keyboard >     '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.5'
+txt_sys:    db  'SOLUTION-02 BIOS 2.6'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512KB  ROM 256KB'
             db  '8259 absent         '
@@ -2149,12 +2149,12 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.5 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.6 - VE2CUY 2026', 13, 10
             db  'Menu (PS/2 keyboard): 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) LED Show ON/OFF', 13, 10, 0
 %else
 ;                12345678901234567890      (BIOS francais, par defaut)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.5'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.6'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2181,7 +2181,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.5'
+txt_sys:    db  'SOLUTION-02 BIOS 2.6'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2193,7 +2193,7 @@ txt_pic_absent:
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.5 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.6 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) DOS  2) Test memoire  3) Anim. DEL  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF', 13, 10, 0
 %endif

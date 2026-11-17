@@ -1618,7 +1618,8 @@ chg_a:
         cmp     byte [es:V_UCON], 0
         je      .pile
         mov     si, txt_chg_fin         ; terminal : le DOS attend toujours sa touche
-        call    uart_texte
+        call    uart_texte              ; (finit par CR LF)
+        call    uart_recale
 .pile:  cli
         mov     ss, [es:V_CHG_SS]
         mov     sp, [es:V_CHG_SP]
@@ -2055,6 +2056,7 @@ progres_affiche:
         mov     si, V_LIGNE
         call    msg_uart
         pop     ds
+        call    uart_recale_lf          ; le systeme qui se charge ecrit deja (CP/M : sans CR)
 .sans_uart:
         pop     ax
         mov     cl, 3
@@ -2079,6 +2081,32 @@ progres_affiche:
         mov     al, bl
         out     PPI_PB, al
         ret
+
+; uart_recale : console UART, apres un message du BIOS au milieu du systeme (terminal en
+; colonne 0) : le curseur du terminal a la colonne de V_CUR (ESC [ n C) ; uart_recale_lf :
+; CR LF d'abord. Les deplacements relatifs suivants (CP/M ne renvoie jamais de CR)
+; retombent juste. Preserve tout.
+uart_recale_lf:
+        cmp     byte [es:V_UCON], 0
+        je      uart_recale.r
+        push    ax
+        mov     al, 13
+        call    uart_tx
+        mov     al, 10
+        call    uart_tx
+        jmp     uart_recale.col
+uart_recale:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        push    ax
+.col:   mov     byte [es:V_TDEC], 0
+        mov     al, [es:V_CUR]
+        or      al, al
+        jz      .f
+        mov     ah, 'C'
+        call    uart_csi
+.f:     pop     ax
+.r:     ret
 
 ; msg_uart : console UART : CR LF puis la ligne de 20 caracteres DS:SI (espaces de fin
 ; retires). Messages du chargement, aussi au terminal. Preserve tout.
