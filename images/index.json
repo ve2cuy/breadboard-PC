@@ -1,0 +1,42 @@
+[
+    {
+        "file":  "pcdos2_1.img",
+        "name":  "PCDOS21.IMG",
+        "desc":  "PC-DOS 2.1",
+        "desc_en":  "PC-DOS 2.1",
+        "size":  184320,
+        "def":  true
+    },
+    {
+        "file":  "Dos33-d1.IMG",
+        "name":  "DOS33.IMG",
+        "desc":  "PC-DOS 3.3, disquette 1",
+        "desc_en":  "PC-DOS 3.3, disk 1",
+        "size":  368640,
+        "def":  true
+    },
+    {
+        "file":  "Dos50-d1-nokeyb.img",
+        "name":  "DOS50.IMG",
+        "desc":  "MS-DOS 5.0, disquette 1 (sans KEYB)",
+        "desc_en":  "MS-DOS 5.0, disk 1 (no KEYB)",
+        "size":  368640,
+        "def":  false
+    },
+    {
+        "file":  "Dos62-d1-nokeyb.IMG",
+        "name":  "DOS622.IMG",
+        "desc":  "MS-DOS 6.22, disquette 1 (sans KEYB)",
+        "desc_en":  "MS-DOS 6.22, disk 1 (no KEYB)",
+        "size":  1474560,
+        "def":  false
+    },
+    {
+        "file":  "FREEDOS_C.IMG",
+        "name":  "FREEDOS.IMG",
+        "desc":  "FreeDOS 1.4, disque dur C: (32 Mo)",
+        "desc_en":  "FreeDOS 1.4, C: hard disk (32 MB)",
+        "size":  33546240,
+        "def":  false
+    }
+]
