@@ -318,8 +318,10 @@ function specialKey(k) {
 
 // ====================================================================== clavier de l'ordinateur
 function buildKeyboard() {
+  const tk = $('touchKbd');
   const typing = (e) => {
     const tg = e.target;
+    if (tg === tk) return false;
     return tg && (tg.tagName === 'INPUT' || tg.tagName === 'SELECT' || tg.tagName === 'TEXTAREA');
   };
   window.addEventListener('keydown', (e) => {
@@ -330,29 +332,64 @@ function buildKeyboard() {
       e.preventDefault(); e.code === 'F10' ? S.dbg.step() : S.dbg.stepOver(); return;
     }
     if (!S.powered) return;
+    // clavier virtuel (iPad) : les caracteres imprimables arrivent par l'evenement input
+    if (e.target === tk && (e.isComposing || e.key === 'Unidentified' || e.key === 'Process'
+      || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey))) return;
     if (S.kbdMode === 'uart') {
       const b = uartBytes(e);
       if (b) { sendUart(b); e.preventDefault(); }
       return;
     }
-    const mk = ps2Make(e.code);
+    const code = keyCode(e);
+    const mk = ps2Make(code);
     if (!mk) return;
     e.preventDefault();
-    S.pressed.add(e.code);
+    S.pressed.add(code);
     sendKbd(mk);
     flash('ledKbd');
   });
   window.addEventListener('keyup', (e) => {
-    if (S.kbdMode !== 'ps2' || !S.pressed.has(e.code)) return;
-    S.pressed.delete(e.code);
-    const br = ps2Break(e.code);
+    const code = keyCode(e);
+    if (S.kbdMode !== 'ps2' || !S.pressed.has(code)) return;
+    S.pressed.delete(code);
+    const br = ps2Break(code);
     if (br) { sendKbd(br); e.preventDefault(); }
   });
+  // texte saisi au clavier virtuel : envoye tel quel puis efface du champ invisible
+  const flushTouch = () => {
+    const txt = tk.value;
+    tk.value = '';
+    if (!txt || !S.powered) return;
+    if (S.kbdMode === 'uart') sendUart(uartText(txt));
+    else { for (const ev of ps2Text(txt)) sendKbd(ev); flash('ledKbd'); }
+  };
+  tk.addEventListener('input', (e) => {
+    if (e.isComposing) return;
+    flushTouch();
+  });
+  tk.addEventListener('compositionend', flushTouch);
+  tk.addEventListener('focus', () => $('term').classList.toggle('touch-focus', S.kbdMode === 'uart'));
+  tk.addEventListener('blur', () => $('term').classList.remove('touch-focus'));
+  // un toucher sur le terminal ou l'ecran LCD donne le focus au champ invisible -> clavier virtuel
+  let touch = false;
+  const openTouchKbd = (mode) => {
+    if (!touch) return;
+    setKbdMode(mode);
+    tk.focus({ preventScroll: true });
+    $('term').classList.toggle('touch-focus', mode === 'uart');
+  };
+  window.addEventListener('pointerdown', (e) => { touch = e.pointerType === 'touch' || e.pointerType === 'pen'; }, true);
+  $('term').addEventListener('click', () => openTouchKbd('uart'));
+  $('lcdCanvas').addEventListener('click', () => openTouchKbd('ps2'));
   window.addEventListener('blur', releaseAll);
   $('term').addEventListener('mousedown', () => setKbdMode('uart'));
   $('pcbWrap').addEventListener('mousedown', () => { if (S.kbdMode !== 'ps2') setKbdMode('ps2'); });
   $('lcdCanvas').addEventListener('mousedown', () => setKbdMode('ps2'));
 }
+// e.code est parfois vide avec un clavier virtuel : le deduire de e.key
+const KEY_CODE = { Enter: 'Enter', Backspace: 'Backspace', Tab: 'Tab', Escape: 'Escape', ' ': 'Space',
+  ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight' };
+function keyCode(e) { return e.code || KEY_CODE[e.key] || ''; }
 function releaseAll() {
   for (const c of S.pressed) { const br = ps2Break(c); if (br) sendKbd(br); }
   S.pressed.clear();

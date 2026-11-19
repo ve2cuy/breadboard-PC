@@ -357,6 +357,9 @@
 <!-- fenetre de l'inspecteur / PDF / aide -->
 <div class="modal" id="modal"><div class="modal-box"><header><b id="modalTitle"></b><span class="grow"></span><a id="modalExt" target="_blank" rel="noopener" class="sbtn" hidden>Nouvel onglet</a><button class="sbtn" id="modalClose">Fermer</button></header><div class="modal-body" id="modalBody"></div></div></div>
 
+<!-- champ invisible : fait apparaitre le clavier virtuel des tablettes (iPad) -->
+<textarea id="touchKbd" class="touch-kbd" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-hidden="true" tabindex="-1"></textarea>
+
 <div class="drop-hint" id="dropHint">Déposer des images .IMG (carte SD) ou une ROM .bin</div>
 
 <script type="module" src="js/main.js"></script>
