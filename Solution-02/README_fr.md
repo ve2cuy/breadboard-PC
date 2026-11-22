@@ -295,13 +295,15 @@ de U12 en mode 2 (PC4–PC6 portent maintenant la carte SD).
 | 17 PB3 MOSI | SD_MOSI | U12 PC6 (partagé avec la carte SD) |
 | 18 PB4 MISO | AVR_MISO | U12 **PB4** ; R20 10 kΩ au +5 V. Ligne à part : beaucoup de modules microSD ne libèrent jamais leur MISO |
 | 16 PB2 SS | AVR_SS | U12 **PC0** ; R21 10 kΩ au +5 V (ATmega non sélectionné pendant le RESET, 8255 en entrée) |
-| 2 PD0 RXD / 3 PD1 TXD | UART_RX / UART_TX | J5 broches 2 / 1 (R4 garde RX au repos) |
+| 14 PB0 (ICP1) / 15 PB1 (OC1A) | UART_RX / UART_TX | J5 broches 2 / 1 (R4 garde RX au repos). **Terminal sur un UART logiciel de l'ATmega** (schéma du 2026-11-22) : capture d'entrée de la minuterie 1 en réception, comparaison de sortie en émission, jusqu'à 38400 bauds |
+| 2 PD0 RXD / 3 PD1 TXD | ESP_TX5 / ESP_RX5 | USART matériel → **ESP32** (J13) : RXD ← Q1 (2N3904, base commune) ← TX de l'ESP32 (3,3 V) ; TXD → diviseur R23/R24 (2,2k/3,3k, 3 V) → RX de l'ESP32 |
 | 4 PD2 | IRQ4 | U13 IR4 : front montant = un octet reçu attend |
 | 12 PD6 / 13 PD7 | UART_RTS / UART_CTS | J8 broches 1 / 2 (3 = GND) ; R22 10 kΩ tire CTS à la masse (actif sans terminal) |
 | 9 / 10 XTAL1 / XTAL2 | AVR_XTAL1 / AVR_XTAL2 | Y2 16 MHz, C21 / C22 22 pF à la masse |
 | 1 RESET | AVR_RESET | R19 10 kΩ au +5 V seulement : aucun lien avec le RESET du 8088 |
 | 7 VCC, 20 AVCC / 8, 22 GND | | +5 V / masse ; C23 100 nF |
-| PD3, PD4 | | libres (clavier PS/2 plus tard) ; PB0, PB1, PC0–PC5, PD5 et AREF libres |
+| 5 PD3 / 6 PD4 | ESP_RTS5 / ESP_CTS5 | Contrôle de flux de l'ESP32 : PD3 (CTS de l'ATmega) ← Q2 ← RTS de l'ESP32 ; PD4 (RTS de l'ATmega) → diviseur R25/R26 → CTS de l'ESP32 |
+| | | PC0–PC5, PD5 et AREF libres |
 
 - L'ATmega se programme **hors du montage**, dans le support du TL866 : pas de
   connecteur ISP.
@@ -316,6 +318,31 @@ de U12 en mode 2 (PC4–PC6 portent maintenant la carte SD).
 - **Pas encore câblé.** Le BIOS 2.7 (plus bas) le gère et garde l'UART logiciel quand
   l'ATmega est absent : graver d'abord le BIOS 2.7, puis câbler l'ATmega.
   Le PCB (172 × 100 mm) est à reprendre.
+
+### ESP32 (J13) : accès Internet pour ELKS (schéma du 2026-11-22, à valider)
+
+L'USART matériel de l'ATmega va à un **ESP32** (DevKit V1 ou Heltec WiFi Kit 32), routeur
+SLIP avec NAT vers le Wi-Fi : ELKS (`ktcp` en SLIP) atteint Internet par lui. Le terminal
+passe sur un UART logiciel de l'ATmega (PB0/PB1, jusqu'à 38400 bauds). Copie du schéma
+avant la modification : `Solution02.avant-esp32-2026-11-22.kicad_sch`.
+
+| J13 (1 × 7) | Net | ESP32 (UART2 par la matrice des GPIO) |
+|---|---|---|
+| 1 | +5V | 5V / VIN (son régulateur 3,3 V) ; C25 100 µF pour les pointes du Wi-Fi (jusqu'à 500 mA) |
+| 2 | ESP_3V3 | 3V3 (sortie du régulateur de l'ESP32) : bases de Q1/Q2 par R29/R30 10k |
+| 3 | ESP_RX | GPIO26 = RX ← diviseur R23/R24 ← TXD de l'ATmega |
+| 4 | ESP_TX | GPIO27 = TX → émetteur de Q1 → RXD de l'ATmega (collecteur, R27 4k7 au +5 V) |
+| 5 | ESP_CTS | GPIO33 = CTS ← diviseur R25/R26 ← PD4 de l'ATmega |
+| 6 | ESP_RTS | GPIO32 = RTS → émetteur de Q2 → PD3 de l'ATmega (collecteur, R28 4k7 au +5 V) |
+| 7 | GND | GND |
+
+- Q1/Q2 2N3904 (tout petit NPN : BC547, 2N2222…) en base commune, non inverseurs :
+  broche de l'ESP32 à 0 → le transistor conduit, collecteur à 0 ; broche à 3,3 V →
+  bloqué, collecteur tiré à 5 V. Sans ESP32 (ou pendant son démarrage, broches encore en
+  entrée), les deux sont bloqués : TX au repos et RTS = 1, l'ATmega n'émet pas.
+- GPIO 26, 27, 32 et 33 sont libres sur les deux cartes ; sur la Heltec WiFi Kit 32
+  (V1/V2), l'OLED garde GPIO4 (SDA), GPIO15 (SCL) et GPIO16 (RST) et peut afficher l'état
+  du Wi-Fi et l'adresse IP. Les broches se choisissent dans le micrologiciel de l'ESP32.
 
 ## 8259A (U13) : interruptions du clavier et de l'UART
 
@@ -1007,8 +1034,21 @@ make            # build/solution-02-bios.bin (image de 256 Ko)
 make test       # simulateur tests/sim.py (25 scénarios, ~30 min ; un seul : python tests/sim.py build/solution-02-bios.bin dos)
 make diag       # ROM de diagnostic du 8255 U7 (écritures en rafale) ; graver : make flash PUCE=ok GRAVER=diag
 make diag2      # ROM de diagnostic de U12 (PC/PA clignotent, PB et trames PS/2 au LCD) ; GRAVER=diag2
-make flash PUCE=ok   # graver la W29C020C (TL866CS, minipro sous WSL) — insérer la puce d'abord
+make flash FLASH_LANG=en PUCE=ok   # graver la ROM anglaise (build/solution-02-bios-en.bin) sur la W29C020C
+make flash FLASH_LANG=fr PUCE=ok   # graver la ROM française (build/solution-02-bios.bin) ; fr par défaut
+make flash PUCE=ok GRAVER=diagsd   # graver la ROM de diagnostic de la carte SD (aussi diag, diag2)
 ```
+
+La gravure passe par le TL866CS et minipro sous WSL (USB rattaché par `usbipd`, fait par
+`make flash`). Insérer d'abord la puce dans le support ZIF : sans `PUCE=ok`, `make flash`
+n'affiche qu'un rappel. La commande exécutée, utilisable directement depuis un shell WSL
+dans `bios/` :
+
+```sh
+MINIPRO_HOME=~/minipro ~/minipro/minipro -p W29C020C -u -w build/solution-02-bios-en.bin
+```
+
+Un échec de vérification ponctuel se règle en regravant.
 
 ## Câblage de la RAM (HM628512, U6)
 
@@ -1185,6 +1225,8 @@ Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 f
 
 ## État
 
+- 2026-11-22 : **image de disque dur ELKS** (`elks/construire-hd.ps1`) : partition MINIX de 32 Mo sur C:, tous les programmes d'ELKS, compilateur C natif C86 (`cpp`, `c86`, `as`, `ld`, `make`, en-têtes, libc86), dcc, Lua, un petit `top`. BIOS 2.8 : le démarrage de C: depuis une partition MINIX retire le disque B: en RAM et donne 507 Ko (nécessaires au compilateur). Simulateur : `hello.c` compilé et exécuté sur le 8088.
+- 2026-11-22 : **BIOS 2.8** : les séquences ANSI (ESC [ ... : déplacements A/B/C/D/H/f/G/d, effacements J/K ; les autres sont avalées) envoyées par INT 10h AH=0Eh sont interprétées dans le tampon d'écran du BIOS au lieu d'être écrites au LCD (elles vont toujours telles quelles au terminal). ELKS recompilé sans pilotes Ethernet (leurs sondages ISA tombaient sur le LCD, le 8253 et U12 par le décodage des ports sur 8 bits). Simulateur : session ELKS au LCD propre, essai des séquences depuis le BASIC.
 - 2026-11-21 : **BIOS 2.7** : terminal par l'ATmega U17 quand il est présent (détecté par IDENT), UART logiciel sinon ; réception au premier plan sans perte (files remplies au fur et à mesure, RTS), émission sans masquer les interruptions, bus SPI partagé protégé (aucune transaction en interruption, carte SD désélectionnée). Simulateur : DOS, CP/M-86 depuis C:, ELKS sans perte (lignes tapées ou collées) ; suites Rust et Python inchangées sans l'ATmega. Pas encore gravé.
 - 2026-11-21 : micrologiciel de l'ATmega328P (`arduino/atmega_uart/`) : UART matériel avec tampons de 1024/512 octets, RTS/CTS, protocole d'esclave SPI version 1, IRQ4 sur octet reçu ; 54 vérifications du protocole sur le PC ; gravé (TL866CS, fusibles du quartz 16 MHz).
 - 2026-11-21 : schéma : **ATmega328P (U17)** en esclave SPI sur le bus de la carte SD (SCK/MOSI partagés, MISO → U12 PB4, SS ← U12 PC0), UART matériel sur J5, IR4 ← PD2, RTS/CTS sur J8, quartz Y2 16 MHz ; UART logiciel retiré (U12 PA7 et PB2 libres, U14B à la masse). À valider ; BIOS 2.6 inchangé (pas encore câblé) ; PCB à reprendre.

@@ -16634,6 +16634,235 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Transistor_BJT:Q_NPN_EBC"
+			(pin_names
+				(offset 0)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "Q"
+				(at 5.08 1.27 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Value" "Q_NPN_EBC"
+				(at 5.08 -1.27 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+					(justify left)
+				)
+			)
+			(property "Footprint" ""
+				(at 5.08 2.54 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "NPN transistor, emitter/base/collector"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Sim.Device" "NPN"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Sim.Pins" "1=E 2=B 3=C"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "BJT"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "Q_NPN_EBC_0_1"
+				(polyline
+					(pts
+						(xy -2.54 0) (xy 0.635 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.635 1.905) (xy 0.635 -1.905)
+					)
+					(stroke
+						(width 0.508)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 1.27 0)
+					(radius 2.8194)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "Q_NPN_EBC_1_1"
+				(polyline
+					(pts
+						(xy 0.635 0.635) (xy 2.54 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.635 -0.635) (xy 2.54 -2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 1.27 -1.778) (xy 1.778 -1.27) (xy 2.286 -2.286) (xy 1.27 -1.778)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(pin passive line
+					(at 2.54 -5.08 90)
+					(length 2.54)
+					(name "E"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -5.08 0 0)
+					(length 2.54)
+					(name "B"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 2.54 5.08 270)
+					(length 2.54)
+					(name "C"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 	)
 	(text " 5.33 MHz"
 		(exclude_from_sim no)
@@ -44565,26 +44794,6 @@
 		)
 		(uuid "5e951ada-1a78-4ddb-8c8a-306e6e3e3b1c")
 	)
-	(label "UART_RX"
-		(at 50.8 274.32 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "8335992b-4cbb-4381-911a-8cb1c53ea73c")
-	)
-	(label "UART_TX"
-		(at 50.8 276.86 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "64a27eef-5021-459a-a670-389b64f89434")
-	)
 	(label "IRQ4"
 		(at 50.8 279.4 0)
 		(effects
@@ -44594,14 +44803,6 @@
 			(justify left bottom)
 		)
 		(uuid "7a07b23c-73cb-4c08-b434-a47e2e97fc6e")
-	)
-	(no_connect
-		(at 50.8 281.94)
-		(uuid "b36b5d62-d1b0-4c6e-94ca-51ae0b77d883")
-	)
-	(no_connect
-		(at 50.8 284.48)
-		(uuid "133433fc-87b7-47ce-ac2f-15f5286d0adf")
 	)
 	(label "AVR_XTAL1"
 		(at 50.8 246.38 0)
@@ -44646,14 +44847,6 @@
 			(justify left bottom)
 		)
 		(uuid "a19b2346-fece-4abe-aef9-54816958d32e")
-	)
-	(no_connect
-		(at 50.8 231.14)
-		(uuid "2650b032-bf68-44e8-997c-801a0cf989e6")
-	)
-	(no_connect
-		(at 50.8 233.68)
-		(uuid "e70cd39c-748d-4735-a89c-3780f648088d")
 	)
 	(label "AVR_SS"
 		(at 50.8 236.22 0)
@@ -46479,7 +46672,7 @@
 			)
 		)
 	)
-	(text "U17 = ATmega328P (sur support, programme au TL866 hors circuit)\nUART materiel sur J5 (PD0 = RX, PD1 = TX), RTS / CTS sur J8\nEsclave SPI du 8088 : SCK, MOSI = PC5, PC6 de U12 (avec la SD)\nMISO a part -> U12 PB4 (R20), SS <- U12 PC0 (R21), PD2 -> IR4\nPD3 / PD4 libres (PS/2 plus tard) ; U12 PA7 et PB2 libres"
+	(text "U17 = ATmega328P (sur support, programme au TL866 hors circuit)\nTerminal J5 : UART logiciel (PB0 = RX par ICP1, PB1 = TX par OC1A), RTS / CTS sur J8\nUSART materiel (PD0, PD1) : ESP32 sur J13 (SLIP), RTS / CTS : PD4 -> CTS, PD3 <- RTS\nEsclave SPI du 8088 : SCK, MOSI = PC5, PC6 de U12 (avec la SD)\nMISO a part -> U12 PB4 (R20), SS <- U12 PC0 (R21), PD2 -> IR4 ; U12 PA7 et PB2 libres"
 		(exclude_from_sim no)
 		(at 93.98 373.38 0)
 		(effects
@@ -46489,6 +46682,1916 @@
 			(justify left bottom)
 		)
 		(uuid "269bcf39-0dd9-4eb6-8d4f-990dd18bc7f8")
+	)
+	(label "ESP_TX5"
+		(at 50.8 274.32 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "82c381f8-59e6-4fb4-a794-bcd734cd4030")
+	)
+	(label "ESP_RX5"
+		(at 50.8 276.86 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "6295787e-ddc4-4869-adc4-a89733ff0549")
+	)
+	(label "UART_RX"
+		(at 50.8 231.14 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "3bac899a-488f-4768-b1fe-6ec9014f694d")
+	)
+	(label "UART_TX"
+		(at 50.8 233.68 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "3b763b40-bf05-4ff9-9c7e-a9bc6cd25c47")
+	)
+	(label "ESP_RTS5"
+		(at 50.8 281.94 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "8bb25ef5-576c-4b9c-b32f-df3e1c709aac")
+	)
+	(label "ESP_CTS5"
+		(at 50.8 284.48 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "9f06e183-0e38-415d-a67c-d4f0d9337803")
+	)
+	(symbol
+		(lib_id "Transistor_BJT:Q_NPN_EBC")
+		(at 264.16 375.92 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "25c07973-ccda-4c06-8440-cf97d54ac520")
+		(property "Reference" "Q1"
+			(at 269.24 374.65 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "2N3904"
+			(at 269.24 377.19 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_THT:TO-92_Inline"
+			(at 264.16 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 264.16 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "NPN en base commune : ESP32 (3,3 V) -> ATmega (5 V), non inverseur"
+			(at 264.16 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "c7ab60cc-a68c-46b0-9ed3-25b78ba95d22")
+		)
+		(pin "2"
+			(uuid "a0dc88a5-a7b0-4ac3-8608-7e93b951016f")
+		)
+		(pin "3"
+			(uuid "e91870a0-d020-493f-a7ff-f6650844a51c")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "Q1")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 266.7 367.03 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "8d163b62-3de5-4976-98c9-36d8c65864b0")
+		(property "Reference" "R27"
+			(at 269.24 365.76 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "4k7"
+			(at 269.24 368.3 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal"
+			(at 266.7 367.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 266.7 367.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 266.7 367.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "5200e706-d99a-4428-b637-05875d1d2096")
+		)
+		(pin "2"
+			(uuid "6c61dcf5-d7c2-4d6f-8ca1-32a7dd9594ce")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "R27")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+5V")
+		(at 266.7 363.22 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(in_pos_files no)
+		(dnp no)
+		(uuid "2b8ed933-95bf-49cd-b1f8-ff0cabd6efc7")
+		(property "Reference" "#PWR1440"
+			(at 266.7 367.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+5V"
+			(at 266.7 359.664 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 266.7 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 266.7 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 266.7 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "6bd08e0f-a4f4-44a6-a202-dc9aa3657609")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR1440")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 266.7 370.84) (xy 276.86 370.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1fa727bc-0697-4f5c-89b3-7a3964d5768b")
+	)
+	(label "ESP_TX5"
+		(at 276.86 370.84 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "aad70a9f-2fda-4561-bc5b-5536e42294d1")
+	)
+	(wire
+		(pts
+			(xy 266.7 381) (xy 276.86 381)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "68328800-1d96-42f9-b9f0-a251ffb65105")
+	)
+	(label "ESP_TX"
+		(at 276.86 381 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "2edc9596-fa60-4bcf-bdb1-8e10be18d789")
+	)
+	(wire
+		(pts
+			(xy 259.08 375.92) (xy 254 375.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0d8ba398-8cb9-4e86-9805-c5aba141d97d")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 254 372.11 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "584b36c5-7674-4a4c-9ced-6c1dd845fbf5")
+		(property "Reference" "R29"
+			(at 246.38 370.84 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10k"
+			(at 246.38 373.38 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal"
+			(at 254 372.11 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 254 372.11 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 254 372.11 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "0c33f479-a1bd-4fcc-b614-eb2d949db305")
+		)
+		(pin "2"
+			(uuid "023f51b2-bc93-423b-a9b4-9a0b31efad43")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "R29")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "ESP_3V3"
+		(at 254 368.3 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "62cc9817-14ca-4cc3-80ab-96c690eea557")
+	)
+	(symbol
+		(lib_id "Transistor_BJT:Q_NPN_EBC")
+		(at 309.88 375.92 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "67050595-c945-41db-8d05-7e83444d1f35")
+		(property "Reference" "Q2"
+			(at 314.96 374.65 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "2N3904"
+			(at 314.96 377.19 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Package_TO_SOT_THT:TO-92_Inline"
+			(at 309.88 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 309.88 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "NPN en base commune : ESP32 (3,3 V) -> ATmega (5 V), non inverseur"
+			(at 309.88 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "ddd3310b-0eb3-4544-a1dc-b5b2a9efa410")
+		)
+		(pin "2"
+			(uuid "27bde5c9-4645-47b0-9933-cc38ff03267a")
+		)
+		(pin "3"
+			(uuid "95ab8bd7-ccbe-4569-bdb9-510384be9db5")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "Q2")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 312.42 367.03 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "6d6f0c08-f861-4aa0-975e-ecf03c78d025")
+		(property "Reference" "R28"
+			(at 314.96 365.76 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "4k7"
+			(at 314.96 368.3 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal"
+			(at 312.42 367.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 312.42 367.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 312.42 367.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e09f8675-da41-4c90-83e2-5e3216b4ecc3")
+		)
+		(pin "2"
+			(uuid "65e9ace0-d62b-4a7b-9cb9-f4e5e0291847")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "R28")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+5V")
+		(at 312.42 363.22 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(in_pos_files no)
+		(dnp no)
+		(uuid "5e7b5b5d-a510-4532-aaa7-29c58827df36")
+		(property "Reference" "#PWR1441"
+			(at 312.42 367.03 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+5V"
+			(at 312.42 359.664 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 312.42 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 312.42 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 312.42 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "830bc849-0617-4a1c-bda7-7eac2b1b5494")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR1441")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 312.42 370.84) (xy 322.58 370.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "bc1f483a-bc1e-45cb-b269-16c3e5092ea9")
+	)
+	(label "ESP_RTS5"
+		(at 322.58 370.84 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "80dd6415-99f3-49ca-b888-a3c6e53fb96d")
+	)
+	(wire
+		(pts
+			(xy 312.42 381) (xy 322.58 381)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "70659097-c2d0-43fe-9245-c44c865bd8c6")
+	)
+	(label "ESP_RTS"
+		(at 322.58 381 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "c28e150c-0777-492c-a1a1-50b4b2e7abd7")
+	)
+	(wire
+		(pts
+			(xy 304.8 375.92) (xy 299.72 375.92)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "266c69f9-d12c-4aaa-9c35-cdecf9472af7")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 299.72 372.11 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "38eb4d67-8623-480f-932d-d5fae786ce81")
+		(property "Reference" "R30"
+			(at 292.1 370.84 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10k"
+			(at 292.1 373.38 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal"
+			(at 299.72 372.11 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 299.72 372.11 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 299.72 372.11 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e05ed6df-3281-4b34-b466-b1325b8da227")
+		)
+		(pin "2"
+			(uuid "da110009-899f-42e0-91a4-3709d2420fd9")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "R30")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "ESP_3V3"
+		(at 299.72 368.3 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "03168262-ffdd-4cfc-91af-210699158650")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 342.9 363.22 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "1d875590-9bab-4540-8ca7-cf1806b70cf2")
+		(property "Reference" "R23"
+			(at 345.44 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "2k2"
+			(at 345.44 364.49 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal"
+			(at 342.9 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 342.9 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 342.9 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "a5d70ef1-1a9d-4657-bb94-351e722d54c8")
+		)
+		(pin "2"
+			(uuid "45399a6e-ed00-4820-97b9-879451990abf")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "R23")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "ESP_RX5"
+		(at 342.9 359.41 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "24bc71da-9a54-4245-a010-acfaa62a44c3")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 342.9 375.92 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "41b09c78-762f-4906-85ba-dcc091a694fe")
+		(property "Reference" "R24"
+			(at 345.44 374.65 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "3k3"
+			(at 345.44 377.19 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal"
+			(at 342.9 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 342.9 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 342.9 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "43f2392c-5f85-4b21-a82a-6b78416f7caa")
+		)
+		(pin "2"
+			(uuid "90e041b7-17c7-4a91-ab7c-199f06bf1f0a")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "R24")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 342.9 367.03) (xy 342.9 372.11)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "ec51e714-8001-4f7d-a583-d052d8f65b57")
+	)
+	(label "ESP_RX"
+		(at 342.9 369.57 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "d03ea0b4-64a0-4662-b64c-7ec75ff0c774")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 342.9 379.73 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(in_pos_files no)
+		(dnp no)
+		(uuid "4877edaf-38fb-4ddf-88c9-1c1bb5b5235b")
+		(property "Reference" "#PWR1442"
+			(at 342.9 386.08 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 342.9 383.54 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 342.9 379.73 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 342.9 379.73 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 342.9 379.73 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "10dfb727-315a-46a5-8a33-45ab4d5e71a5")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR1442")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 358.14 363.22 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "d677b49e-cdd1-4317-bcf9-959332d94256")
+		(property "Reference" "R25"
+			(at 360.68 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "2k2"
+			(at 360.68 364.49 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal"
+			(at 358.14 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 358.14 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 358.14 363.22 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "68b2f40d-2752-4de4-b30a-5c9197226232")
+		)
+		(pin "2"
+			(uuid "3fb3d728-d4e2-4334-b076-af6328a1a692")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "R25")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "ESP_CTS5"
+		(at 358.14 359.41 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "94e46f00-9ed1-4bed-b66a-9a248055aa47")
+	)
+	(symbol
+		(lib_id "Device:R")
+		(at 358.14 375.92 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "c5dbd6db-7e13-4a58-a1b9-f9e3e73a4f61")
+		(property "Reference" "R26"
+			(at 360.68 374.65 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "3k3"
+			(at 360.68 377.19 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P7.62mm_Horizontal"
+			(at 358.14 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 358.14 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 358.14 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "52a89c7e-be42-41b8-95ad-e2e4a6f1afef")
+		)
+		(pin "2"
+			(uuid "94bf53dd-6426-4e36-a84a-73b768249ec3")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "R26")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(wire
+		(pts
+			(xy 358.14 367.03) (xy 358.14 372.11)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "e7a9ce77-2e16-4487-8698-e257d1074e83")
+	)
+	(label "ESP_CTS"
+		(at 358.14 369.57 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "2be71c44-0781-4545-9535-0984661477f5")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 358.14 379.73 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(in_pos_files no)
+		(dnp no)
+		(uuid "4b65d17e-8ebc-4166-a0bf-77f28d907b6b")
+		(property "Reference" "#PWR1443"
+			(at 358.14 386.08 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 358.14 383.54 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 358.14 379.73 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 358.14 379.73 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 358.14 379.73 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "4957290b-bf5e-49d1-8286-96375823a990")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR1443")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector_Generic:Conn_01x07")
+		(at 387.35 368.3 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "d92e12a9-34d1-4791-af51-2857dfdb8d00")
+		(property "Reference" "J13"
+			(at 384.81 358.14 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "ESP32"
+			(at 384.81 381 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x07_P2.54mm_Vertical"
+			(at 387.35 368.3 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 387.35 368.3 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "ESP32 (DevKit V1 ou Heltec WiFi Kit 32) : 1 5V, 2 3V3, 3 GPIO26 (RX), 4 GPIO27 (TX), 5 GPIO33 (CTS), 6 GPIO32 (RTS), 7 GND"
+			(at 387.35 368.3 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "c1e6338d-7832-469a-9a57-74082f187f23")
+		)
+		(pin "2"
+			(uuid "b121ec7c-18d5-467e-bdb5-f8de48972908")
+		)
+		(pin "3"
+			(uuid "db8d94c8-5257-4aca-abd2-e79d9123eeaf")
+		)
+		(pin "4"
+			(uuid "23f428e2-4031-46fd-8877-61081700d351")
+		)
+		(pin "5"
+			(uuid "5edf8f89-c0fe-47ed-942d-d80b037edbf2")
+		)
+		(pin "6"
+			(uuid "06827f6e-2dc5-4d4c-b646-e543774ede15")
+		)
+		(pin "7"
+			(uuid "71ec8b1d-326c-4a43-8fb9-4a1d7d62ffc0")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "J13")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+5V")
+		(at 382.27 360.68 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(in_pos_files no)
+		(dnp no)
+		(uuid "fc87c565-e82c-4671-ad7b-0ddf3e41f488")
+		(property "Reference" "#PWR1444"
+			(at 382.27 364.49 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+5V"
+			(at 382.27 357.124 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 382.27 360.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 382.27 360.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 382.27 360.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f71b2d70-818c-40cb-a01c-263526637147")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR1444")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(label "ESP_3V3"
+		(at 382.27 363.22 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "c2258b28-9484-4a1c-908c-ccc4b8ef6b6e")
+	)
+	(label "ESP_RX"
+		(at 382.27 365.76 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "249b3aa6-aab5-4e43-bceb-5496d7027eb5")
+	)
+	(label "ESP_TX"
+		(at 382.27 368.3 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "f4ccc37b-0aeb-4ab5-8f2a-ced6149e6e08")
+	)
+	(label "ESP_CTS"
+		(at 382.27 370.84 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "fa27abbf-417f-499c-aa78-bf383ef2b711")
+	)
+	(label "ESP_RTS"
+		(at 382.27 373.38 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "c6a27453-f613-4b33-8997-cae105c35813")
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 382.27 375.92 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(in_pos_files no)
+		(dnp no)
+		(uuid "5dc3c306-3654-4deb-b079-0f2b8da92452")
+		(property "Reference" "#PWR1445"
+			(at 382.27 382.27 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 382.27 379.73 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 382.27 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 382.27 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 382.27 375.92 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "b55249fb-bbb5-4764-987b-5f808f4cee9d")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR1445")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C_Polarized_Small")
+		(at 372.11 386.08 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "f2c7bb25-ff99-401a-ad45-304bb70657e0")
+		(property "Reference" "C25"
+			(at 374.65 384.81 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "100u"
+			(at 374.65 387.35 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_THT:CP_Radial_D6.3mm_P2.50mm"
+			(at 372.11 386.08 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 372.11 386.08 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 372.11 386.08 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "706b86fa-cbc9-4125-aa20-67d42b081817")
+		)
+		(pin "2"
+			(uuid "4b21f94b-4aec-47f2-9c1c-c63b3c09d255")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "C25")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:+5V")
+		(at 372.11 383.54 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(in_pos_files no)
+		(dnp no)
+		(uuid "02f40891-cc55-40b6-a5d0-040aa89ad731")
+		(property "Reference" "#PWR1446"
+			(at 372.11 387.35 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "+5V"
+			(at 372.11 379.984 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 372.11 383.54 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 372.11 383.54 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 372.11 383.54 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "10cf1b08-c385-4093-8d27-ab85126637c0")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR1446")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 372.11 388.62 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom no)
+		(on_board no)
+		(in_pos_files no)
+		(dnp no)
+		(uuid "cd378011-d24a-4f25-87a9-329481715361")
+		(property "Reference" "#PWR1447"
+			(at 372.11 394.97 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 372.11 392.43 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 372.11 388.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 372.11 388.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 372.11 388.62 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "968de428-5475-45fc-acc3-fc54e893931a")
+		)
+		(instances
+			(project "Solution02"
+				(path "/c25a772d-af9c-4ebc-96f6-0966738c13a8"
+					(reference "#PWR1447")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(text "J13 = ESP32 (DevKit V1 ou Heltec WiFi Kit 32, OLED libre) : 1 5V / VIN, 2 3V3 (sortie de l ESP32),\n3 GPIO26 = RX, 4 GPIO27 = TX, 5 GPIO33 = CTS, 6 GPIO32 = RTS, 7 GND. C25 : pointes du Wi-Fi (500 mA)\nQ1 / Q2 2N3904 en base commune : ESP32 (3,3 V) -> ATmega (5 V) ; R23-R26 : ATmega -> ESP32 (3 V)\nSans ESP32 : Q1 / Q2 bloques, R27 / R28 -> TX au repos et RTS = 1 (l ATmega n emet pas)"
+		(exclude_from_sim no)
+		(at 248.92 398.78 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "9202eeac-792a-410c-b8ae-64f96c77fc03")
 	)
 	(sheet_instances
 		(path "/"

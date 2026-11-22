@@ -286,13 +286,15 @@ instead of U12 in mode 2 (PC4–PC6 now carry the SD card).
 | 17 PB3 MOSI | SD_MOSI | U12 PC6 (shared with the SD card) |
 | 18 PB4 MISO | AVR_MISO | U12 **PB4**; R20 10 kΩ to +5 V. Separate line: many microSD modules never release their MISO |
 | 16 PB2 SS | AVR_SS | U12 **PC0**; R21 10 kΩ to +5 V (ATmega not selected during RESET, 8255 as input) |
-| 2 PD0 RXD / 3 PD1 TXD | UART_RX / UART_TX | J5 pins 2 / 1 (R4 keeps RX idle) |
+| 14 PB0 (ICP1) / 15 PB1 (OC1A) | UART_RX / UART_TX | J5 pins 2 / 1 (R4 keeps RX idle). **Terminal on a software UART of the ATmega** (schematic of 2026-11-22): input capture of timer 1 for reception, output compare for sending, up to 38400 baud |
+| 2 PD0 RXD / 3 PD1 TXD | ESP_TX5 / ESP_RX5 | Hardware USART → **ESP32** (J13): RXD ← Q1 (2N3904, common base) ← ESP32 TX (3.3 V); TXD → R23/R24 divider (2.2k/3.3k, 3 V) → ESP32 RX |
 | 4 PD2 | IRQ4 | U13 IR4: rising edge = a received byte is waiting |
 | 12 PD6 / 13 PD7 | UART_RTS / UART_CTS | J8 pins 1 / 2 (3 = GND); R22 10 kΩ pulls CTS to ground (asserted with no terminal) |
 | 9 / 10 XTAL1 / XTAL2 | AVR_XTAL1 / AVR_XTAL2 | Y2 16 MHz, C21 / C22 22 pF to ground |
 | 1 RESET | AVR_RESET | R19 10 kΩ to +5 V only: no link with the 8088 RESET |
 | 7 VCC, 20 AVCC / 8, 22 GND | | +5 V / ground; C23 100 nF |
-| PD3, PD4 | | free (PS/2 keyboard later); PB0, PB1, PC0–PC5, PD5 and AREF free |
+| 5 PD3 / 6 PD4 | ESP_RTS5 / ESP_CTS5 | ESP32 flow control: PD3 (ATmega CTS) ← Q2 ← ESP32 RTS; PD4 (ATmega RTS) → R25/R26 divider → ESP32 CTS |
+| | | PC0–PC5, PD5 and AREF free |
 
 - The ATmega is programmed **off the board**, in the TL866 socket: no ISP
   header.
@@ -306,6 +308,31 @@ instead of U12 in mode 2 (PC4–PC6 now carry the SD card).
 - **Not wired yet.** BIOS 2.7 (below) supports it and keeps the software UART when the
   ATmega is absent: burn BIOS 2.7 first, then wire the ATmega. The PCB
   (172 × 100 mm) has to be redone.
+
+### ESP32 (J13): Internet access for ELKS (schematic of 2026-11-22, to be validated)
+
+The ATmega's hardware USART goes to an **ESP32** (DevKit V1 or Heltec WiFi Kit 32), which
+acts as a SLIP router with NAT to Wi-Fi: ELKS (`ktcp` in SLIP) reaches the Internet through
+it. The terminal moves to a software UART of the ATmega (PB0/PB1, up to 38400 baud). Copy
+of the schematic before the change: `Solution02.avant-esp32-2026-11-22.kicad_sch`.
+
+| J13 (1 × 7) | Net | ESP32 (UART2 routed through the GPIO matrix) |
+|---|---|---|
+| 1 | +5V | 5V / VIN (its 3.3 V regulator); C25 100 µF for Wi-Fi peaks (up to 500 mA) |
+| 2 | ESP_3V3 | 3V3 (output of the ESP32's regulator): bases of Q1/Q2 through R29/R30 10k |
+| 3 | ESP_RX | GPIO26 = RX ← R23/R24 divider ← ATmega TXD |
+| 4 | ESP_TX | GPIO27 = TX → emitter of Q1 → ATmega RXD (collector, R27 4k7 to +5 V) |
+| 5 | ESP_CTS | GPIO33 = CTS ← R25/R26 divider ← ATmega PD4 |
+| 6 | ESP_RTS | GPIO32 = RTS → emitter of Q2 → ATmega PD3 (collector, R28 4k7 to +5 V) |
+| 7 | GND | GND |
+
+- Q1/Q2 2N3904 (any small NPN: BC547, 2N2222…) in common base, non-inverting: ESP32
+  pin at 0 → the transistor conducts, collector at 0; pin at 3.3 V → blocked, collector
+  pulled to 5 V. Without the ESP32 (or while it boots, pins still inputs) both are
+  blocked: TX idle and RTS = 1, so the ATmega does not send.
+- GPIO 26, 27, 32 and 33 are free on both boards; on the Heltec WiFi Kit 32 (V1/V2), the
+  OLED keeps GPIO4 (SDA), GPIO15 (SCL) and GPIO16 (RST) and can show the Wi-Fi state and
+  the IP address. Pins are set in the ESP32 firmware.
 
 ## 8259A (U13): keyboard and UART interrupts
 
@@ -928,8 +955,20 @@ make            # build/solution-02-bios.bin (256 KB image)
 make test       # simulator tests/sim.py (25 scenarios, ~30 min; a single one: python tests/sim.py build/solution-02-bios.bin dos)
 make diag       # diagnostic ROM for 8255 U7 (burst writes); burn: make flash PUCE=ok GRAVER=diag
 make diag2      # diagnostic ROM for U12 (PC/PA blink, PB and PS/2 frames on the LCD); GRAVER=diag2
-make flash PUCE=ok   # burn the W29C020C (TL866CS, minipro under WSL) — insert the chip first
+make flash FLASH_LANG=en PUCE=ok   # burn the English ROM (build/solution-02-bios-en.bin) on the W29C020C
+make flash FLASH_LANG=fr PUCE=ok   # burn the French ROM (build/solution-02-bios.bin); fr is the default
+make flash PUCE=ok GRAVER=diagsd   # burn the SD card diagnostic ROM (also diag, diag2)
 ```
+
+Burning uses the TL866CS through minipro under WSL (USB attached by `usbipd`, done by
+`make flash`). Insert the chip in the ZIF socket first: without `PUCE=ok`, `make flash`
+only prints a reminder. The command it runs, usable directly from a WSL shell in `bios/`:
+
+```sh
+MINIPRO_HOME=~/minipro ~/minipro/minipro -p W29C020C -u -w build/solution-02-bios-en.bin
+```
+
+A rare verification failure is fixed by burning again.
 
 ## RAM wiring (HM628512, U6)
 
@@ -1096,6 +1135,8 @@ files).
 
 ## Status
 
+- 2026-11-22: **ELKS hard disk image** (`elks/construire-hd.ps1`): 32 MB MINIX partition on C:, every ELKS program, C86 native C compiler (`cpp`, `c86`, `as`, `ld`, `make`, headers, libc86), dcc, Lua, a small `top`. BIOS 2.8: booting C: from a MINIX partition drops the RAM disk B: and gives 507 KB (the compiler needs it). Simulator: `hello.c` compiled and run on the 8088.
+- 2026-11-22: **BIOS 2.8**: ANSI sequences (ESC [ ... : cursor moves A/B/C/D/H/f/G/d, erase J/K; others swallowed) sent through INT 10h AH=0Eh are interpreted in the BIOS screen buffer instead of being written to the LCD (they still go to the terminal unchanged). ELKS rebuilt without Ethernet drivers (their ISA probes hit the LCD, the 8253 and U12 through the 8-bit port decoding). Simulator: ELKS session with a clean LCD, BASIC test of the sequences.
 - 2026-11-21: **BIOS 2.7**: terminal through the ATmega U17 when present (detected by IDENT), software UART otherwise; reception in the foreground without loss (queues fed as they empty, RTS), sending without masking interrupts, shared SPI bus protected (no transaction in interrupts, SD card deselected). Simulator: DOS, CP/M-86 from C:, ELKS without loss (typed or pasted lines); Rust and Python suites unchanged without the ATmega. Not burned.
 - 2026-11-21: ATmega328P firmware (`arduino/atmega_uart/`): hardware UART with 1024/512-byte buffers, RTS/CTS, SPI slave protocol version 1, IRQ4 on received data; 54 protocol checks on the PC; programmed (TL866CS, fuses for the 16 MHz crystal).
 - 2026-11-21: schematic: **ATmega328P (U17)** as an SPI slave on the SD card bus (SCK/MOSI shared, MISO → U12 PB4, SS ← U12 PC0), hardware UART on J5, IR4 ← PD2, RTS/CTS on J8, Y2 16 MHz crystal; software UART removed (U12 PA7 and PB2 free, U14B grounded). To be validated; BIOS 2.6 unchanged (not wired yet); PCB to be redone.
