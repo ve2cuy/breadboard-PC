@@ -1,0 +1,3 @@
+*.bin
+minix_first.s
+mbr_autogen.c

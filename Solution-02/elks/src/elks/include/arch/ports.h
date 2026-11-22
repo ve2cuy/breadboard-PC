@@ -1,0 +1,200 @@
+#ifndef __ARCH_PORTS_H
+#define __ARCH_PORTS_H
+
+/*
+ * ELKS I/O port and IRQ mappings
+ *
+ * PC IRQ default mappings (* = possible conflicting uses)
+ *
+ *  IRQ ELKS Device          Config Option          Status
+ *  0   Timer                                       Required
+ *  1   Keyboard             CONFIG_CONSOLE_DIRECT  Optional
+ *  2*  Cascade -> 9 on AT                          Optional on XT, not available on AT
+ *  2*  WD 80x3   (/dev/wd0) CONFIG_ETH_WD          Optional on XT, not available on AT
+ *  3   Com2    (/dev/ttyS1) CONFIG_CHAR_DEV_RS     Optional
+ *  4   Com1    (/dev/ttyS0) CONFIG_CHAR_DEV_RS     Optional
+ *  5*  Com3    (/dev/ttyS2) CONFIG_CHAR_DEV_RS     Optional
+ *  5*  HW IDE hard drive
+ *  5*  Sound Blaster (dsp)  CONFIG_CHAR_DEV_DSP    Optional, avoid if a HD is fitted
+ *  6   HW floppy drive      CONFIG_BLK_DEV_FD      Optional
+ *  7   Unused (LPT, Com4)
+ *  7*  Sound Blaster (dsp)  CONFIG_CHAR_DEV_DSP    Optional, also gets PIC spurious IRQs
+ *  8   Unused (RTC)
+ *  9*  3C509/EL3 (/dev/3c0) CONFIG_ETH_EL3         Optional
+ * 10*  WD 80x3   (/dev/wd0) CONFIG_ETH_WD          Optional
+ * 11*  3C509/EL3 (/dev/3c0) CONFIG_ETH_EL3         Optional
+ * 12*  NE2K      (/dev/ne0) CONFIG_ETH_NE2K        Optional
+ * 12*  Unused (Mouse)                              No driver
+ * 13   Unused (Math coproc)                        No driver
+ * 14   AT IDE hard drive
+ * 15   AT IDE hard drive
+ *
+ * Edit settings below to change port address or IRQ:
+ *   Change I/O port and driver IRQ number to match your hardware
+ */
+
+#ifdef CONFIG_ARCH_IBMPC
+/* timer, timer-8254.c*/
+#define TIMER_CMDS_PORT 0x43            /* command port */
+#define TIMER_DATA_PORT 0x40            /* data port    */
+#define TIMER_IRQ       0               /* can't change*/
+
+/* bell, bell-8254.c*/
+#define TIMER2_PORT     0x42            /* timer 2 data port for speaker frequency*/
+#define SPEAKER_PORT    0x61
+
+/* 8259 interrupt controller, irq-8259.c*/
+#define PIC1_CMD   0x20                 /* master */
+#define PIC1_DATA  0x21
+#define PIC2_CMD   0xA0                 /* slave */
+#define PIC2_DATA  0xA1
+
+#define COM1_PORT       0x3f8
+#define COM1_IRQ        4               /* unregistered unless COM1_PORT found*/
+
+#define COM2_PORT       0x2f8
+#define COM2_IRQ        3               /* unregistered unless COM2_PORT found*/
+
+#define COM3_PORT       0x3e8
+#define COM3_IRQ        5               /* unregistered unless COM3_PORT found*/
+
+#define COM4_PORT       0x2e8
+#define COM4_IRQ        7               /* unregistered unless COM4_PORT found*/
+
+#endif
+
+#ifdef CONFIG_ARCH_PC98
+/* timer, timer-8254.c*/
+#define TIMER_CMDS_PORT 0x77            /* command port */
+#define TIMER_DATA_PORT 0x71            /* data port    */
+#define TIMER_IRQ       0               /* can't change*/
+
+/* bell*/
+#define TIMER1_PORT     0x3FDB          /* timer 1 data port for speaker frequency*/
+#define PORTC_CONTROL   0x37            /* 8255A Port C control*/
+
+/* serial, serial-pc98.c*/
+#define TIMER2_PORT     0x75            /* timer 2 data port for serial port*/
+
+/* 8259 interrupt controller, irq-8259.c*/
+#define PIC1_CMD   0x00                 /* master */
+#define PIC1_DATA  0x02
+#define PIC2_CMD   0x08                 /* slave */
+#define PIC2_DATA  0x0A
+
+#define COM1_PORT       0x30
+#define COM1_IRQ        4               /* unregistered unless COM1_PORT found*/
+#endif
+
+#ifdef CONFIG_ARCH_8018X
+#define TIMER_IRQ       0  /* logical IRQ number, NOT related to the actual IRQ vector! */
+#endif
+
+#ifdef CONFIG_ARCH_NECV25
+#define TIMER_IRQ       0  /* logical IRQ number, NOT related to the actual IRQ vector! */
+#endif
+
+#ifdef CONFIG_ARCH_SWAN
+#define TIMER_IRQ       15
+#define COM1_IRQ        11
+#endif
+
+#ifdef CONFIG_ARCH_SOLO86
+#define TIMER_CMDS_PORT     0x06    /* command port */
+#define TIMER_DATA_PORT     0x00    /* data port    */
+#define TIMER_ENBL_PORT     0x01    /* enable port  */
+#define TIMER_IRQ           0
+
+#define TIMER2_DATA_PORT    0x04
+#define TIMER2_ENBL_PORT    0x05
+
+#define INT_CMDS_PORT       0x18
+#define INT_DATA_PORT       0x1A
+
+#define COM0_CMDS_PORT      0x20
+#define COM0_DATA_PORT      0x22
+#endif
+
+/* keyboard, kbd-scancode.c*/
+#define KBD_IO          0x60
+#define KBD_CTL         0x61
+#define KBD_IRQ         1
+
+/* Ethernet card settings may be overridden in /bootopts using netirq= and netport= */ 
+/* ne2k, ne2k.c */ 
+#ifdef CONFIG_ARCH_NECV25
+#define NE2K_PORT       0x200
+#define NE2K_IRQ        2
+#define NE2K_FLAGS      0x80
+#else
+#define NE2K_PORT       0x300
+#define NE2K_IRQ        12
+#define NE2K_FLAGS      0x80
+#endif
+
+/* wd, wd.c*/
+#define WD_PORT         0x240
+#define WD_IRQ          2
+#define WD_RAM          0xCE00
+#define WD_FLAGS        0x80
+
+/* el3/3C509, el3.c */
+#define EL3_PORT        0x330
+#define EL3_IRQ         11
+#define EL3_FLAGS       0x80
+
+/* SMC Ultra/83C790, ultra.c: irq and ram 0 read the card's own configuration,
+ * override with ul0= in /bootopts if the board is strapped differently */
+#define ULTRA_PORT      0x280
+#define ULTRA_IRQ       0
+#define ULTRA_RAM       0
+#define ULTRA_FLAGS     0x80
+
+/* AMD PCnet/LANCE, pcnet.c: port 0 = autodetect via PCI on 386+,
+ * for ISA LANCE boards set port/irq with le0= in /bootopts */
+#define LANCE_PORT      0
+#define LANCE_IRQ       9
+#define LANCE_FLAGS     0x80
+
+/* /bootopts parms for an ISA card: irq,port,ram,flags.  NICs use all four,
+ * audio cards carry the 8-bit DMA channel in ram, and any driver private
+ * flags are defined by the driver itself.  A port of -1 means the card was
+ * turned off with "off" in /bootopts and the driver is to skip it.
+ */
+
+#ifndef __ASSEMBLER__
+struct isa_conf {
+    int irq;
+    int port;
+    unsigned int ram;
+    unsigned int flags;
+};
+#endif
+
+/* Sound Blaster /dev/dsp, audio-sb.c: override with sb=irq,port,dma,flags in
+ * /bootopts, flag bits are the ISAF_ defines in arch/audio-sb.h
+ */
+#define SB_PORT         0x220
+#define SB_IRQ          5               /* use IRQ 7 with DMA 1 on an XT with a hard disk */
+#define SB_DMA          1               /* 8-bit DMA channel, 1 or 3 */
+#define SB_FLAGS        0
+#define SB_BUFSIZE      4096            /* one playback DMA block, two are buffered */
+
+/* XT MFM hard disk, mfmhd.c: override with mfm=irq,port,,flags in /bootopts,
+ * flag bits are MFMF_ in the driver
+ */
+#define MFM_PORT        0x320           /* W4 jumper selects 0x320 or 0x324 */
+#define MFM_IRQ         5               /* PC/XT fixed disk interrupt */
+#define MFM_FLAGS       0
+
+/* bioshd.c*/
+#define FDC_DOR         0x3F2           /* floppy digital output register*/
+
+/* direct floppy driver, directfd.c */
+#define FLOPPY_IRQ      6
+
+/* idequery.c */
+#define HD1_PORT        0x1f0
+#define HD2_PORT        0x170
+
+#endif

@@ -1,0 +1,3 @@
+# Sources d'ELKS : fins de ligne LF (scripts shell, Makefiles, configurations),
+# meme avec core.autocrlf=true sous Windows ; binaires detectes automatiquement.
+* text=auto eol=lf

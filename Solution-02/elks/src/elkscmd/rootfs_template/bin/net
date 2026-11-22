@@ -1,0 +1,89 @@
+# Start/stop ELKS networking
+#
+# Usage: net [start|stop|restart|show] [<ethdev>|slip|cslip] [baud] [device]
+#
+# Examples:
+#	net start ne0			start NE2K
+#	net start slip 19200		start slip at 19200 baud
+#	net start cslip 4800 /dev/ttyS1
+#
+# See slattach.sh for Linux slip setup
+# See qemu.sh NET= line for host forwarding into ELKS using QEMU
+#
+#set -x
+
+# read net configuration file
+source /etc/net.cfg
+
+usage()
+{
+	echo "Usage: net [start|stop|show] [<ethdev>|slip|cslip] [baud] [device]"
+	echo "Known <ethdev> devices:"
+	ls -l /dev | grep 9, | cut -c 56-
+	exit 1
+}
+
+getty_off()
+{
+	# turn off any serial gettys running
+	#init 1
+}
+
+start_network()
+{
+	custom_prestart_network
+	echo "Starting networking" on $link
+	case "$link" in
+	slip|cslip)
+		getty_off
+		ktcp="ktcp -b -p $link -s $baud -l $device $localip $gateway $netmask"
+		;;
+	*)
+		ktcp="ktcp -b -p $link $mtu $localip $gateway $netmask"
+		;;
+	esac
+	# run ktcp as background daemon if successful starting networking
+	echo $ktcp
+	if $ktcp; then
+		echo -n "Starting daemons "
+		for daemon in $netstart
+		do
+			eval cmdline=\$$daemon
+			echo -n "'$cmdline' "
+			$cmdline || true
+		done
+		echo ""
+	else
+		echo "Network start failed"
+		exit 1
+	fi
+	custom_poststart_network
+}
+
+stop_network()
+{
+	echo "Stopping network"
+	kill $(ps | grep "ktcp|telnet|httpd|ftpd" | cut -c 1-5) > /dev/null 2>&1
+	custom_stop_network
+}
+
+if test "$#" -lt 1; then
+	usage
+fi
+
+case "$1" in
+start)
+	if test "$2" != ""; then link=$2; fi
+	if test "$3" != ""; then baud=$3; fi
+	if test "$4" != ""; then device=$4; fi
+	start_network ;;
+stop) stop_network ;;
+restart)
+	stop_network
+	start_network ;;
+show)
+	ifconfig ;;
+*) usage ;;
+esac
+
+exit 0

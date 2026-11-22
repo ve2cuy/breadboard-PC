@@ -1,0 +1,31 @@
+#
+# IDE local settings and editor backup files
+#
+
+.project
+*~
+.DS_Store
+
+#
+# Build ignores
+#
+
+.config
+.config.old
+*.o
+*.a
+*.map
+*.sym
+
+#
+# Normal output and testing dirs
+#
+
+cross
+target
+
+#
+# Never ignore these
+#
+
+!.gitignore

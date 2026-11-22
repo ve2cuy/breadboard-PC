@@ -1,0 +1,44 @@
+.TH HOSTS 5
+.SH NAME
+hosts \- hostname to IP address database
+.SH SYNOPSIS
+.B /etc/hosts
+.SH DESCRIPTION
+The hosts database lists IP addresses and the hostnames that translate
+to these IP addresses, withput requiring the use of DNS.
+Normally, DNS over TCP/IP is used to translate host names to IP addresses.
+.PP
+A simple
+.B /etc/hosts
+may look like this:
+.PP
+.RS
+.ta +15n
+.nf
+127.0.0.1	localhost
+192.168.10.146	imac27
+10.0.2.2	server
+10.0.2.15	elks15
+.fi
+.RE
+.PP
+These entries give names to four IP addresses.  The file may contain
+comments marked with '#'.
+.PP
+You can have aliases (more hostnames on the same line) to give a machine
+more than one name, like
+.BR www ,
+if you run a web server on one.
+.PP
+The IP-address of the local machine may also be set in the
+.I /bootopts
+file using
+.BR LOCALIP=10.0.2.15,
+for example.
+.SH FILES
+.nf
+/etc/hosts	Hosts database
+/bootopts	Boot-time configuration file
+.fi
+.SH "SEE ALSO"
+.BR bootopts (5).

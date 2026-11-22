@@ -1,0 +1,7 @@
+*.o
+disasm
+nm86
+opcodes
+testsym
+hostdisasm
+hostnm86
