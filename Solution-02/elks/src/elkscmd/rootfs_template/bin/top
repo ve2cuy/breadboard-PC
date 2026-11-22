@@ -1,0 +1,11 @@
+#!/bin/sh
+# top (Solution-02) : uptime et ps (CPU %, tas, pile, taille) rafraichis toutes les
+# N secondes (defaut 2). Ctrl-C pour quitter.  Usage : top [N]
+N=${1:-2}
+while :
+do
+	clear
+	uptime
+	ps
+	sleep $N
+done

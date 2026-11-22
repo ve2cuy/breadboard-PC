@@ -24,6 +24,7 @@ fi
 mkdir -p "$B" "$CACHE/cross" "$SORTIE"
 rsync -a --delete --exclude cross "$ICI/src/" "$B/"
 ln -sfn "$CACHE/cross" "$B/cross"
+chmod 755 "$B/elkscmd/rootfs_template/bin/top"     # script ajoute pour Solution-02
 cd "$B"
 
 # chaine croisee (longue : ~20 min sur 16 coeurs ; une seule fois)

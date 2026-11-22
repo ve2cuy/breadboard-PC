@@ -27,6 +27,7 @@ The kernel still boots from the SD card (through INT 13h), but nothing shows up.
 | `src/solution02.config` | Build configuration, based on `ibmpc-1440.config`: **Headless console** (`CONFIG_CONSOLE_HEADLESS`: output through INT 10h AH=0Eh, keyboard polled through INT 16h, so the BIOS 2.6 console works: LCD, UART terminal and PS/2 keyboard), no scan-code keyboard driver, 360 KB floppy image (MINIX file system), `CONFIG_HW_SOLUTION02`. |
 | `src/elks/config.in` | New option `CONFIG_HW_SOLUTION02` (Solution-02 board). |
 | `src/elks/arch/i86/kernel/irqtab.S` | With `CONFIG_HW_SOLUTION02`: **8259 EOI at the start of each IRQ 0–7** (before `sti`), and no EOI at the end. See below. |
+| `src/elkscmd/rootfs_template/bin/top` | New: a small `top` (shell script): `uptime` and `ps` (CPU %, heap, stack, size per task) refreshed every 2 s (`top 5`: every 5 s), Ctrl-C to quit. ELKS has no `top`. |
 | `src/elkscmd/rootfs_template/bootopts` | `disable=df0,cfa`: the direct floppy driver (8237 DMA on ports 00h–0Fh) and the CompactFlash driver stay disabled. Disks go through the BIOS (`fd0`, `hda`). These drivers are still compiled in because, without `CONFIG_BLK_DEV_FD`, `directfd.c` does not build in ELKS 0.9.2. |
 
 `solution02.patch` holds the same changes as a diff against ELKS v0.9.2.
@@ -61,8 +62,12 @@ were served and most of them late (up to 862 µs). With the change, 399 IRQ4 wer
 - **Turn the LED animations off** (main menu, key 7) before booting ELKS. ELKS calls the
   BIOS timer every 5th tick, and an animation step masks interrupts long enough to lose a
   character.
-- The LCD gets garbled after a while: it receives a *function set 21h* command (4-bit
-  mode). Not yet investigated.
+- **Ethernet drivers disabled** (`# CONFIG_ETH is not set`). The board decodes only
+  address lines A0-A7, so the ISA probes of ELKS landed on its own chips: NE2000 at 300h
+  = LCD (it wrote 21h, *function set* 4-bit mode: garbled LCD), WD8003 at 240h = 8253,
+  3C509 at 330h = U12. Do not turn them back on.
+- The ANSI sequences ELKS sends to the terminal (clear screen, cursor moves) are
+  interpreted by BIOS 2.8 instead of being shown on the LCD.
 - The date is wrong (1979): ELKS reads the RTC at ports 70h/71h, which the board does
   not have. Use `date` to set it.
 - The 360 KB image has the 36 programs of the ELKS `APPS_360K` list (`sh`, `ls`, `cat`,
@@ -75,6 +80,38 @@ were served and most of them late (up to 862 µs). With the change, 399 IRQ4 wer
    `sortie/elks-solution02-fd360.img` after a build) to the SD card.
 2. Main menu: **7** (LED animations OFF), then **1) DOS**, pick the image, Enter.
 3. After ~50 s (360 KB read through the SD card): `login:` → `root`, no password.
+
+## Hard disk image (all programs, C compiler)
+
+`PC-DOS/ELKS-0.9.2/hd32-minix-s02.img` (outside git; `sortie/elks-solution02-hd32.img`
+after a build): 32 MB, partition table (63 sectors × 16 heads), one MINIX partition
+(type 80h), ELKS installed with **every program** of `elkscmd` (about 200 in `/bin`: `vi`,
+`edit`, `emacs` (kilomacs), `kilo`, `sed`, `diff`, `find`, `tar`, `gzip`, `bc`, `basic`,
+`lua`, `screen`, `ps`, `top`, `meminfo`, `uptime`, games…) and the external applications
+that build: the **C86 native C compiler** (`/usr/bin`: `cpp`, `c86`, `as`, `ld`, `ar`,
+`make`, `objdump`, `disasm86`; headers in `/usr/include`, `/usr/lib/libc86.a`, examples
+in `/usr/src`), the dcc compiler (`/usr/dcc`), Lua, Doom, Moria, Digger, image viewers…
+There is no C++ compiler for ELKS. The graphical programs (Nano-X, GEM, paint) need a VGA
+card and do not run on the board.
+
+1. Copy the image to the SD card (in one piece: the BIOS refuses a fragmented image).
+   The BIOS mounts it as C: (first `.IMG` larger than 1.44 MB).
+2. Main menu: **7** (LED animations OFF), **1) DOS**, pick the C: line, Enter.
+3. `login:` → `root`. From a MINIX partition on C:, BIOS 2.8 drops the RAM disk B: and
+   gives ELKS 507 KB (506K seen by the kernel, ~346 KB free): with the 379 KB announced
+   otherwise, `cpp` and `c86` fail (*not enough memory*).
+
+Compiling a program on the board:
+
+```
+cpp -0 -I/usr/include -I/usr/include/c86 hello.c -o hello.i
+c86 -O -bas86 -separate=yes -lang=c99 -stackcheck=no hello.i hello.as
+as -0 -j hello.as -o hello.o
+ld -0 -i -L/usr/lib -o hello hello.o -lc86
+./hello
+```
+
+`/usr/src/Makefile` (examples) shows the same steps for `make`.
 
 ## Build
 
@@ -91,3 +128,15 @@ volume `elks-s02-cache`), then the kernel, the programs and the image:
 `sortie/elks-solution02-fd360.img` and `sortie/elks-solution02-noyau.bin`. The full
 `make` ends with an error on the full image (too many files for 360 KB); the script
 expects this and then builds the reduced image (`make fd360-minix`).
+
+Hard disk image:
+
+```
+powershell -ExecutionPolicy Bypass -File construire-hd.ps1
+```
+
+`construire-hd.sh` runs `construire.sh`, then downloads OpenWatcom v2 (Linux snapshot,
+kept in the volume), clones and builds the external applications with `buildext.sh`
+(C86, dcc, Lua, Doom…; a failing project is only left out of the image, see
+`sortie/externes.log`), and builds `make hd32mbr-minix` (`CONFIG_APPS_HD`: every program):
+`sortie/elks-solution02-hd32.img`. Files left out: `sortie/absents-hd.log`.

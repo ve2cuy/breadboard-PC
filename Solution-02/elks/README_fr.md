@@ -28,6 +28,7 @@ quand même depuis la carte SD (par INT 13h), mais rien ne s'affiche.
 | `src/solution02.config` | Configuration de compilation, tirée de `ibmpc-1440.config` : **console Headless** (`CONFIG_CONSOLE_HEADLESS` : sortie par INT 10h AH=0Eh, clavier scruté par INT 16h, donc la console du BIOS 2.6 fonctionne : LCD, terminal UART et clavier PS/2), sans pilote de clavier à scan codes, image de disquette de 360 Ko (système de fichiers MINIX), `CONFIG_HW_SOLUTION02`. |
 | `src/elks/config.in` | Nouvelle option `CONFIG_HW_SOLUTION02` (carte Solution-02). |
 | `src/elks/arch/i86/kernel/irqtab.S` | Avec `CONFIG_HW_SOLUTION02` : **EOI du 8259 au début de chaque IRQ 0–7** (avant le `sti`), et plus d'EOI à la fin. Voir plus bas. |
+| `src/elkscmd/rootfs_template/bin/top` | Nouveau : un petit `top` (script) : `uptime` et `ps` (CPU %, tas, pile, taille par tâche) rafraîchis toutes les 2 s (`top 5` : toutes les 5 s), Ctrl-C pour quitter. ELKS n'a pas de `top`. |
 | `src/elkscmd/rootfs_template/bootopts` | `disable=df0,cfa` : le pilote de disquette direct (DMA 8237 aux ports 00h–0Fh) et le pilote CompactFlash restent désactivés. Les disques passent par le BIOS (`fd0`, `hda`). Ces pilotes restent compilés parce que, sans `CONFIG_BLK_DEV_FD`, `directfd.c` ne compile pas dans ELKS 0.9.2. |
 
 `solution02.patch` contient les mêmes modifications sous forme de différences par rapport
@@ -64,8 +65,12 @@ servies, dont 18 en retard.
 - **Couper les animations des DEL** (menu principal, touche 7) avant de démarrer ELKS.
   ELKS appelle l'horloge du BIOS un tic sur cinq, et un pas d'animation masque les
   interruptions assez longtemps pour perdre un caractère.
-- Le LCD se brouille au bout d'un moment : il reçoit une commande *function set 21h*
-  (mode 4 bits). Pas encore étudié.
+- **Pilotes Ethernet retirés** (`# CONFIG_ETH is not set`). La carte ne décode que les
+  lignes d'adresse A0-A7 : les sondages ISA d'ELKS tombaient sur ses propres puces : NE2000
+  en 300h = LCD (il y écrivait 21h, *function set* en mode 4 bits : LCD brouillé), WD8003
+  en 240h = 8253, 3C509 en 330h = U12. Ne pas les remettre.
+- Les séquences ANSI qu'ELKS envoie au terminal (effacement, déplacements du curseur) sont
+  interprétées par le BIOS 2.8 au lieu de s'afficher au LCD.
 - La date est fausse (1979) : ELKS lit l'horloge aux ports 70h/71h, absents de la carte.
   La régler avec `date`.
 - L'image de 360 Ko contient les 36 programmes de la liste `APPS_360K` d'ELKS (`sh`, `ls`,
@@ -79,6 +84,40 @@ servies, dont 18 en retard.
 2. Menu principal : **7** (animations des DEL OFF), puis **1) DOS**, choisir l'image,
    Entrée.
 3. Après ~50 s (lecture de 360 Ko par la carte SD) : `login:` → `root`, sans mot de passe.
+
+## Image de disque dur (tous les programmes, compilateur C)
+
+`PC-DOS/ELKS-0.9.2/hd32-minix-s02.img` (hors de git ; `sortie/elks-solution02-hd32.img`
+après une construction) : 32 Mo, table de partitions (63 secteurs × 16 têtes), une
+partition MINIX (type 80h), ELKS installé avec **tous les programmes** d'`elkscmd`
+(environ 200 dans `/bin` : `vi`, `edit`, `emacs` (kilomacs), `kilo`, `sed`, `diff`,
+`find`, `tar`, `gzip`, `bc`, `basic`, `lua`, `screen`, `ps`, `top`, `meminfo`, `uptime`,
+jeux…) et les applications externes qui se construisent : le **compilateur C natif C86**
+(`/usr/bin` : `cpp`, `c86`, `as`, `ld`, `ar`, `make`, `objdump`, `disasm86` ; en-têtes dans
+`/usr/include`, `/usr/lib/libc86.a`, exemples dans `/usr/src`), le compilateur dcc
+(`/usr/dcc`), Lua, Doom, Moria, Digger, visionneuses d'images… Il n'existe pas de
+compilateur C++ pour ELKS. Les programmes graphiques (Nano-X, GEM, paint) demandent une
+carte VGA et ne tournent pas sur le montage.
+
+1. Copier l'image sur la carte SD (d'un seul tenant : le BIOS refuse une image
+   fragmentée). Le BIOS la monte en C: (premier `.IMG` de plus de 1,44 Mo).
+2. Menu principal : **7** (animations des DEL OFF), **1) DOS**, choisir la ligne de C:,
+   Entrée.
+3. `login:` → `root`. Depuis une partition MINIX sur C:, le BIOS 2.8 retire le disque B:
+   en RAM et donne 507 Ko à ELKS (506K vus par le noyau, ~346 Ko libres) : avec les 379 Ko
+   annoncés sinon, `cpp` et `c86` échouent (*not enough memory*).
+
+Compiler un programme sur le montage :
+
+```
+cpp -0 -I/usr/include -I/usr/include/c86 hello.c -o hello.i
+c86 -O -bas86 -separate=yes -lang=c99 -stackcheck=no hello.i hello.as
+as -0 -j hello.as -o hello.o
+ld -0 -i -L/usr/lib -o hello hello.o -lc86
+./hello
+```
+
+`/usr/src/Makefile` (exemples) reprend les mêmes étapes pour `make`.
 
 ## Construction
 
@@ -95,3 +134,15 @@ le volume Docker `elks-s02-cache`), puis le noyau, les programmes et l'image :
 `sortie/elks-solution02-fd360.img` et `sortie/elks-solution02-noyau.bin`. Le `make`
 complet finit par une erreur sur l'image pleine (trop de fichiers pour 360 Ko) ; le
 script s'y attend et construit ensuite l'image réduite (`make fd360-minix`).
+
+Image de disque dur :
+
+```
+powershell -ExecutionPolicy Bypass -File construire-hd.ps1
+```
+
+`construire-hd.sh` lance `construire.sh`, puis télécharge OpenWatcom v2 (instantané
+Linux, gardé dans le volume), clone et construit les applications externes par
+`buildext.sh` (C86, dcc, Lua, Doom… ; un projet en échec manque seulement à l'image, voir
+`sortie/externes.log`) et construit `make hd32mbr-minix` (`CONFIG_APPS_HD` : tous les
+programmes) : `sortie/elks-solution02-hd32.img`. Fichiers absents : `sortie/absents-hd.log`.
