@@ -379,6 +379,8 @@ debut:
                                         ;  tant que le BIOS ne l'ecoute pas)
         mov     al, UART_TX             ; PA7 = 1 (repos)
         out     PPI2_PA, al
+        mov     al, AVR_REPOS           ; PC0 = 1 (ATmega libre), CS de la carte SD = 1
+        out     PPI2_PC, al             ; (le mot de mode les avait mis a 0)
 
 ; ---- 8259A (U13) : initialise, tout masque (sans effet s'il est absent) ----------
         mov     al, PIC_ICW1
@@ -783,6 +785,7 @@ menu:
         call    lcd_ecran
         call    menu_uart
         call    menu_led
+        call    menu_vit                ; ATmega : "2) Test RAM 8)9600"
         cmp     byte [es:V_MELODIE], 0  ; 1er menu apres le demarrage : ecran d'accueil sur le
         jne     .pas_premier            ; terminal (console a ON par defaut) et melodie
         cmp     byte [es:V_UCON], 0
@@ -812,6 +815,8 @@ menu:
         je      .basic
         cmp     al, '7'
         je      .led
+        cmp     al, '8'
+        je      .vitesse
         cmp     al, '5'
         jne     .touche
         xor     byte [es:V_UCON], 1     ; console du DOS sur l'UART : ON <-> OFF
@@ -824,6 +829,9 @@ menu:
         call    ecran_uart
         jmp     .touche
 .basic: jmp     basic_lance
+.vitesse:
+        call    menu_vitesse            ; 8) sous-menu des vitesses de l'UART (ATmega U17)
+        jmp     menu                    ; menu redessine (LCD et terminal)
 .led:   xor     byte [es:V_LED_OFF], 1  ; 7) animations des DEL en arriere-plan : ON <-> OFF
         call    menu_led
         cmp     byte [es:V_LED_OFF], 0
@@ -927,6 +935,7 @@ vars_init:
         mov     [es:V_CHG_LIGNE], al
         mov     [es:V_PROGRES], al
         mov     [es:V_SD_TYPE], al
+        call    avr_detecte             ; UART par l'ATmega U17 (sinon UART logiciel)
         call    pit_init
         jmp     tache_init
 
@@ -1009,6 +1018,16 @@ sysinfo:
 .cpu:   mov     al, 80h | LIGNE2
         call    lcd_cmd
         call    lcd_texte20
+        cmp     byte [es:V_AVR], 0      ; UART par l'ATmega U17 : "RAM 512K  ATmega v01"
+        je      .ligne4
+        mov     al, 80h | LIGNE3
+        call    lcd_cmd
+        mov     si, txt_ram_avr
+        mov     bx, 18
+        call    lcd_texte
+        mov     al, [es:V_AVR_VER]
+        call    lcd_hex8
+.ligne4:
         mov     al, 80h | LIGNE4        ; "8259+8253 OK I7 nnnn", "8259 OK  8253 absent"
         call    lcd_cmd                 ; ou "8259 absent (scrut.)"
         mov     si, txt_pic_absent
@@ -1030,6 +1049,11 @@ sysinfo:
 .pic:   call    lcd_texte20
 .attend:
         call    ecran_uart
+        cmp     byte [es:V_AVR], 0      ; ATmega : ~0,2 s pour emettre l'ecran, puis ligne 3 =
+        je      .touche                 ; diagnostic "AVR01 L0200 P00 FC0" (avr_diag)
+        PAUSE   1
+        call    avr_diag
+.touche:
         call    kbd_attend
         jmp     menu
 
@@ -1369,8 +1393,16 @@ del_aff:
 ; uart_tx) : a regler a l'oscilloscope (bit = 104,2 us a 9600 bauds ; 1 unite de
 ; UART_N = 17 cycles = 3,2 us a 5,33 MHz). Interruptions masquees pendant l'octet.
 ; =============================================================================
-; uart_tx : envoie AL. Preserve tous les registres.
+; uart_tx : envoie AL. Preserve tous les registres. Avec l'ATmega U17 : avr_tx.
 uart_tx:
+        push    ds
+        push    ax
+        mov     ax, DSEG
+        mov     ds, ax
+        cmp     byte [V_AVR], 0
+        pop     ax
+        pop     ds
+        jne     avr_tx
         push    ax
         push    bx
         push    cx
@@ -2110,7 +2142,7 @@ anim_vumetre:
 ;                12345678901234567890
 %ifdef LANG_EN
 ;                12345678901234567890      (BIOS anglais : make LANG=en)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.6'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.7'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 KB  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2137,7 +2169,7 @@ txt_led:    db  'LED SHOW   Esc=menu '
             db  '                    '
             db  'PS/2 keyboard >     '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.6'
+txt_sys:    db  'SOLUTION-02 BIOS 2.7'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512KB  ROM 256KB'
             db  '8259 absent         '
@@ -2148,13 +2180,28 @@ txt_pic_absent:
             db  '8259 absent (polled)'
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
+txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.6 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.7 - VE2CUY 2026', 13, 10
             db  'Menu (PS/2 keyboard): 1) Load DOS  2) Test memory  3) LED Show  4) Info'
-            db  '  5) UART:ON/OFF (console)  6) BASIC  7) LED Show ON/OFF', 13, 10, 0
+            db  '  5) UART:ON/OFF (console)  6) BASIC  7) LED Show ON/OFF'
+            db  '  8) UART speed (ATmega)', 13, 10, 0
+txt_menu2_vit:
+            db  '2) Test RAM 8)'
+txt_vit_titre:
+            db  'UART speed:   '
+txt_vit_ecran:
+            db  '                    '
+            db  '1) 9600     2) 19200'
+            db  '3) 38400    4) 57600'
+            db  '5) 115200   Esc=menu'
+txt_vit_msg1:
+            db  13, 10, 'UART: ', 0
+txt_vit_msg2:
+            db  ' baud (set the terminal)', 13, 10, 0
 %else
 ;                12345678901234567890      (BIOS francais, par defaut)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.6'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.7'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2181,7 +2228,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.6'
+txt_sys:    db  'SOLUTION-02 BIOS 2.7'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2192,10 +2239,25 @@ txt_pic_absent:
             db  '8259 absent (scrut.)'
 txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
+txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.6 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.7 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) DOS  2) Test memoire  3) Anim. DEL  4) Info'
-            db  '  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF', 13, 10, 0
+            db  '  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF'
+            db  '  8) Vitesse UART (ATmega)', 13, 10, 0
+txt_menu2_vit:
+            db  '2) Test RAM 8)'
+txt_vit_titre:
+            db  'Vitesse UART: '
+txt_vit_ecran:
+            db  '                    '
+            db  '1) 9600     2) 19200'
+            db  '3) 38400    4) 57600'
+            db  '5) 115200 Echap=menu'
+txt_vit_msg1:
+            db  13, 10, 'UART : ', 0
+txt_vit_msg2:
+            db  ' bauds (regler le terminal)', 13, 10, 0
 %endif
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
 fleches_ansi:
@@ -2274,6 +2336,7 @@ txt_a9:     db  'Vu-metre        '
 %endif
 %include "sd.inc"
 %include "services.inc"
+%include "avr.inc"
 %include "ramtest.inc"
 
 motifs:     dw  55AAh, 0AA55h, 0000h, 0FFFFh

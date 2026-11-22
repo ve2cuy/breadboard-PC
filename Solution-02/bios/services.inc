@@ -277,7 +277,14 @@ ivt_init:
         mov     ax, cs
         stosw
         jmp     .s
-.fin:   pop     es
+.fin:   push    ds                      ; ATmega U17 : IRQ4 = octet recu (irq_uart_avr)
+        mov     ax, DSEG
+        mov     ds, ax
+        cmp     byte [V_AVR], 0
+        pop     ds
+        je      .fin2
+        mov     word [es:0Ch * 4], irq_uart_avr
+.fin2:  pop     es
         ret
 
 ; it_init : (interruptions masquees) vecteurs, puis 8259 : reinitialise, detecte par
@@ -572,7 +579,10 @@ irq_uart:
 ; P Q R S (F1-F4), ou de 1-6 puis ~ (debut, inser, suppr, fin, page prec/suiv), ou de
 ; 11-15, 17-21 puis ~ (F1-F10 de PuTTY ; HDMAINT de CP/M-86 se sert de F1-F10).
 ; ESC seul (rien dans les ~2,7 ms) : touche Echap. ES = DSEG. Detruit AX.
-ucon_entree:
+; UCON_ENTREE suffixe, routine de l'octet suivant : assemble deux fois, pour que le
+; chemin de l'UART logiciel reste celui du BIOS 2.6 (marge de 3/4 de bit).
+%macro UCON_ENTREE 2
+ucon_entree%1:
         push    bx
         push    cx
         push    dx
@@ -580,7 +590,7 @@ ucon_entree:
         je      .esc
         cmp     al, 0C2h                ; UTF-8 (terminal) : 2 ou 3 octets -> page 437 (tot :
         jb      .simple                 ; l'octet suivant arrive 3/4 de bit plus tard)
-        call    ucon_utf8
+        call    ucon_utf8%1
         jc      .fin
         xor     ah, ah
         call    file_ajoute
@@ -600,7 +610,7 @@ ucon_entree:
         pop     cx
         pop     bx
         ret
-.esc:   call    ucon_suivant
+.esc:   call    %2
         jc      .echap
         cmp     al, '['
         je      .csi
@@ -614,27 +624,27 @@ ucon_entree:
 .echap: mov     ax, 011Bh
         call    file_ajoute
         jmp     .fin
-.csi:   call    ucon_suivant            ; (chaque octet de la sequence est lu AUSSITOT :
+.csi:   call    %2            ; (chaque octet de la sequence est lu AUSSITOT :
         jc      .fin                    ; le suivant arrive 3/4 de bit plus tard ; les
         cmp     al, '9'                 ; tables sont consultees a la fin)
         ja      .lettre
         mov     bl, al                  ; BL = 1er chiffre, BH = 2e chiffre (ou 0),
         xor     bh, bh                  ; DL = modificateur (ou 0 ; ucon_suivant detruit CX)
         xor     dl, dl
-        call    ucon_suivant            ; '~', ';' ou 2e chiffre
+        call    %2            ; '~', ';' ou 2e chiffre
         jc      .fin
         cmp     al, '9'
         ja      .pas_chiffre
         mov     bh, al
-        call    ucon_suivant
+        call    %2
         jc      .fin
 .pas_chiffre:
         cmp     al, ';'                 ; modificateur xterm (2 Maj, 3 Alt, 5 Ctrl, 7 Ctrl+Alt)
         jne     .tilde
-        call    ucon_suivant
+        call    %2
         jc      .fin
         mov     dl, al
-        call    ucon_suivant
+        call    %2
         jc      .fin
 .tilde: cmp     al, '~'
         jne     .fin
@@ -660,9 +670,9 @@ ucon_entree:
         cmp     ah, 53h                 ; Ctrl+Alt+Suppr (ESC [ 3 ; 7 ~) : redemarrage
         jne     .t2
         cmp     dl, '7'
-        je      ucon_reset
+        je      ucon_reset%1
         cmp     dl, '8'
-        je      ucon_reset
+        je      ucon_reset%1
 .t2:    cmp     ah, 52h                 ; Ctrl+Alt+Inser (ESC [ 2 ; 7 ~, ou 8 avec Maj) :
         jne     .etendue                ; changement de la disquette de A:
         cmp     dl, '7'
@@ -681,7 +691,7 @@ ucon_entree:
 
 ; ucon_reset : Ctrl+Alt+Suppr au terminal (ESC [ 3 ; 7 ~, depuis IRQ4) : retour au
 ; demarrage, comme Ctrl+Alt+Suppr au clavier PS/2.
-ucon_reset:
+ucon_reset%1:
         mov     al, PIC_EOI
         out     PIC_CMD, al
         jmp     0F000h:debut
@@ -689,9 +699,9 @@ ucon_reset:
 ; ucon_utf8 : AL = 1er octet d'un caractere UTF-8 (C2h-EFh) ; les suivants arrivent d'un
 ; trait -> AL = caractere de la page de codes 437 (table cp437_utf), CF = 0 ; CF = 1 :
 ; sequence invalide ou caractere absent de la page 437 (ignore). Detruit AH, BX, CX.
-ucon_utf8:
+ucon_utf8%1:
         mov     bh, al                  ; 1er octet (uart_rx se sert de AH ; BX est garde
-        call    ucon_suivant            ; par ucon_entree) ; 2e octet, tout de suite
+        call    %2            ; par ucon_entree) ; 2e octet, tout de suite
         jc      .r
         push    dx
         push    si
@@ -704,7 +714,7 @@ ucon_utf8:
         xor     bh, bh
         mov     al, dl
         jmp     .dernier
-.trois: call    ucon_suivant            ; 3e octet (1110xxxx 10xxxxxx 10xxxxxx)
+.trois: call    %2            ; 3e octet (1110xxxx 10xxxxxx 10xxxxxx)
         jc      .non
         and     dh, 0Fh
         mov     bl, dh
@@ -737,8 +747,15 @@ ucon_utf8:
         pop     dx
 .r:     ret
 
+%endmacro
+
+UCON_ENTREE , ucon_suivant              ; UART logiciel (IRQ4, irq_uart)
+UCON_ENTREE _avr, avr_suivant           ; ATmega U17 (avr_service)
+
 ; ucon_suivant : attend (~2,7 ms) le bit de depart de l'octet suivant d'une sequence
 ; et le lit. AL = octet, CF = 1 si rien ou trame invalide. Detruit CX.
+; (L'ATmega a son propre exemplaire de ucon_entree, qui appelle avr_suivant : aucun test
+; ici, l'octet suivant arrive 3/4 de bit apres le precedent.)
 ucon_suivant:
         mov     cx, UCON_ATTENTE
 .a:     in      al, PPI2_PB
@@ -817,8 +834,11 @@ irq_parasite:
         iret
 
 ; ufile_ajoute : AL dans la file de l'UART (perdu si pleine). ES = DSEG. Preserve tout.
+; (interruptions masquees le temps de la mise a jour : appele en IRQ4 et au premier plan)
 ufile_ajoute:
         push    bx
+        pushf
+        cli
         mov     bl, [es:V_UFILE_Q]
         mov     bh, bl
         inc     bh
@@ -828,11 +848,14 @@ ufile_ajoute:
         mov     [es:V_UFILE_Q], bh
         xor     bh, bh
         mov     [es:bx + V_UFILE], al
-.fin:   pop     bx
+.fin:   popf
+        pop     bx
         ret
 
 ; ufile_retire : AL = octet le plus ancien, CF = 1 si la file est vide. Preserve le reste.
+; (ATmega U17 : avr_service apporte d'abord les octets recus)
 ufile_retire:
+        call    avr_service
         push    bx
         mov     bl, [es:V_UFILE_T]
         cmp     bl, [es:V_UFILE_Q]
@@ -1883,7 +1906,10 @@ int14h:
         jmp     .fin
 .recu:  xor     ah, ah
         jmp     .fin
-.etat:  mov     ax, 6030h               ; emetteur vide ; CTS, DSR
+.etat:  call    avr_service             ; ATmega : octets recus vers la file de l'UART
+        ; (AH = 00h n'est pas une demande de vitesse : le DOS initialise AUX a 2400 bauds
+        ; par INT 14h AH=00h au demarrage, ce qui couperait la console du terminal)
+        mov     ax, 6030h               ; emetteur vide ; CTS, DSR
         push    bx
         mov     bl, [es:V_UFILE_T]
         cmp     bl, [es:V_UFILE_Q]
@@ -2253,11 +2279,15 @@ int16h:
 ; attentes du LED Show) : une touche frappee entre-temps attend dans le clavier.
 ; Detruisent AL.
 kbd_libere:
+        cmp     byte [es:V_AVR], 0      ; ATmega U17 : PC0 = SS de l'ATmega (pas de diode)
+        jne     .fin
         mov     al, KBD_LIBRE
         out     PPI2_CTRL, al
-        ret
+.fin:   ret
 kbd_bloque:
         cmp     byte [es:V_PIC], 0      ; 8259 : le clavier reste libre (IRQ1)
+        jne     .fin
+        cmp     byte [es:V_AVR], 0      ; ATmega U17 : PC0 = SS de l'ATmega
         jne     .fin
         mov     al, KBD_BLOQUE
         out     PPI2_CTRL, al
@@ -2353,8 +2383,11 @@ kbd_octet:
 
 ; file de FILE_N codes de touche (mots) en DSEG : tete V_FILE_T, queue V_FILE_Q.
 ; file_ajoute : AX dans la file (perdu si elle est pleine). Preserve tout.
+; (interruptions masquees le temps de la mise a jour : IRQ1 et avr_service y ajoutent)
 file_ajoute:
         push    bx
+        pushf
+        cli
         mov     bl, [es:V_FILE_Q]
         mov     bh, bl
         inc     bh
@@ -2365,12 +2398,15 @@ file_ajoute:
         xor     bh, bh
         shl     bx, 1
         mov     [es:bx + V_FILE], ax
-.fin:   pop     bx
+.fin:   popf
+        pop     bx
         ret
 
 ; file_regarde : AX = premier code sans le retirer ; CF = 1 si la file est vide.
-; file_retire : idem, en le retirant. Preservent le reste.
+; file_retire : idem, en le retirant. Preservent le reste. (ATmega U17 : avr_service
+; apporte d'abord les octets recus du terminal.)
 file_regarde:
+        call    avr_service
         push    bx
         mov     bl, [es:V_FILE_T]
         cmp     bl, [es:V_FILE_Q]
@@ -2382,6 +2418,7 @@ file_regarde:
         clc
         ret
 file_retire:
+        call    avr_service
         push    bx
         mov     bl, [es:V_FILE_T]
         cmp     bl, [es:V_FILE_Q]
