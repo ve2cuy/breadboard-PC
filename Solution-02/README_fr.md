@@ -219,10 +219,11 @@ entrée. Mêmes bits que Solution-01 pour le clavier.
 | 35 | RESET | RESET du 82C84 (U11 broche 10) |
 | 26 / 7 | VCC / GND | +5 V / GND (+ 100 nF) |
 | 18 | PB0 = KBD_CLK | J4 D+ (horloge PS/2), tirage R2 10 kΩ au +5 V |
-| 14 | PC0 = blocage du clavier | diode Schottky prévue en 0.6, **non posée** (voir ci-dessous) ; PC0 libre |
+| 14 | PC0 = AVR_SS | SS de l'ATmega (U17 broche 16), R21 10 kΩ au +5 V — schéma du 2026-11-21 (avant : blocage du clavier, diode non posée) |
 | 19 | PB1 = KBD_DATA | J4 D− (données PS/2), tirage R3 10 kΩ au +5 V |
-| 20 | PB2 = UART_RX | J5 broche 2, tirage R4 10 kΩ au +5 V |
-| 37 | PA7 = UART_TX | J5 broche 1 |
+| 20 | PB2 | libre depuis le schéma du 2026-11-21 (était UART_RX) |
+| 22 | PB4 = AVR_MISO | MISO de l'ATmega (U17 broche 18), R20 10 kΩ au +5 V — schéma du 2026-11-21 |
+| 37 | PA7 | libre depuis le schéma du 2026-11-21 (était UART_TX) |
 
 - **J4, prise USB-A femelle** : pour un clavier USB **à repli PS/2** (la
   plupart des claviers USB ordinaires). VBUS = +5 V, **D+ = horloge,
@@ -233,7 +234,9 @@ entrée. Mêmes bits que Solution-01 pour le clavier.
 - **J5, UART TTL 5 V** : 1 = TX (sortie), 2 = RX (entrée), 3 = GND. Avec un
   adaptateur USB-série 5 V : **RX de l'adaptateur sur J5-1, TX de
   l'adaptateur sur J5-2**, GND sur J5-3. Terminal : 9600 bauds, 8N1, sans
-  contrôle de flux.
+  contrôle de flux. Depuis le schéma du 2026-11-21, J5 est relié à l'UART de
+  l'ATmega U17 (TX = PD1, RX = PD0) et J8 porte RTS/CTS (voir
+  [ATmega328P (U17)](#atmega328p-u17--uart-matériel-sur-le-bus-spi--schéma-du-2026-11-21-à-valider)).
 
 ### Blocage du clavier (diode sur PC0) — abandonné
 
@@ -270,14 +273,49 @@ disquette `.IMG`. Aucun microcontrôleur.
 | 6 GND | masse | |
 
 Le 74LVC125 du module abaisse CS, SCK et MOSI à 3,3 V ; MISO sort en 3,3 V,
-assez pour une entrée du 8255 (seuil 2,2 V). Le clavier (PB0, PB1) et l'UART
-logiciel (PA7, PB2) ne changent pas. Débit attendu du SPI logiciel : ~60 µs par
-octet, ~15 Ko/s (une disquette d'XT : 25 à 40 Ko/s).
+assez pour une entrée du 8255 (seuil 2,2 V). Le clavier (PB0, PB1) ne change
+pas. Débit attendu du SPI logiciel : ~60 µs par octet, ~15 Ko/s (une disquette
+d'XT : 25 à 40 Ko/s). Depuis le schéma du 2026-11-21, l'ATmega U17 partage SCK
+et MOSI (ci-dessous).
 
-L'ATmega328P proposé comme UART a été **abandonné** au profit de l'esprit
-vintage (le projet du micrologiciel de clignotement reste dans
-`arduino/atmega_uart/`) ; une vraie puce UART d'époque (8250, 16450, 6850)
-pourra venir plus tard.
+### ATmega328P (U17) : UART matériel sur le bus SPI — schéma du 2026-11-21, à valider
+
+L'UART logiciel perd des caractères dès qu'un système garde les interruptions
+masquées plus d'environ 50 µs (ELKS : 2 à 3 % des frappes, voir
+[elks/](elks/README_fr.md)), et il occupe le 8088 environ 1 ms par caractère
+émis, interruptions masquées. Un ATmega328P reprend l'UART : il reçoit et émet
+lui-même, garde les octets reçus dans sa RAM, et le 8088 lui parle en SPI, à
+son rythme, sur le bus de la carte SD. Il avait été retiré le 2026-11-16 pour
+rester dans l'esprit vintage ; il revient pour cette raison, sur le SPI au lieu
+de U12 en mode 2 (PC4–PC6 portent maintenant la carte SD).
+
+| ATmega328P (U17, DIP-28 sur support) | Net | Vient de / va à |
+|---|---|---|
+| 19 PB5 SCK | SD_SCK | U12 PC5 (partagé avec la carte SD) |
+| 17 PB3 MOSI | SD_MOSI | U12 PC6 (partagé avec la carte SD) |
+| 18 PB4 MISO | AVR_MISO | U12 **PB4** ; R20 10 kΩ au +5 V. Ligne à part : beaucoup de modules microSD ne libèrent jamais leur MISO |
+| 16 PB2 SS | AVR_SS | U12 **PC0** ; R21 10 kΩ au +5 V (ATmega non sélectionné pendant le RESET, 8255 en entrée) |
+| 2 PD0 RXD / 3 PD1 TXD | UART_RX / UART_TX | J5 broches 2 / 1 (R4 garde RX au repos) |
+| 4 PD2 | IRQ4 | U13 IR4 : front montant = un octet reçu attend |
+| 12 PD6 / 13 PD7 | UART_RTS / UART_CTS | J8 broches 1 / 2 (3 = GND) ; R22 10 kΩ tire CTS à la masse (actif sans terminal) |
+| 9 / 10 XTAL1 / XTAL2 | AVR_XTAL1 / AVR_XTAL2 | Y2 16 MHz, C21 / C22 22 pF à la masse |
+| 1 RESET | AVR_RESET | R19 10 kΩ au +5 V seulement : aucun lien avec le RESET du 8088 |
+| 7 VCC, 20 AVCC / 8, 22 GND | | +5 V / masse ; C23 100 nF |
+| PD3, PD4 | | libres (clavier PS/2 plus tard) ; PB0, PB1, PC0–PC5, PD5 et AREF libres |
+
+- L'ATmega se programme **hors du montage**, dans le support du TL866 : pas de
+  connecteur ISP.
+- En esclave SPI, ses broches SPI sont des entrées tant que SS = 1 (MISO
+  compris) : aucun conflit avec la carte SD, qui ignore de son côté l'horloge
+  tant que son CS = 1. Le micrologiciel ne doit jamais passer en maître SPI.
+- U12 garde le mot de contrôle 82h (PC0 en sortie, PB4 en entrée). PA7 et PB2
+  sont libres ; la porte U14B (ancien UART_RX inversé vers IR4) est inutilisée,
+  entrée à la masse.
+- **Micrologiciel** (2026-11-21) : [arduino/atmega_uart/](../arduino/atmega_uart/README_fr.md),
+  protocole SPI version 1 (IDENT, ETAT, LIRE, ECRIRE, VITESSE, VIDER), gravé.
+- **Pas encore câblé.** Le BIOS 2.7 (plus bas) le gère et garde l'UART logiciel quand
+  l'ATmega est absent : graver d'abord le BIOS 2.7, puis câbler l'ATmega.
+  Le PCB (172 × 100 mm) est à reprendre.
 
 ## 8259A (U13) : interruptions du clavier et de l'UART
 
@@ -299,7 +337,7 @@ CAS0–CAS2 libres. Le 8088 n'avait aucune interruption matérielle : **INTR
 | 12, 13, 15 | CAS0–CAS2 | libres |
 | 18 | IR0 = IRQ0 | OUT0 de la 8253 (U15 broche 10) : minuterie |
 | 19 | IR1 = IRQ1 | U14 (74LS14) broche 2 = KBD_CLK inversée |
-| 22 | IR4 = IRQ4 | U14 broche 4 = UART_RX inversée |
+| 22 | IR4 = IRQ4 | PD2 de l'ATmega U17 (octet reçu) depuis le schéma du 2026-11-21 ; avant : U14 broche 4 = UART_RX inversée |
 | 20, 21, 23–25 | IR2, IR3, IR5–IR7 | libres : J12 broches 2–6, tirées à la masse par R13–R17 (10 kΩ) ; masquées par le BIOS |
 | 28 / 14 | VCC / GND | +5 V / GND (+ 100 nF) |
 
@@ -313,7 +351,8 @@ porte 4 : OUT2 → ~OUT2 (broche 9 → 8, son) ; portes 5 et 6 inutilisées, ent
 PB2) : la routine d'interruption lit la trame ou l'octet entier par
 scrutation, comme le BIOS 0.7, mais elle démarre dès le premier front, même
 quand le DOS ne demande rien (BIOS 0.8). Numéros comme le PC : IRQ1 = INT 09h (clavier),
-IRQ4 = INT 0Ch (COM1).
+IRQ4 = INT 0Ch (COM1). Depuis le schéma du 2026-11-21, IR4 vient de l'ATmega
+U17 (PD2) : la porte 2 de U14 est inutilisée, entrée à la masse.
 
 À retenir pour le logiciel : le 8259 doit servir l'interruption pendant que
 l'entrée est encore haute (horloge du clavier basse, ~40 µs ; bit de départ,
@@ -714,6 +753,53 @@ CP/M-86 pour l'IBM PC passe par le BIOS (INT 10h, 13h, 16h) : il tourne sur la c
 - Les tests de surface de HDMAINT (lecture/écriture de chaque cylindre par la carte SD)
   prennent ~7 min par cylindre sur le montage.
 
+### ELKS (sous-ensemble de Linux, simulateur)
+
+[ELKS 0.9.2](https://github.com/ghaerr/elks) recompilé pour la carte (console par le
+BIOS, EOI du 8259 au début des interruptions pour l'UART logiciel) : sources, correctif
+et script de construction dans [elks/](elks/README_fr.md). Au simulateur, il démarre
+jusqu'à `login:` (`root`, sans mot de passe). Avec l'UART logiciel, environ 2 à 3 % des
+caractères tapés se perdent encore (couper d'abord les animations des DEL, touche 7) ;
+avec l'ATmega U17 et le BIOS 2.7, aucun (lignes tapées ou collées). QNX 2.15C et PC/IX ne
+tournent pas : ils pilotent eux-mêmes la carte vidéo, le contrôleur de disquette et le
+clavier du PC.
+
+### Terminal par l'ATmega U17 (BIOS 2.7)
+
+Le BIOS 2.7 (`avr.inc`) détecte l'ATmega328P à la mise en route (IDENT : `A5h 'S' '2'`).
+Sans lui, l'UART logiciel du BIOS 2.6 reste (PA7, PB2) : **une seule ROM pour les deux
+cartes**. Avec l'ATmega :
+
+- **Émission** : `uart_tx` devient une transaction ECRIRE (~0,3 ms, interruptions
+  permises) au lieu de 1 ms interruptions masquées ; si l'ATmega est plein (terminal qui
+  retient RTS), il réessaie ~1,3 s.
+- **Réception** : IRQ4 note seulement qu'un octet attend (`irq_uart_avr`). Les octets sont
+  lus au premier plan quand on consulte les files (`file_regarde`, `file_retire`,
+  `ufile_retire` → `avr_service`), seulement autant que la file du BIOS peut en prendre :
+  le reste attend dans l'ATmega (1 Ko), qui retient le terminal par RTS. Séquences ANSI et
+  UTF-8 : les octets suivants sont demandés à l'ATmega (`avr_suivant`, ~5 ms).
+- **Bus SPI partagé** : aucune transaction SPI en interruption. Une transaction ne commence
+  que si aucune autre n'est en cours et que la carte SD est désélectionnée (U12 PC4 = 1 :
+  tout accès à la carte finit par `sd_libere`). Sinon (INT 10h appelé depuis une
+  interruption au milieu d'un accès SPI), l'octet à émettre est abandonné et compté.
+- `kbd_libere` / `kbd_bloque` ne touchent plus PC0 (devenu le SS de l'ATmega) ; à la mise
+  en route, PC est mis à 51h juste après le mot de mode (carte SD et ATmega désélectionnés).
+- INT 14h AH=00h ne change pas la vitesse : PC-DOS met ainsi AUX à 2400 bauds au
+  démarrage, ce qui couperait la console du terminal.
+- **Menu 8) vitesse de l'UART** : un sous-menu (LCD et terminal) montre la vitesse en
+  service et 1) 9600, 2) 19200, 3) 38400, 4) 57600, 5) 115200 ; Échap revient sans rien
+  changer. Le menu l'affiche en ligne 2 (`2) Test RAM 8)19200`). La nouvelle vitesse est annoncée au terminal à l'ancienne
+  (« UART : 19200 bauds (regler le terminal) »), puis l'ATmega change quand tout ce qui attend
+  est parti. Gardée au RESET et à Ctrl+Alt+Suppr (l'ATmega n'est pas remis à zéro ; le
+  micrologiciel version 2 rend sa vitesse par IDENT ; version 1 : 9600 à chaque démarrage) ;
+  mise sous tension = 9600. Au-dessus de 9600, activer le contrôle de flux RTS/CTS du terminal
+  pour coller du texte : le BIOS lit environ 3 Ko/s dans l'ATmega.
+- Info (menu 4) : ligne 3 = diagnostic de l'ATmega `AVR02 L0200 P00 FC0` (version, place libre
+  dans l'ATmega, octets abandonnés par le BIOS, drapeaux d'ETAT : C0h = CTS et RTS actifs,
+  02h = erreurs de trame).
+- Sans 8259 (panne), l'ATmega est interrogé à chaque consultation des files ; l'attente
+  du LED Show ne le lit pas.
+
 ### 2) Test memory
 
 BIOS 2.3 (`ramtest.inc`) : le **test exhaustif de Solution-01** (`test_ram`,
@@ -1099,6 +1185,10 @@ Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 f
 
 ## État
 
+- 2026-11-21 : **BIOS 2.7** : terminal par l'ATmega U17 quand il est présent (détecté par IDENT), UART logiciel sinon ; réception au premier plan sans perte (files remplies au fur et à mesure, RTS), émission sans masquer les interruptions, bus SPI partagé protégé (aucune transaction en interruption, carte SD désélectionnée). Simulateur : DOS, CP/M-86 depuis C:, ELKS sans perte (lignes tapées ou collées) ; suites Rust et Python inchangées sans l'ATmega. Pas encore gravé.
+- 2026-11-21 : micrologiciel de l'ATmega328P (`arduino/atmega_uart/`) : UART matériel avec tampons de 1024/512 octets, RTS/CTS, protocole d'esclave SPI version 1, IRQ4 sur octet reçu ; 54 vérifications du protocole sur le PC ; gravé (TL866CS, fusibles du quartz 16 MHz).
+- 2026-11-21 : schéma : **ATmega328P (U17)** en esclave SPI sur le bus de la carte SD (SCK/MOSI partagés, MISO → U12 PB4, SS ← U12 PC0), UART matériel sur J5, IR4 ← PD2, RTS/CTS sur J8, quartz Y2 16 MHz ; UART logiciel retiré (U12 PA7 et PB2 libres, U14B à la masse). À valider ; BIOS 2.6 inchangé (pas encore câblé) ; PCB à reprendre.
+- 2026-11-21 : **ELKS 0.9.2** recompilé pour la carte (`elks/` : console par le BIOS, EOI du 8259 au début des interruptions) : démarre au simulateur jusqu'à `login:` ; 2 à 3 % des frappes encore perdues avec l'UART logiciel. QNX 2.15C ne tourne pas.
 - 2026-11-17 : BIOS 2.6 : terminal plus fidèle à l'écran du BIOS (CP/M-86 au terminal) : le curseur descend par LF (défile en bas du terminal), effacement d'écran (CLS, HELP de CP/M) et de lignes envoyé au terminal, curseur recalé après les messages du BIOS (progression du chargement, changement de A:). BIOS anglais gravé.
 - 2026-11-17 : BIOS 2.5 : **CP/M-86** — 1.0 (disquette de 160 Ko) et 1.1 pour PC/XT installé sur un disque dur de 30 Mo (`PC-DOS/CPM86_C.IMG`, hors de git : partition CP/M de 16 cylindres, 8 Mo, la limite de CP/M-86, créée par HDMAINT ; démarrage depuis C:). INT 1Ch jamais réentré, INT 10h sur une pile privée (le DOS a 379 Ko), 25e ligne invisible (ligne d'état de CP/M), défilement AH=06h et écriture AH=09h plus rapides au terminal, F1–F10 de PuTTY (`ESC [ 11 ~`…`21 ~`). Simulé ; BIOS anglais gravé.
 - 2026-11-17 : **PCB** de 172 × 100 mm, 2 couches, routé et vérifié (DRC avec parité, contrôle indépendant des pistes, netliste du cuivre = schéma = simulateur) ; LCD monté au-dessus des circuits ; schéma complété (alimentation J6/J7/C20/D3, découplage C4–C19, empreintes) ; dossier de fabrication JLCPCB dans `fabrication/`. Pas encore fabriqué.

@@ -211,10 +211,11 @@ Same bits as Solution-01 for the keyboard.
 | 35 | RESET | 82C84 RESET (U11 pin 10) |
 | 26 / 7 | VCC / GND | +5 V / GND (+ 100 nF) |
 | 18 | PB0 = KBD_CLK | J4 D+ (PS/2 clock), R2 10 kΩ pull-up to +5 V |
-| 14 | PC0 = keyboard inhibit | Schottky diode planned in 0.6, **not fitted** (see below); PC0 free |
+| 14 | PC0 = AVR_SS | ATmega SS (U17 pin 16), R21 10 kΩ to +5 V — schematic of 2026-11-21 (before: keyboard inhibit, diode not fitted) |
 | 19 | PB1 = KBD_DATA | J4 D− (PS/2 data), R3 10 kΩ pull-up to +5 V |
-| 20 | PB2 = UART_RX | J5 pin 2, R4 10 kΩ pull-up to +5 V |
-| 37 | PA7 = UART_TX | J5 pin 1 |
+| 20 | PB2 | free since the schematic of 2026-11-21 (was UART_RX) |
+| 22 | PB4 = AVR_MISO | ATmega MISO (U17 pin 18), R20 10 kΩ to +5 V — schematic of 2026-11-21 |
+| 37 | PA7 | free since the schematic of 2026-11-21 (was UART_TX) |
 
 - **J4, female USB-A socket**: for a USB keyboard **with PS/2 fallback** (most
   ordinary USB keyboards). VBUS = +5 V, **D+ = clock, D− = data** (as in
@@ -223,7 +224,10 @@ Same bits as Solution-01 for the keyboard.
   native PS/2 keyboard connects to the same signals (clock, data, +5 V, GND).
 - **J5, 5 V TTL UART**: 1 = TX (output), 2 = RX (input), 3 = GND. With a 5 V
   USB-serial adapter: **adapter RX on J5-1, adapter TX on J5-2**, GND on J5-3.
-  Terminal: 9600 baud, 8N1, no flow control.
+  Terminal: 9600 baud, 8N1, no flow control. Since the schematic of
+  2026-11-21, J5 goes to the UART of the ATmega U17 (TX = PD1, RX = PD0) and J8
+  carries RTS/CTS (see
+  [ATmega328P (U17)](#atmega328p-u17-hardware-uart-on-the-spi-bus--schematic-of-2026-11-21-to-be-validated)).
 
 ### Keyboard inhibit (diode on PC0) — abandoned
 
@@ -260,13 +264,48 @@ microcontroller.
 | 6 GND | ground | |
 
 The module's 74LVC125 lowers CS, SCK and MOSI to 3.3 V; MISO comes out at
-3.3 V, enough for an 8255 input (2.2 V threshold). The keyboard (PB0, PB1) and
-the software UART (PA7, PB2) do not change. Expected software SPI throughput:
-~60 µs per byte, ~15 KB/s (an XT floppy: 25 to 40 KB/s).
+3.3 V, enough for an 8255 input (2.2 V threshold). The keyboard (PB0, PB1) does
+not change. Expected software SPI throughput: ~60 µs per byte, ~15 KB/s (an XT
+floppy: 25 to 40 KB/s). Since the schematic of 2026-11-21, the ATmega U17
+shares SCK and MOSI (below).
 
-The ATmega328P proposed as a UART was **abandoned** in favor of the vintage
-spirit (the blink firmware project remains in `arduino/atmega_uart/`); a real
-period UART chip (8250, 16450, 6850) may come later.
+### ATmega328P (U17): hardware UART on the SPI bus — schematic of 2026-11-21, to be validated
+
+The software UART loses characters as soon as a system keeps interrupts masked
+for more than about 50 µs (ELKS: 2–3 % of keystrokes, see
+[elks/](elks/README.md)), and it keeps the 8088 busy for about 1 ms per character
+sent, with interrupts masked. An ATmega328P takes over the UART: it receives and
+sends by itself, keeps received bytes in its RAM, and the 8088 talks to it over
+SPI, at its own pace, on the SD card bus. It had been removed on 2026-11-16 to
+stay in the vintage spirit; it comes back for this reason, on the SPI bus
+instead of U12 in mode 2 (PC4–PC6 now carry the SD card).
+
+| ATmega328P (U17, DIP-28 in a socket) | Net | Comes from / goes to |
+|---|---|---|
+| 19 PB5 SCK | SD_SCK | U12 PC5 (shared with the SD card) |
+| 17 PB3 MOSI | SD_MOSI | U12 PC6 (shared with the SD card) |
+| 18 PB4 MISO | AVR_MISO | U12 **PB4**; R20 10 kΩ to +5 V. Separate line: many microSD modules never release their MISO |
+| 16 PB2 SS | AVR_SS | U12 **PC0**; R21 10 kΩ to +5 V (ATmega not selected during RESET, 8255 as input) |
+| 2 PD0 RXD / 3 PD1 TXD | UART_RX / UART_TX | J5 pins 2 / 1 (R4 keeps RX idle) |
+| 4 PD2 | IRQ4 | U13 IR4: rising edge = a received byte is waiting |
+| 12 PD6 / 13 PD7 | UART_RTS / UART_CTS | J8 pins 1 / 2 (3 = GND); R22 10 kΩ pulls CTS to ground (asserted with no terminal) |
+| 9 / 10 XTAL1 / XTAL2 | AVR_XTAL1 / AVR_XTAL2 | Y2 16 MHz, C21 / C22 22 pF to ground |
+| 1 RESET | AVR_RESET | R19 10 kΩ to +5 V only: no link with the 8088 RESET |
+| 7 VCC, 20 AVCC / 8, 22 GND | | +5 V / ground; C23 100 nF |
+| PD3, PD4 | | free (PS/2 keyboard later); PB0, PB1, PC0–PC5, PD5 and AREF free |
+
+- The ATmega is programmed **off the board**, in the TL866 socket: no ISP
+  header.
+- As an SPI slave, its SPI pins are inputs while SS = 1 (MISO included): no
+  conflict with the SD card, which in turn ignores the clock while its CS = 1.
+  The firmware must never switch to SPI master.
+- U12 keeps control word 82h (PC0 output, PB4 input). PA7 and PB2 are free;
+  gate U14B (former inverted UART_RX to IR4) is unused, input grounded.
+- **Firmware** (2026-11-21): [arduino/atmega_uart/](../arduino/atmega_uart/README.md),
+  SPI protocol version 1 (IDENT, ETAT, LIRE, ECRIRE, VITESSE, VIDER), programmed.
+- **Not wired yet.** BIOS 2.7 (below) supports it and keeps the software UART when the
+  ATmega is absent: burn BIOS 2.7 first, then wire the ATmega. The PCB
+  (172 × 100 mm) has to be redone.
 
 ## 8259A (U13): keyboard and UART interrupts
 
@@ -288,7 +327,7 @@ TEST and HOLD stay grounded.
 | 12, 13, 15 | CAS0–CAS2 | free |
 | 18 | IR0 = IRQ0 | OUT0 of the 8253 (U15 pin 10): timer |
 | 19 | IR1 = IRQ1 | U14 (74LS14) pin 2 = inverted KBD_CLK |
-| 22 | IR4 = IRQ4 | U14 pin 4 = inverted UART_RX |
+| 22 | IR4 = IRQ4 | PD2 of the ATmega U17 (byte received) since the schematic of 2026-11-21; before: U14 pin 4 = inverted UART_RX |
 | 20, 21, 23–25 | IR2, IR3, IR5–IR7 | free: J12 pins 2–6, pulled to ground by R13–R17 (10 kΩ); masked by the BIOS |
 | 28 / 14 | VCC / GND | +5 V / GND (+ 100 nF) |
 
@@ -301,7 +340,8 @@ sound); gates 5 and 6 unused, inputs grounded (VCC pin 14, GND pin 7). The bits
 themselves are still read by U12 (PB0, PB1, PB2): the interrupt routine reads
 the whole frame or byte by polling, as in BIOS 0.7, but it starts at the first
 edge, even when DOS asks for nothing (BIOS 0.8). Numbers as on the PC: IRQ1 =
-INT 09h (keyboard), IRQ4 = INT 0Ch (COM1).
+INT 09h (keyboard), IRQ4 = INT 0Ch (COM1). Since the schematic of 2026-11-21,
+IR4 comes from the ATmega U17 (PD2): gate 2 of U14 is unused, input grounded.
 
 To remember for software: the 8259 must service the interrupt while the input
 is still high (keyboard clock low, ~40 µs; start bit, 104 µs); otherwise it
@@ -663,6 +703,52 @@ CP/M-86 for the IBM PC goes through the BIOS (INT 10h, 13h, 16h), so it runs on 
 - HDMAINT's surface test (read/write of each cylinder through the SD card) takes ~7 min
   per cylinder on the board.
 
+### ELKS (Linux subset, simulator)
+
+[ELKS 0.9.2](https://github.com/ghaerr/elks) rebuilt for the board (BIOS console,
+early 8259 EOI for the software UART): sources, patch and build script in
+[elks/](elks/README.md). In the simulator it boots to `login:` (`root`, no password).
+With the software UART, about 2–3 % of typed characters are still lost (turn the LED
+animations off with key 7 first); with the ATmega U17 and BIOS 2.7, none (typed or
+pasted lines). QNX 2.15C and PC/IX do not run: they drive the PC video card, floppy
+controller and keyboard directly.
+
+### Terminal through the ATmega U17 (BIOS 2.7)
+
+BIOS 2.7 (`avr.inc`) detects the ATmega328P at power-up (IDENT: `A5h 'S' '2'`). Without
+it, the software UART of BIOS 2.6 stays (PA7, PB2): **one ROM for both boards**. With the
+ATmega:
+
+- **Sending**: `uart_tx` becomes an ECRIRE transaction (~0.3 ms, interrupts enabled)
+  instead of 1 ms with interrupts masked; if the ATmega is full (terminal holding RTS),
+  it retries for ~1.3 s.
+- **Receiving**: IRQ4 only notes that a byte is waiting (`irq_uart_avr`). The bytes are
+  read in the foreground when the queues are looked at (`file_regarde`, `file_retire`,
+  `ufile_retire` → `avr_service`), only as many as the BIOS queue can take: the rest
+  waits in the ATmega (1 KB), which holds the terminal back with RTS. ANSI and UTF-8
+  sequences: the following bytes are asked from the ATmega (`avr_suivant`, ~5 ms).
+- **Shared SPI bus**: no SPI transaction in an interrupt. A transaction starts only if
+  no other is in progress and the SD card is deselected (U12 PC4 = 1: every SD access ends
+  with `sd_libere`). Otherwise (INT 10h called from an interrupt in the middle of an SPI
+  access), the byte to send is dropped and counted.
+- `kbd_libere` / `kbd_bloque` no longer touch PC0 (now the ATmega SS); at power-up, PC
+  is set to 51h right after the mode word (SD card and ATmega deselected).
+- INT 14h AH=00h does not change the speed: PC-DOS sets AUX to 2400 baud this way at
+  boot, which would cut the terminal console.
+- **Menu 8) UART speed**: a sub-menu (LCD and terminal) shows the speed in service and
+  1) 9600, 2) 19200, 3) 38400, 4) 57600, 5) 115200; Esc returns without change. The menu
+  shows it on line 2 (`2) Test RAM 8)19200`). The new speed is announced on the terminal at the old one
+  ("UART: 19200 baud (set the terminal)"), then the ATmega switches once everything waiting
+  has been sent. Kept across RESET and Ctrl+Alt+Del (the ATmega is not reset; firmware
+  version 2 gives its speed back through IDENT; version 1: 9600 at every boot); power-up =
+  9600. Above 9600, turn RTS/CTS flow control on in the terminal to paste text: the BIOS
+  reads about 3 KB/s from the ATmega.
+- Info (menu 4): line 3 = ATmega diagnostic `AVR02 L0200 P00 FC0` (version, free space in
+  the ATmega, bytes dropped by the BIOS, ETAT flags: C0h = CTS and RTS asserted, 02h = framing
+  errors).
+- Without the 8259 (fault), the ATmega is polled at each look at the queues; the LED Show
+  wait loop does not read it.
+
 ### 2) Test memory
 
 BIOS 2.3 (`ramtest.inc`): the **exhaustive test of Solution-01** (`test_ram`,
@@ -1010,6 +1096,10 @@ files).
 
 ## Status
 
+- 2026-11-21: **BIOS 2.7**: terminal through the ATmega U17 when present (detected by IDENT), software UART otherwise; reception in the foreground without loss (queues fed as they empty, RTS), sending without masking interrupts, shared SPI bus protected (no transaction in interrupts, SD card deselected). Simulator: DOS, CP/M-86 from C:, ELKS without loss (typed or pasted lines); Rust and Python suites unchanged without the ATmega. Not burned.
+- 2026-11-21: ATmega328P firmware (`arduino/atmega_uart/`): hardware UART with 1024/512-byte buffers, RTS/CTS, SPI slave protocol version 1, IRQ4 on received data; 54 protocol checks on the PC; programmed (TL866CS, fuses for the 16 MHz crystal).
+- 2026-11-21: schematic: **ATmega328P (U17)** as an SPI slave on the SD card bus (SCK/MOSI shared, MISO → U12 PB4, SS ← U12 PC0), hardware UART on J5, IR4 ← PD2, RTS/CTS on J8, Y2 16 MHz crystal; software UART removed (U12 PA7 and PB2 free, U14B grounded). To be validated; BIOS 2.6 unchanged (not wired yet); PCB to be redone.
+- 2026-11-21: **ELKS 0.9.2** rebuilt for the board (`elks/`: BIOS console, 8259 EOI at the start of interrupts): boots in the simulator to `login:`; 2–3 % of keystrokes still lost with the software UART. QNX 2.15C does not run.
 - 2026-11-17: BIOS 2.6: terminal closer to the BIOS screen (CP/M-86 on the terminal): the cursor moves down with LF (scrolls at the bottom of the terminal), screen clears (CLS, CP/M HELP) and line clears sent to the terminal, cursor re-aligned after BIOS messages (load progress, A: change). English BIOS burned.
 - 2026-11-17: BIOS 2.5: **CP/M-86** — 1.0 (160 KB floppy) and 1.1 for the PC/XT installed on a 30 MB hard disk (`PC-DOS/CPM86_C.IMG`, outside git: 16-cylinder CP/M partition, 8 MB, the CP/M-86 limit, created with HDMAINT; boots from C:). INT 1Ch never re-entered, INT 10h on a private stack (DOS gets 379 KB), invisible 25th row (CP/M status line), faster AH=06h scrolling and AH=09h writes on the terminal, PuTTY F1–F10 (`ESC [ 11 ~`…`21 ~`). Simulated; English BIOS burned.
 - 2026-11-17: **PCB**, 172 × 100 mm, 2 layers, routed and verified (DRC with parity, independent trace check, copper netlist = schematic = simulator); LCD mounted above the chips; schematic completed (power J6/J7/C20/D3, decoupling C4–C19, footprints); JLCPCB fabrication files in `fabrication/`. Not fabricated yet.
