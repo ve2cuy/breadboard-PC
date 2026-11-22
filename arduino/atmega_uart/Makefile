@@ -1,5 +1,6 @@
 # Solution-02 - micrologiciel de l'ATmega328P (U17).
 #   make            : construit .pio/build/atmega328p/firmware.hex (PlatformIO)
+#   make test       : essais du protocole sur le PC (gcc de WSL)
 #   make fusibles   : lit les fusibles de la puce (TL866CS)
 #   make flash PUCE=ok : grave le micrologiciel PUIS les fusibles (quartz 16 MHz)
 # Le micrologiciel ne va JAMAIS dans Z:/Partage/Alain (reserve aux ROM du 8088).
@@ -12,10 +13,14 @@ USB_BUSID  ?= 1-2
 MINIPRO_DIR ?= ~/minipro
 MINIPRO     = MINIPRO_HOME=$(MINIPRO_DIR) $(MINIPRO_DIR)/minipro
 
-.PHONY: all fusibles flash tl866
+.PHONY: all test fusibles flash tl866
 
 all:
 	"$(PIO)" run
+
+# essais du protocole (src/protocole.c) sur le PC, avec le gcc de WSL
+test:
+	wsl --cd "$(CURDIR)" -e bash -lc "gcc -std=c99 -Wall -Wextra -O2 -o /tmp/test_protocole test/test_protocole.c src/protocole.c && /tmp/test_protocole"
 
 tl866:
 	-@wsl -e true
