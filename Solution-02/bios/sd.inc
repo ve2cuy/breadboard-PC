@@ -980,6 +980,7 @@ hd_ouvre:
         mov     [es:V_HD_SECT + 2], dx
         mov     word [es:V_HD_TETES], HD_TETES_DEF
         mov     word [es:V_HD_SPT], HD_SPT_DEF
+        mov     byte [es:V_HD_MINIX], 0
         mov     ax, [es:V_HD_ENT + 15]  ; secteur 0 de l'image : table de partitions ?
         mov     dx, [es:V_HD_ENT + 17]
         call    fat_amas_lba
@@ -992,6 +993,12 @@ hd_ouvre:
         jne     .geo
         cmp     byte [1C2h], 0          ; type de la 1re partition
         je      .geo
+        mov     al, [1C2h]
+        and     al, 0FEh
+        cmp     al, 80h                 ; 80h, 81h : MINIX (ELKS)
+        jne     .pas_minix
+        mov     byte [es:V_HD_MINIX], 1
+.pas_minix:
         mov     al, [1C3h]              ; tete de fin
         mov     bl, [1C4h]              ; secteur de fin (bits 0-5)
         and     bl, 3Fh

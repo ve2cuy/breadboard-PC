@@ -1,15 +1,15 @@
 [
     {
         "lang":  "fr",
-        "name":  "BIOS 2.7 français",
+        "name":  "BIOS 2.8 français",
         "file":  "solution-02-bios.bin",
-        "name_en":  "BIOS 2.7 French"
+        "name_en":  "BIOS 2.8 French"
     },
     {
         "lang":  "en",
-        "name":  "BIOS 2.7 anglais",
+        "name":  "BIOS 2.8 anglais",
         "file":  "solution-02-bios-en.bin",
-        "name_en":  "BIOS 2.7 English"
+        "name_en":  "BIOS 2.8 English"
     },
     {
         "name":  "Diagnostic de la carte SD",

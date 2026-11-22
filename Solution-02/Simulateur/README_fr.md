@@ -111,8 +111,8 @@ Simulateur/
 │  ├─ signals.rs   signaux de la netliste, activité, événements de l'oscilloscope
 │  ├─ disasm.rs    désassembleur (syntaxe NASM)
 │  └─ lib.rs       interface WebAssembly (Sim)
-├─ tests/          essais natifs : boot.rs (BIOS), atmega.rs (8088 <-> ATmega par SPI), bios_atmega.rs (BIOS 2.7 + ATmega),
-│                  sst.rs (suite SingleStepTests du 8088)
+├─ tests/          essais natifs : boot.rs (BIOS), atmega.rs (8088 <-> ATmega par SPI), bios_atmega.rs (BIOS 2.8 + ATmega),
+│                  elks_hd.rs (ELKS depuis C:, compilateur C86, top), sst.rs (suite SingleStepTests du 8088)
 ├─ outils/         netlist.py (KiCad -> JS), serveur.py, solution02.xml (netliste exportée)
 ├─ publier.ps1     publication sur GitHub Pages (branche gh-pages)
 └─ www/            application : index.html, css/, js/ (board, logic = schémas des 74xx, scope, la = analyseur, i18n + i18n_en),

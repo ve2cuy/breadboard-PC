@@ -144,8 +144,16 @@ dos_charger:
         mov     byte [V_P10_N], 0
         mov     byte [V_TDEC], 0
         mov     word [V_P10_SEG], P10_SEG
+        mov     byte [V_SANS_B], 0
         cmp     byte [V_IMGB_ACTIF], 0  ; B: = image de la carte : le disque en RAM est
-        je      .memoire                ; inutile, sa place va au DOS
+        jne     .sans_b_ram             ; inutile, sa place va au DOS
+        cmp     byte [V_BOOT_C], 0      ; demarrage depuis C: d'une partition MINIX (ELKS) :
+        je      .memoire                ; pas de B: (ni en RAM, ni image), 507 Ko annonces
+        cmp     byte [V_HD_MINIX], 0
+        je      .memoire
+        mov     byte [V_SANS_B], 1
+        mov     word [es:10h], EQUIPEMENT_A
+.sans_b_ram:
         mov     word [es:13h], RAM_KO_SANS_B
         mov     word [V_P10_SEG], P10_SEG_SANS_B
 .memoire:
@@ -178,6 +186,9 @@ dos_charger:
         mov     ax, DSEG
         mov     ds, ax
         cmp     byte [V_IMGB_ACTIF], 0
+        jne     .b_pret
+        cmp     byte [V_SANS_B], 0
+.b_pret:
         pop     ds
         jne     .sans_ram
         call    disque_b_prepare
@@ -1368,8 +1379,17 @@ ecran_cellule:
         ret
 
 ; ecran_tty : AL en mode teletype (BEL ignore, BS, CR, LF, retour a la ligne en
-; colonne 80, defilement en bas du tampon).
+; colonne 80, defilement en bas du tampon). Les sequences ANSI (ESC [ ...) que les
+; programmes envoient au terminal (ELKS : effacements, deplacements du curseur) sont
+; interpretees par ecran_ansi au lieu d'etre ecrites dans le tampon (et au LCD).
 ecran_tty:
+        cmp     byte [es:V_ANSI], 0
+        jne     ecran_ansi
+        cmp     al, 1Bh
+        jne     ecran_tty_car
+        mov     byte [es:V_ANSI], 1
+        ret
+ecran_tty_car:
         mov     dx, [es:V_CUR]
         cmp     al, 7
         je      .fin
@@ -1399,6 +1419,211 @@ ecran_tty:
         call    ecran_monte
 .pos:   mov     [es:V_CUR], dx
 .fin:   ret
+
+; ecran_ansi : octet AL d'une sequence ANSI (V_ANSI = 1 : apres ESC ; 2 : apres ESC [).
+; ESC suivi d'autre chose que [ (ESC 7, ESC 8...) : avale. ESC [ P1 ; P2 lettre :
+; A B C D (deplacements, n = P1 ou 1), H f (position P1;P2, 1;1 par defaut), G (colonne),
+; d (ligne), J (efface l'ecran : 0 jusqu'a la fin, 1 depuis le debut, 2 tout), K (efface la
+; ligne : 0 jusqu'au bout, 1 depuis le debut, 2 toute) ; autres lettres (m, h, l...) :
+; avalees. Un caractere de controle au milieu annule la sequence et est traite
+; normalement. ES = DSEG. Detruit AX, DX.
+ecran_ansi:
+        cmp     byte [es:V_ANSI], 1
+        jne     .csi
+        cmp     al, '['
+        jne     .abandon                ; ESC 7, ESC 8, ESC c... : avale
+        mov     byte [es:V_ANSI], 2
+        mov     word [es:V_ANSI_P], 0
+        mov     byte [es:V_ANSI_N], 0
+        ret
+.csi:   cmp     al, '0'
+        jb      .pas_chiffre
+        cmp     al, '9'
+        ja      .pas_chiffre
+        push    bx
+        push    cx
+        mov     cl, al
+        sub     cl, '0'                 ; CL = chiffre
+        mov     bl, [es:V_ANSI_N]
+        xor     bh, bh
+        mov     al, [es:bx + V_ANSI_P]
+        mov     ah, 10
+        mul     ah
+        add     al, cl
+        adc     ah, 0
+        jz      .p_ok
+        mov     al, 255                 ; plafond
+.p_ok:  mov     [es:bx + V_ANSI_P], al
+        pop     cx
+        pop     bx
+        ret
+.pas_chiffre:
+        cmp     al, ';'
+        jne     .pas_pv
+        cmp     byte [es:V_ANSI_N], 1
+        jae     .r
+        inc     byte [es:V_ANSI_N]
+.r:     ret
+.pas_pv:
+        cmp     al, ' '
+        jb      .controle               ; caractere de controle : fin de la sequence
+        cmp     al, 40h
+        jb      .r                      ; '?', '>', ' '... : intermediaires, ignores
+        cmp     al, 7Eh
+        ja      .abandon
+        mov     byte [es:V_ANSI], 0     ; lettre finale
+        push    bx
+        push    cx
+        mov     dx, [es:V_CUR]          ; DH = ligne, DL = colonne
+        mov     cx, [es:V_ANSI_P]       ; CL = P1, CH = P2
+        mov     bl, cl
+        or      bl, bl
+        jnz     .n
+        mov     bl, 1                   ; BL = n (P1, ou 1)
+.n:     cmp     al, 'A'
+        je      .haut
+        cmp     al, 'B'
+        je      .bas
+        cmp     al, 'C'
+        je      .droite
+        cmp     al, 'D'
+        je      .gauche
+        cmp     al, 'H'
+        je      .pos
+        cmp     al, 'f'
+        je      .pos
+        cmp     al, 'G'
+        je      .col
+        cmp     al, 'd'
+        je      .lig
+        cmp     al, 'J'
+        je      .ed
+        cmp     al, 'K'
+        je      .el
+        jmp     .fini
+.haut:  sub     dh, bl
+        jnc     .fini
+        xor     dh, dh
+        jmp     .fini
+.bas:   add     dh, bl
+        jc      .bas_max
+        cmp     dh, LIGNES - 1
+        jbe     .fini
+.bas_max:
+        mov     dh, LIGNES - 1
+        jmp     .fini
+.droite:
+        add     dl, bl
+        jc      .dr_max
+        cmp     dl, COLS - 1
+        jbe     .fini
+.dr_max:
+        mov     dl, COLS - 1
+        jmp     .fini
+.gauche:
+        sub     dl, bl
+        jnc     .fini
+        xor     dl, dl
+        jmp     .fini
+.pos:   mov     dh, cl                  ; P1 = ligne, P2 = colonne (a partir de 1)
+        or      dh, dh
+        jz      .p1
+        dec     dh
+.p1:    mov     dl, ch
+        or      dl, dl
+        jz      .borne
+        dec     dl
+        jmp     .borne
+.col:   mov     dl, bl
+        dec     dl
+        jmp     .borne
+.lig:   mov     dh, bl
+        dec     dh
+.borne: cmp     dh, LIGNES - 1
+        jbe     .b1
+        mov     dh, LIGNES - 1
+.b1:    cmp     dl, COLS - 1
+        jbe     .fini
+        mov     dl, COLS - 1
+        jmp     .fini
+.ed:    cmp     cl, 1
+        je      .ed1
+        ja      .ed2
+        mov     al, dh                  ; J 0 : du curseur a la fin de l'ecran
+        mov     cl, dl
+        mov     ch, COLS - 1
+        call    ansi_efface
+.ed0:   inc     al
+        cmp     al, LIGNES
+        jae     .efface
+        call    ansi_ligne
+        jmp     .ed0
+.ed1:   xor     al, al                  ; J 1 : du debut de l'ecran au curseur
+.ed1b:  cmp     al, dh
+        jae     .ed1c
+        call    ansi_ligne
+        inc     al
+        jmp     .ed1b
+.ed1c:  xor     cl, cl
+        mov     ch, dl
+        call    ansi_efface
+        jmp     .efface
+.ed2:   xor     al, al                  ; J 2 : tout l'ecran (curseur inchange)
+.ed2b:  call    ansi_ligne
+        inc     al
+        cmp     al, LIGNES
+        jb      .ed2b
+        jmp     .efface
+.el:    mov     al, dh
+        xor     ch, ch
+        xchg    cl, ch                  ; CH = P1, CL = 0
+        cmp     ch, 1
+        je      .el1
+        ja      .el2
+        mov     cl, dl                  ; K 0 : du curseur au bout de la ligne
+.el2:   mov     ch, COLS - 1            ; K 2 : toute la ligne (CL = 0)
+        call    ansi_efface
+        jmp     .efface
+.el1:   mov     ch, dl                  ; K 1 : du debut de la ligne au curseur (CL = 0)
+        call    ansi_efface
+.efface:
+        mov     byte [es:V_REDESS], 1   ; le LCD sera redessine (ecran_fin)
+.fini:  mov     [es:V_CUR], dx
+        pop     cx
+        pop     bx
+        ret
+.controle:
+        mov     byte [es:V_ANSI], 0
+        jmp     ecran_tty_car
+.abandon:
+        mov     byte [es:V_ANSI], 0
+        ret
+
+; ansi_ligne : efface toute la ligne AL du tampon. ansi_efface : ligne AL, colonnes CL a CH.
+; ES = DSEG. Preservent tout.
+ansi_ligne:
+        push    cx
+        xor     cl, cl
+        mov     ch, COLS - 1
+        call    ansi_efface
+        pop     cx
+        ret
+ansi_efface:
+        cmp     cl, ch
+        ja      .r
+        push    bx
+        push    di
+        push    ds
+        push    es
+        pop     ds                      ; DS = ES = DSEG (ligne_vide)
+        mov     bh, ch
+        sub     bh, cl
+        inc     bh                      ; BH = largeur
+        call    ligne_vide
+        pop     ds
+        pop     di
+        pop     bx
+.r:     ret
 
 ; ecran_monte : tout le tampon monte d'une ligne, derniere ligne vide. Preserve tout.
 ecran_monte:
@@ -2004,7 +2229,9 @@ int13h:
         cmp     byte [es:V_IMG_ACTIF], 0
         je      .b
         jmp     int13_sd                ; A: = image .IMG de la carte (sd.inc)
-.lb:    cmp     byte [es:V_IMGB_ACTIF], 0
+.lb:    cmp     byte [es:V_SANS_B], 0   ; ELKS sur C: : pas de B: (sa RAM est au systeme)
+        jne     .absent
+        cmp     byte [es:V_IMGB_ACTIF], 0
         je      .b
         jmp     int13_sd                ; B: = image DOS 2.x de la carte
 .b:

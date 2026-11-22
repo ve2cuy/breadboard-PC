@@ -1,4 +1,4 @@
-//! BIOS 2.7 sur la carte avec l'ATmega328P U17 (schema du 2026-11-21) : terminal par
+//! BIOS 2.8 sur la carte avec l'ATmega328P U17 (schema du 2026-11-21) : terminal par
 //! l'ATmega (esclave SPI du 8088), carte SD sur le meme bus.
 //! cargo test --release --test bios_atmega -- --nocapture
 
@@ -80,13 +80,13 @@ fn menu_et_info_par_le_terminal() {
     show(&s, "menu");
     let tx = texte_uart(&mut s);
     println!("UART ({} octets) : {}", tx.len(), &tx[..tx.len().min(300)]);
-    assert!(tx.contains("Solution-02 BIOS 2.7"), "banniere du BIOS 2.7 absente du terminal");
+    assert!(tx.contains("Solution-02 BIOS 2.8"), "banniere du BIOS 2.8 absente du terminal");
     assert!(tx.contains("6) BASIC"), "menu absent du terminal");
     s.uart_send(b"4");
     secs(&mut s, 1.0);
     show(&s, "Info (touche 4 au terminal)");
     let l = s.lcd_lines();
-    assert!(l[0].contains("BIOS 2.7"), "Info : version");
+    assert!(l[0].contains("BIOS 2.8"), "Info : version");
     assert_eq!(l[2], "AVR02 L0200 P00 FC0 ", "Info : diagnostic de l'ATmega");
     println!("ATmega : {}", s.atmega_state());
     assert!(s.atmega_state().contains("\"trop_tot\":0"));
@@ -255,7 +255,7 @@ fn vitesse_uart_menu_8() {
     s.uart_send(b"4");
     secs(&mut s, 1.0);
     let t = net(&texte_uart(&mut s));
-    assert!(t.contains("SOLUTION-02 BIOS 2.7"), "Info lisible a 19200 bauds : {:?}", t);
+    assert!(t.contains("SOLUTION-02 BIOS 2.8"), "Info lisible a 19200 bauds : {:?}", t);
     s.uart_send(b"x");
     secs(&mut s, 0.5);
     // RESET : l'ATmega garde sa vitesse, le BIOS la relit (IDENT, version 2)
@@ -266,7 +266,7 @@ fn vitesse_uart_menu_8() {
     secs(&mut s, 6.0);
     let t = texte_uart(&mut s);
     show(&s, "apres RESET");
-    assert!(t.contains("Solution-02 BIOS 2.7"), "banniere a 19200 apres RESET");
+    assert!(t.contains("Solution-02 BIOS 2.8"), "banniere a 19200 apres RESET");
     assert_eq!(s.lcd_lines()[1], "2) Test RAM 8)19200 ");
     s.uart_send(b"8");
     secs(&mut s, 1.0);
@@ -281,6 +281,82 @@ fn vitesse_uart_menu_8() {
     let t = net(&texte_uart(&mut s));
     println!("ATmega : {}", s.atmega_state());
     println!("a 115200 : {:?} ; LCD {:?} ; journal {}", t, s.lcd_lines(), s.take_log());
-    assert!(t.contains("SOLUTION-02 BIOS 2.7"), "Info lisible a 115200 bauds : {:?}", t);
+    assert!(t.contains("SOLUTION-02 BIOS 2.8"), "Info lisible a 115200 bauds : {:?}", t);
     assert!(s.atmega_state().contains("\"baud\":115200"));
+}
+
+/// ELKS (image sans Ethernet : ses sondes en 300h/330h/240h tombaient sur le LCD, U12 et la
+/// 8253) : les sequences ANSI envoyees au terminal (clear, edition de ligne) sont interpretees par
+/// le BIOS 2.8 au lieu d'apparaitre au LCD ; aucune commande parasite au LCD.
+#[test]
+fn elks_lcd_sans_sequences() {
+    let Some(img) = image("ELKS-0.9.2/fd360-minix-s02.img") else {
+        println!("image absente : essai saute");
+        return;
+    };
+    let mut s = carte_avec_atmega();
+    s.sd_add_file("ELKS.IMG", &img);
+    s.sd_insert_built();
+    secs(&mut s, 6.0);
+    appuyer(&mut s, 0x16);
+    secs(&mut s, 8.0);
+    etendue(&mut s, 0x72);
+    secs(&mut s, 0.5);
+    appuyer(&mut s, 0x5A);
+    secs(&mut s, 70.0);
+    let mut alea = 99;
+    taper(&mut s, b"root\r", &mut alea);
+    secs(&mut s, 15.0);
+    let sequence = |l: &str| {
+        l.contains('\x1b') || l.as_bytes().windows(3).any(|w| w[0] == b'[' && w[1].is_ascii_digit())
+    };
+    let mut journal = s.take_log();
+    taper(&mut s, b"ls /bin\r", &mut alea);
+    secs(&mut s, 8.0);
+    show(&s, "apres ls /bin");
+    let longue = b"echo un deux trois quatre cinq six sept huit neuf dix onze douze treize quatorze quinze seize";
+    s.uart_send(longue); // collee d'un trait : depasse 80 colonnes, le shell reaffiche la ligne
+    secs(&mut s, 4.0);
+    show(&s, "longue ligne (plus de 80 colonnes)");
+    for l in s.lcd_lines() {
+        assert!(!sequence(&l), "sequence ANSI au LCD : {:?}", l);
+    }
+    s.uart_send(b"\r");
+    secs(&mut s, 6.0);
+    show(&s, "apres la longue ligne");
+    for l in s.lcd_lines() {
+        assert!(!sequence(&l), "sequence ANSI au LCD : {:?}", l);
+    }
+    journal.push_str(&s.take_log());
+    let lcd: Vec<&str> = journal.lines().filter(|l| l.starts_with("LCD")).collect();
+    println!("alertes du LCD : {:?}", lcd);
+    assert!(lcd.is_empty(), "commandes parasites au LCD : {:?}", lcd);
+}
+
+/// Sequences ANSI au LCD, depuis le BASIC de la ROM (PRINT CHR$(27);"[...") : ESC [ 2 J + ESC [ H
+/// (effacement, curseur en haut), ESC [ n D + ESC [ K (fin de ligne effacee), ESC [ n C.
+#[test]
+fn ansi_au_lcd_depuis_le_basic() {
+    let mut s = Sim::new(&rom());
+    secs(&mut s, 6.0);
+    s.uart_send(b"6");
+    secs(&mut s, 3.0);
+    let mut alea = 5;
+    for _ in 0..3 {
+        taper(&mut s, b"PRINT \"XXXXXXXXXXXXXXXXXX\"\r", &mut alea);
+    }
+    taper(&mut s, b"PRINT CHR$(27);\"[2J\";CHR$(27);\"[H\";\"HAUT\";\r", &mut alea);
+    secs(&mut s, 2.0);
+    show(&s, "ESC [ 2 J, ESC [ H");
+    let l = s.lcd_lines();
+    assert!(l[0].starts_with("HAUT"), "HAUT en haut a gauche : {:?}", l);
+    assert!(!l.iter().any(|x| x.contains("XXXX")), "ecran efface : {:?}", l);
+    taper(&mut s, b"PRINT \"ABCDEFGH\";CHR$(27);\"[4D\";CHR$(27);\"[K\";CHR$(27);\"[2C\";\"Z\"\r", &mut alea);
+    secs(&mut s, 2.0);
+    show(&s, "ESC [ 4 D, ESC [ K, ESC [ 2 C");
+    let l = s.lcd_lines();
+    assert!(l.iter().any(|x| x.starts_with("ABCD  Z")), "ABCD, fin effacee, Z deux colonnes plus loin : {:?}", l);
+    for x in &l {
+        assert!(!x.contains('[') && !x.contains('\x1b'), "sequence au LCD : {:?}", x);
+    }
 }

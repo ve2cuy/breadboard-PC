@@ -144,6 +144,11 @@ V_LCDADR        equ     7F4h            ; adresse DDRAM courante du LCD (copie V
 V_IT0           equ     7F5h            ; IRQ0 comptees (attentes du son, 13,7 ms chacune)
 V_P61           equ     7F6h            ; copie du port 61h (le verrou ne se relit pas)
 V_MELODIE       equ     7F7h            ; 1 = melodie de demarrage jouee
+V_ANSI          equ     8F4h            ; ecran_tty : 0, 1 = ESC recu, 2 = sequence ESC [ en cours
+V_ANSI_N        equ     8F5h            ;   parametre en cours (0 ou 1)
+V_ANSI_P        equ     8F6h            ;   (2 octets) parametres P1, P2 (0 = par defaut)
+V_HD_MINIX      equ     8F8h            ; 1 = la 1re partition de C: est MINIX (80h/81h : ELKS)
+V_SANS_B        equ     8F9h            ; 1 = demarrage d'ELKS depuis C: : pas de B:, 507 Ko
 V_TDEC          equ     7F8h            ; console UART : le terminal est V_TDEC colonnes a droite de V_CUR (AH=09h)
 V_OMBRE         equ     800h            ; copie des 4 lignes du LCD (80 octets) pour l'UART
 TACHE_PILE      equ     0B00h           ; pile de la tache des animations : 900h-AFFh
@@ -155,6 +160,7 @@ DISQUE_SPT      equ     9
 DISQUE_CYL      equ     40
 DISQUE_SECT     equ     360
 EQUIPEMENT      equ     0061h           ; 2 lecteurs de disquette (A: ROM, B: RAM), video 80x25
+EQUIPEMENT_A    equ     0021h           ; A: seul (ELKS sur C: : pas de B:), video 80x25
 ; lecteur B: : disque virtuel en RAM, format 160 Ko du DOS 2.1 (FEh : 8 secteurs, 1 face,
 ; 40 pistes) dont seuls les 256 premiers secteurs (128 Ko) existent ; les amas au-dela
 ; sont marques defectueux dans la FAT. Conserve apres Ctrl+Alt+Suppr (signature).
@@ -928,6 +934,8 @@ vars_init:
         mov     [es:V_IMGB_ACTIF], al   ; B: = disque virtuel en RAM
         mov     [es:V_HD_ACTIF], al     ; pas de disque dur C:
         mov     [es:V_BOOT_C], al
+        mov     [es:V_HD_MINIX], al
+        mov     [es:V_SANS_B], al
         mov     [es:V_CHG_A], al        ; pas de changement de A: demande
         mov     [es:V_CHG_OK], al
         mov     [es:V_CHG_CALME], al
@@ -935,6 +943,7 @@ vars_init:
         mov     [es:V_CHG_LIGNE], al
         mov     [es:V_PROGRES], al
         mov     [es:V_SD_TYPE], al
+        mov     [es:V_ANSI], al         ; pas de sequence ANSI en cours
         call    avr_detecte             ; UART par l'ATmega U17 (sinon UART logiciel)
         call    pit_init
         jmp     tache_init
@@ -2142,7 +2151,7 @@ anim_vumetre:
 ;                12345678901234567890
 %ifdef LANG_EN
 ;                12345678901234567890      (BIOS anglais : make LANG=en)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.7'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.8'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 KB  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2169,7 +2178,7 @@ txt_led:    db  'LED SHOW   Esc=menu '
             db  '                    '
             db  'PS/2 keyboard >     '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.7'
+txt_sys:    db  'SOLUTION-02 BIOS 2.8'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512KB  ROM 256KB'
             db  '8259 absent         '
@@ -2182,7 +2191,7 @@ txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.7 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.8 - VE2CUY 2026', 13, 10
             db  'Menu (PS/2 keyboard): 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) LED Show ON/OFF'
             db  '  8) UART speed (ATmega)', 13, 10, 0
@@ -2201,7 +2210,7 @@ txt_vit_msg2:
             db  ' baud (set the terminal)', 13, 10, 0
 %else
 ;                12345678901234567890      (BIOS francais, par defaut)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.7'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.8'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2228,7 +2237,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.7'
+txt_sys:    db  'SOLUTION-02 BIOS 2.8'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2241,7 +2250,7 @@ txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.7 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.8 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) DOS  2) Test memoire  3) Anim. DEL  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF'
             db  '  8) Vitesse UART (ATmega)', 13, 10, 0
