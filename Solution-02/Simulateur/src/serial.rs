@@ -131,7 +131,7 @@ impl Default for Ps2Kbd {
 
 /// Instant de debut du bit k d'une trame serie a 9600 bauds (cycles, depuis le debut).
 #[inline]
-fn bit_t(k: u64, baud: u64) -> u64 {
+pub fn bit_t(k: u64, baud: u64) -> u64 {
     // CLK = 16 MHz / 3
     k * 16_000_000 / (3 * baud)
 }
@@ -144,11 +144,24 @@ pub struct UartRx {
     pub baud: u64,
     /// Ecart supplementaire entre deux octets (cycles).
     pub gap: u64,
+    /// Controle de flux : pas de nouvelle trame tant que `hold` (RTS de l'ATmega retire).
+    hold: bool,
+    /// Trames finies (fin, octet), gardees si `garde` (ATmega : remise octet par octet).
+    pub garde: bool,
+    pub faites: Vec<(u64, u8)>,
 }
 
 impl UartRx {
     pub fn new() -> Self {
-        UartRx { queue: VecDeque::new(), cur: None, ready_at: 0, baud: 9600, gap: 0 }
+        UartRx { queue: VecDeque::new(), cur: None, ready_at: 0, baud: 9600, gap: 0, hold: false, garde: false, faites: Vec::new() }
+    }
+    /// Suspend (true) ou reprend (false) l'envoi de nouvelles trames a l'instant `now`
+    /// (la trame en cours se termine).
+    pub fn set_hold(&mut self, hold: bool, now: u64) {
+        if self.hold && !hold && self.ready_at < now {
+            self.ready_at = now;
+        }
+        self.hold = hold;
     }
     pub fn push(&mut self, bytes: &[u8], now: u64) {
         if self.queue.is_empty() && self.cur.is_none() && self.ready_at < now {
@@ -165,15 +178,18 @@ impl UartRx {
     }
     fn advance(&mut self, now: u64) {
         loop {
-            if let Some((s, _)) = self.cur {
+            if let Some((s, bits)) = self.cur {
                 let end = s + bit_t(10, self.baud);
                 if now < end {
                     return;
                 }
+                if self.garde {
+                    self.faites.push((end, (bits >> 1) as u8));
+                }
                 self.cur = None;
                 self.ready_at = end + self.gap;
             }
-            if self.queue.is_empty() || now < self.ready_at {
+            if self.queue.is_empty() || now < self.ready_at || self.hold {
                 return;
             }
             let b = self.queue.pop_front().unwrap();
@@ -209,7 +225,7 @@ impl UartRx {
                 s + bit_t(k, self.baud)
             }
             None => {
-                if self.queue.is_empty() {
+                if self.queue.is_empty() || self.hold {
                     u64::MAX
                 } else {
                     self.ready_at.max(now + 1)
@@ -303,6 +319,15 @@ impl UartTx {
 
     pub fn level(&self) -> bool {
         self.level
+    }
+
+    /// Instant du prochain echantillon d'une trame en cours (None au repos).
+    pub fn next_sample(&self) -> Option<u64> {
+        if self.busy {
+            Some(self.start + (bit_t(2 * (self.k as u64 + 1) + 1, self.baud)) / 2 + 1)
+        } else {
+            None
+        }
     }
 }
 

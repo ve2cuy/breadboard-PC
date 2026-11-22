@@ -202,6 +202,8 @@ export const EN = {
   'D+ et D- inversés sur J4 (erreur du 14 nov.)': 'D+ and D- swapped on J4 (Nov. 14 mistake)',
   'Horloge et données du clavier permutées : trames PS/2 illisibles, touches perdues.': 'Keyboard clock and data swapped: unreadable PS/2 frames, lost keys.',
   'R4 absente (tirage de RX)': 'R4 missing (RX pull-up)',
+  'Variante : ATmega328P U17 (schéma du 21 nov.)': 'Variant: ATmega328P U17 (schematic of Nov 21)',
+  "UART matériel sur J5 et esclave SPI du 8088 (SS = PC0, MISO = PB4), IRQ4 = octet reçu ; l'UART logiciel (PA7, PB2) est retiré. Le BIOS 2.6 n'a alors plus de terminal : il faut le BIOS 2.7.": 'Hardware UART on J5 and SPI slave of the 8088 (SS = PC0, MISO = PB4), IRQ4 = byte received; the software UART (PA7, PB2) is removed. BIOS 2.6 then has no terminal: BIOS 2.7 is needed.',
   'Avec le terminal débranché (onglet Terminal), RX flotte à 0 : faux bits de départ, clavier très lent.': 'With the terminal disconnected (Terminal tab), RX floats low: false start bits, very slow keyboard.',
   "Ligne d'adresse coupée vers la RAM": 'Address line cut to the RAM',
   'Le test de RAM du démarrage et le menu 2) nomment la ligne en défaut.': 'The power-on RAM test and menu 2) name the faulty line.',

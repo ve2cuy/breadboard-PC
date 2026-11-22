@@ -1172,6 +1172,7 @@ const FAULTS = [
   ['ram_bad', 'addr', 'Cellule de RAM défectueuse (lue à 00h)', "Adresse linéaire en hexadécimal, ex. 7B3FF. Le test l'affiche « ERR aaaaa ee/ll »."],
   ['no_lcd', 'check', 'LCD débranché (U10)', "Le BIOS écrit sans vérifier : rien à l'écran, le terminal UART fonctionne toujours."],
   ['no_rom', 'check', 'ROM retirée (U4)', 'Le 8088 lit FFh partout : rien ne démarre.'],
+  ['atmega', 'check', 'Variante : ATmega328P U17 (schéma du 21 nov.)', "UART matériel sur J5 et esclave SPI du 8088 (SS = PC0, MISO = PB4), IRQ4 = octet reçu ; l'UART logiciel (PA7, PB2) est retiré. Le BIOS 2.6 n'a alors plus de terminal : il faut le BIOS 2.7."],
 ];
 function buildFaults() {
   const el = $('faults');
@@ -1189,7 +1190,8 @@ function buildFaults() {
       if (inp.type === 'checkbox') { on = inp.checked; v = on ? 1 : 0; }
       else if (inp.tagName === 'SELECT') { on = inp.value !== ''; v = on ? 1 << +inp.value : 0; }
       else { const h = parseInt(inp.value.replace(/h$/i, ''), 16); on = !isNaN(h); v = on ? h & 0x7FFFF : 0xFFFFFFFF; }
-      S.sim.set_fault(k, v);
+      if (k === 'atmega') S.sim.set_atmega(on);
+      else S.sim.set_fault(k, v);
       $('f-' + k).classList.toggle('on', on);
       log(on ? 'w' : 'i', t('Panne « {0} » {1}.', t(FAULTS.find((f) => f[0] === k)[2]), on ? t('activée') : t('retirée')));
       S.board.staticDirty = true;

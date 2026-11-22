@@ -91,7 +91,7 @@ WebAssembly dans `www/pkg/`.
 | Débogueur | Pause et pas à pas (F10), par-dessus (F11), jusqu'au retour. Points d'arrêt (clic dans la marge ou adresse `F000:E05B`). Registres et drapeaux modifiables, désassembleur, pile, mémoire (raccourcis : vecteurs, BDA, DSEG du BIOS…) et 64 derniers accès d'E/S. |
 | Fiches techniques | Clic (ou clic droit) sur un composant : fiche PDF dans une fenêtre (dossier `www/pdf/`), inspecteur de l'état interne (8255, 8259, 8253, LCD, carte SD, clavier, UART, port 61h), retrait de la puce. |
 | ROM | Choix entre le BIOS 2.4 français ou anglais et les ROM de diagnostic (carte SD, U12, U7), ou n'importe quel fichier `.bin` de 256 Ko (bouton Ouvrir… ou glisser-déposer). |
-| Pannes | Retirer le 8259, la 8253, le LCD ou la ROM. D0-D7 inversés vers U7 (erreur réelle du 13 nov.), D+/D- inversés sur J4 (14 nov.), R4 absente avec le terminal débranché, ligne d'adresse de la RAM coupée, cellule de RAM défectueuse. Le BIOS réagit comme sur le montage : repli par scrutation sans 8259, « RAM ERR » au test… |
+| Pannes | Retirer le 8259, la 8253, le LCD ou la ROM. D0-D7 inversés vers U7 (erreur réelle du 13 nov.), D+/D- inversés sur J4 (14 nov.), R4 absente avec le terminal débranché, ligne d'adresse de la RAM coupée, cellule de RAM défectueuse. Le BIOS réagit comme sur le montage : repli par scrutation sans 8259, « RAM ERR » au test… **Variante : ATmega328P U17** (schéma du 21 nov.) : UART matériel sur J5 et esclave SPI du 8088 (SS = PC0, MISO = PB4), IRQ4 = octet reçu, RTS respecté par le terminal ; l'UART logiciel (PA7, PB2) est retiré, donc le BIOS 2.6 n'a pas de terminal dans cette variante (BIOS 2.7 à venir). |
 | Son | Piézo BZ1 : compteur 2 de la 8253, port 61h (U16), sortie SPK. Il est muet par défaut parce qu'il n'est pas câblé sur le montage ; le bouton 🔈 l'active. |
 | Vitesse | 1/1000 à ×20 et « Max » (environ 22 fois le temps réel dans Edge). |
 | Instantané | Mémorise l'état complet de la machine ; ↺ y revient. |
@@ -107,10 +107,12 @@ Simulateur/
 │  │               + 4 cycles par transfert de mot, bornées par le débit du bus de 8 bits
 │  ├─ machine.rs   carte : bus, décodage (U5, U8, U9), RAM, ROM, interruptions, son, pannes
 │  ├─ lcd.rs  ppi.rs  pic.rs  pit.rs  serial.rs (PS/2, UART)  sd.rs (carte SD, FAT32)
+│  ├─ avr.rs       ATmega328P U17 : protocole d'arduino/atmega_uart (mêmes essais), esclave SPI, USART
 │  ├─ signals.rs   signaux de la netliste, activité, événements de l'oscilloscope
 │  ├─ disasm.rs    désassembleur (syntaxe NASM)
 │  └─ lib.rs       interface WebAssembly (Sim)
-├─ tests/          essais natifs : boot.rs (BIOS), sst.rs (suite SingleStepTests du 8088)
+├─ tests/          essais natifs : boot.rs (BIOS), atmega.rs (8088 <-> ATmega par SPI), bios_atmega.rs (BIOS 2.7 + ATmega),
+│                  sst.rs (suite SingleStepTests du 8088)
 ├─ outils/         netlist.py (KiCad -> JS), serveur.py, solution02.xml (netliste exportée)
 ├─ publier.ps1     publication sur GitHub Pages (branche gh-pages)
 └─ www/            application : index.html, css/, js/ (board, logic = schémas des 74xx, scope, la = analyseur, i18n + i18n_en),
@@ -133,6 +135,24 @@ Ces essais font tourner le vrai BIOS 2.4 (français) :
 - repli sans 8259 (« 8259 absent ») ;
 - panne du bus inversé vers U7 ;
 - IRQ libres de J12 : IR3 masquée non servie, IR2 activée donne INT 0Ah, ISR sans EOI.
+
+```
+cargo test --release --test atmega -- --nocapture
+```
+
+Variante ATmega : un petit programme 8088 (assemblé par NASM) pilote l'ATmega par U12 comme le fera le BIOS 2.7 :
+IDENT, ETAT, LIRE (« hello » tapé au terminal), ECRIRE (« WORLD » arrive au terminal), avec et sans pause entre
+les octets ; IR4 monte quand un octet attend ; 8088 arrêté, RTS est retiré à 768 octets et le terminal garde le
+reste. `cargo test --release --lib` lance aussi les essais du protocole d'`avr.rs`.
+
+```
+cargo test --release --test bios_atmega -- --nocapture
+```
+
+BIOS 2.7 avec l'ATmega, piloté au terminal : menu et Info (« ATmega v01 ») ; PC-DOS 2.1 de la ROM, DIR, puis une
+ligne de 100 caractères collée à pleine vitesse (écho et résultat d'ECHO exacts) ; CP/M-86 1.1 depuis C: (carte SD
+et ATmega sur le même bus) ; ELKS (`PC-DOS/ELKS-0.9.2/fd360-minix-s02.img`) : lignes tapées irrégulièrement ou
+collées, aucun caractère perdu.
 
 ```
 set SST_DIR=…\8088\v1 && cargo test --release --test sst -- --nocapture

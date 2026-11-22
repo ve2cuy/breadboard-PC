@@ -1,6 +1,7 @@
 ﻿//! La carte Solution-02 : bus du 8088, decodage (U5, U8, U9), memoires, peripheriques,
 //! lignes d'interruption (U14 -> U13), son (U15, U16, BZ1) et pannes simulees.
 
+use crate::avr::Avr;
 use crate::cpu::{Bus, Cpu, IF};
 use crate::lcd::Lcd;
 use crate::pic::Pic;
@@ -55,6 +56,14 @@ pub struct Board {
     pub faults: Faults,
     /// Terminal (adaptateur serie) branche sur J5.
     pub term_connected: bool,
+    /// ATmega328P U17 (schema du 2026-11-21) : UART sur J5, esclave SPI du 8088. None = UART
+    /// logiciel (PA7/PB2 de U12, RX inverse par U14 vers IR4 : schema d'avant, BIOS 2.6).
+    pub avr: Option<Avr>,
+    /// Le terminal respecte RTS de l'ATmega (controle de flux materiel).
+    pub term_rtscts: bool,
+    /// Le terminal suit la vitesse de l'ATmega (VITESSE).
+    pub term_suit: bool,
+    avr_tx: bool,
     pub now: u64,
     acc: u64,
     pub next_ev: u64,
@@ -124,6 +133,10 @@ impl Board {
             sig: Signals::new(),
             faults: Faults::default(),
             term_connected: true,
+            avr: None,
+            term_rtscts: true,
+            term_suit: true,
+            avr_tx: true,
             now: 0,
             acc: 0,
             next_ev: 0,
@@ -326,6 +339,12 @@ impl Board {
         // broches libres : CMOS en l'air, lues a 1 ici
         let (clk, data) = self.kbd_lines;
         let miso = self.sd.miso();
+        if let Some(a) = &self.avr {
+            // PB2 libre (UART logiciel retire), PB4 = MISO de l'ATmega (R20 au +5 V)
+            let am = a.miso(self.now + 4 * self.acc);
+            let pb = 0xE4 | (am as u8) << 4 | (miso as u8) << 3 | (data as u8) << 1 | clk as u8;
+            return [0xFF, pb, 0xFF];
+        }
         let pb = 0xF0 | (miso as u8) << 3 | (self.rx_line as u8) << 2 | (data as u8) << 1 | clk as u8;
         [0xFF, pb, 0xFF]
     }
@@ -347,15 +366,18 @@ impl Board {
                 }
             }
         }
-        // TX (PA7) : sortie flottante apres RESET = repos (tirage du terminal)
-        let tx = if mask[0] & 0x80 != 0 { pins[0] & 0x80 != 0 } else { true };
-        if mask[0] & 0x80 != 0 {
-            self.sig.set(s::UART_TX, tx, t);
-        } else {
-            self.sig.set_z(s::UART_TX, t);
-        }
-        if self.tx.level() != tx {
-            self.tx.edge(self.now + 4 * self.acc, tx);
+        // TX (PA7) : sortie flottante apres RESET = repos (tirage du terminal) ; avec l'ATmega,
+        // PA7 est libre et TX vient de l'ATmega (update)
+        if self.avr.is_none() {
+            let tx = if mask[0] & 0x80 != 0 { pins[0] & 0x80 != 0 } else { true };
+            if mask[0] & 0x80 != 0 {
+                self.sig.set(s::UART_TX, tx, t);
+            } else {
+                self.sig.set_z(s::UART_TX, t);
+            }
+            if self.tx.level() != tx {
+                self.tx.edge(self.now + 4 * self.acc, tx);
+            }
         }
         // voyants D1 (PA0), D2 (PA1)
         if mask[0] & 1 != 0 {
@@ -379,6 +401,15 @@ impl Board {
         let miso = self.sd.miso();
         self.sig.set(s::SD_MISO, miso, t);
         self.sig.set(s::U12_PA0 + 11, miso, t);
+        // ATmega : SS = PC0 (R21 au +5 V si PC0 en entree), SCK, MOSI partages avec la carte SD
+        let now = self.now + 4 * self.acc;
+        if let Some(a) = self.avr.as_mut() {
+            let ss = if mask[2] & 0x01 != 0 { pins[2] & 0x01 } else { 0x01 };
+            a.port_c((pcv & 0x60) | ss, now);
+            let am = a.miso(now);
+            self.sig.set(s::U12_PA0 + 12, am, t);
+            self.next_ev = 0;
+        }
     }
 
     fn u7_changed(&mut self) {
@@ -509,10 +540,52 @@ impl Board {
             self.rx_line = rx;
             self.sig.set(s::UART_RX, rx, tq);
             self.sig.set(s::U12_PA0 + 10, rx, tq);
-            self.sig.set(s::IRQ4, !rx, tq);
+            if self.avr.is_none() {
+                self.sig.set(s::IRQ4, !rx, tq);
+            }
         }
         if self.term_connected {
             next = next.min(self.rx.next_change(now));
+        }
+        // ATmega : recoit RX, emet TX vers le terminal, IRQ (PD2) vers IR4, RTS au terminal
+        let mut irq4 = !rx;
+        if let Some(a) = self.avr.as_mut() {
+            // terminal -> ATmega : octets remis a la fin exacte de leur trame
+            self.rx.garde = true;
+            for (te, b) in std::mem::take(&mut self.rx.faites) {
+                let err = self.rx.baud != a.baud;
+                a.recu(te, b, err);
+            }
+            a.service(now);
+            let tx = a.tx_line(now);
+            if tx != self.avr_tx {
+                self.avr_tx = tx;
+                self.sig.set(s::UART_TX, tx, tq);
+            }
+            // ATmega -> terminal : idem ; vitesses differentes : octet faux, erreur de trame
+            for (b, baud) in a.pour_terminal(now) {
+                if baud == self.tx.baud {
+                    self.tx.out.push(b);
+                } else {
+                    self.tx.out.push(b ^ 0x5A);
+                    self.tx.framing_errors += 1;
+                }
+                self.tx.bytes += 1;
+            }
+            irq4 = a.irq();
+            self.sig.set(s::IRQ4, irq4, tq);
+            // le terminal suit la vitesse choisie (comme une personne qui regle PuTTY)
+            if self.term_suit && self.rx.baud != a.baud {
+                self.rx.baud = a.baud;
+                self.tx.baud = a.baud;
+                self.log.push(format!("Terminal : {} bauds (vitesse de l'ATmega)", a.baud));
+            }
+            let hold = self.term_rtscts && !a.rts();
+            self.rx.set_hold(hold, now);
+            next = next.min(a.next_change(now));
+            if self.term_connected {
+                next = next.min(self.rx.next_change(now));
+            }
         }
         // J12 : entrees libres tenues par le simulateur (relachees a l'echeance)
         if self.ext_irq != 0 {
@@ -531,7 +604,7 @@ impl Board {
         }
         // 8259 : IR0 = OUT0, IR1 = KBD_CLK inversee, IR4 = RX inversee (U14, 74LS14), J12
         if !self.faults.no_pic {
-            let lv = (self.out0 as u8) | ((!clk as u8) << 1) | ((!rx as u8) << 4) | (self.ext_irq & 0xEC);
+            let lv = (self.out0 as u8) | ((!clk as u8) << 1) | ((irq4 as u8) << 4) | (self.ext_irq & 0xEC);
             if lv != self.pic.ir {
                 self.pic.set_inputs(lv);
             }
@@ -784,6 +857,8 @@ impl Machine {
         let faults = self.b.faults.clone();
         let sd = std::mem::take(&mut self.b.sd);
         let term = self.b.term_connected;
+        let avr = self.b.avr.is_some();
+        let rtscts = self.b.term_rtscts;
         let audio = self.b.audio_on;
         let probe = self.b.sig.probe;
         let any = self.b.sig.any_probe;
@@ -798,6 +873,8 @@ impl Machine {
             self.b.sd.insert(d);
         }
         self.b.term_connected = term;
+        self.b.avr = if avr { Some(Avr::new()) } else { None };
+        self.b.term_rtscts = rtscts;
         self.b.audio_on = audio;
         self.b.sig.probe = probe;
         self.b.sig.any_probe = any;

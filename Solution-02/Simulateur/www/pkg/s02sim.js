@@ -13,6 +13,45 @@ export class Sim {
         wasm.__wbg_sim_free(ptr, 0);
     }
     /**
+     * @returns {boolean}
+     */
+    atmega() {
+        const ret = wasm.sim_atmega(this.__wbg_ptr);
+        return ret !== 0;
+    }
+    /**
+     * Journal des transactions recues par l'ATmega (mise au point) : "t:cmd:n" par ligne.
+     * @returns {string}
+     */
+    atmega_journal() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.sim_atmega_journal(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Etat de l'ATmega (JSON) : octets en attente, IRQ, RTS, vitesse, compteurs.
+     * @returns {string}
+     */
+    atmega_state() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.sim_atmega_state(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
      * @param {number} rate
      * @returns {Float32Array}
      */
@@ -344,6 +383,15 @@ export class Sim {
         return v1;
     }
     /**
+     * Variante de la carte : ATmega328P U17 (schema du 2026-11-21, UART materiel et esclave
+     * SPI du 8088) ou UART logiciel (schema d'avant, BIOS 2.6). Garde au fil des mises sous
+     * tension ; l'ATmega repart a neuf a chaque changement.
+     * @param {boolean} on
+     */
+    set_atmega(on) {
+        wasm.sim_set_atmega(this.__wbg_ptr, on);
+    }
+    /**
      * @param {Uint32Array | number[]} bps
      */
     set_breakpoints(bps) {
@@ -468,10 +516,24 @@ export class Sim {
         }
     }
     /**
+     * Vitesse du terminal (bauds) : doit suivre celle de l'UART (VITESSE de l'ATmega).
+     * @param {number} baud
+     */
+    term_baud(baud) {
+        wasm.sim_term_baud(this.__wbg_ptr, baud);
+    }
+    /**
      * @param {boolean} on
      */
     term_connected(on) {
         wasm.sim_term_connected(this.__wbg_ptr, on);
+    }
+    /**
+     * Le terminal respecte RTS de l'ATmega (controle de flux materiel, J8).
+     * @param {boolean} on
+     */
+    term_rtscts(on) {
+        wasm.sim_term_rtscts(this.__wbg_ptr, on);
     }
     /**
      * @returns {Uint32Array}

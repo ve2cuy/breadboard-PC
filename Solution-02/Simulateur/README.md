@@ -91,7 +91,7 @@ compiles the WebAssembly into `www/pkg/`.
 | Debugger | Pause and step (F10), step over (F11), run to return. Breakpoints (click in the margin or address `F000:E05B`). Editable registers and flags, disassembler, stack, memory (shortcuts: vectors, BDA, BIOS DSEG…) and the last 64 I/O accesses. |
 | Datasheets | Click (or right-click) a component: PDF datasheet in a window (`www/pdf/` folder), inspector of the internal state (8255, 8259, 8253, LCD, SD card, keyboard, UART, port 61h), chip removal. |
 | ROM | Choice between BIOS 2.4 in French or English and the diagnostic ROMs (SD card, U12, U7), or any 256 KB `.bin` file (Open… button or drag and drop). |
-| Faults | Remove the 8259, the 8253, the LCD or the ROM. D0-D7 reversed to U7 (real mistake of Nov. 13), D+/D- swapped on J4 (Nov. 14), R4 missing with the terminal unplugged, cut RAM address line, faulty RAM cell. The BIOS reacts as on the real build: polling fallback without the 8259, "RAM ERR" in the test… |
+| Faults | Remove the 8259, the 8253, the LCD or the ROM. D0-D7 reversed to U7 (real mistake of Nov. 13), D+/D- swapped on J4 (Nov. 14), R4 missing with the terminal unplugged, cut RAM address line, faulty RAM cell. The BIOS reacts as on the real build: polling fallback without the 8259, "RAM ERR" in the test… **Variant: ATmega328P U17** (schematic of Nov. 21): hardware UART on J5 and SPI slave of the 8088 (SS = PC0, MISO = PB4), IRQ4 = byte received, RTS respected by the terminal; the software UART (PA7, PB2) is removed, so BIOS 2.6 has no terminal in this variant (BIOS 2.7 to come). |
 | Sound | Piezo BZ1: counter 2 of the 8253, port 61h (U16), SPK output. Muted by default because it is not wired on the real build; the 🔈 button enables it. |
 | Speed | 1/1000 to ×20 and "Max" (about 22 times real time in Edge). |
 | Snapshot | Saves the full machine state; ↺ goes back to it. |
@@ -107,10 +107,12 @@ Simulateur/
 │  │               + 4 cycles per word transfer, bounded by the 8-bit bus throughput
 │  ├─ machine.rs   board: bus, decoding (U5, U8, U9), RAM, ROM, interrupts (J12), sound, faults
 │  ├─ lcd.rs  ppi.rs  pic.rs  pit.rs  serial.rs (PS/2, UART)  sd.rs (SD card, FAT32)
+│  ├─ avr.rs       ATmega328P U17: protocol of arduino/atmega_uart (same tests), SPI slave, USART
 │  ├─ signals.rs   netlist signals, activity, oscilloscope events
 │  ├─ disasm.rs    disassembler (NASM syntax)
 │  └─ lib.rs       WebAssembly interface (Sim)
-├─ tests/          native tests: boot.rs (BIOS), sst.rs (8088 SingleStepTests suite)
+├─ tests/          native tests: boot.rs (BIOS), atmega.rs (8088 <-> ATmega over SPI), bios_atmega.rs (BIOS 2.7 + ATmega),
+│                  sst.rs (8088 SingleStepTests suite)
 ├─ outils/         netlist.py (KiCad -> JS), serveur.py, solution02.xml (exported netlist)
 ├─ publier.ps1     publishing to GitHub Pages (gh-pages branch)
 └─ www/            application: index.html, css/, js/ (board, logic = 74xx diagrams, scope, la = analyzer, i18n + i18n_en),
@@ -133,6 +135,24 @@ These tests run the real BIOS 2.4 (French):
 - fallback without the 8259 ("8259 absent");
 - the reversed bus fault to U7;
 - free IRQs on J12: masked IR3 not served, enabled IR2 gives INT 0Ah, ISR without EOI.
+
+```
+cargo test --release --test atmega -- --nocapture
+```
+
+ATmega variant: a small 8088 program (assembled with NASM) drives the ATmega through U12 as BIOS 2.7 will:
+IDENT, ETAT, LIRE ("hello" typed at the terminal), ECRIRE ("WORLD" reaches the terminal), with and without
+pauses between bytes; IR4 rises when a byte is waiting; with the 8088 stopped, RTS is withdrawn at 768 bytes and
+the terminal keeps the rest. `cargo test --release --lib` also runs the protocol tests of `avr.rs`.
+
+```
+cargo test --release --test bios_atmega -- --nocapture
+```
+
+BIOS 2.7 with the ATmega, driven from the terminal: menu and Info ("ATmega v01"); PC-DOS 2.1 from the ROM, DIR,
+then a 100-character line pasted at full speed (exact echo and ECHO result); CP/M-86 1.1 from C: (SD card and
+ATmega on the same bus); ELKS (`PC-DOS/ELKS-0.9.2/fd360-minix-s02.img`): lines typed irregularly or pasted, no
+character lost.
 
 ```
 set SST_DIR=…\8088\v1 && cargo test --release --test sst -- --nocapture

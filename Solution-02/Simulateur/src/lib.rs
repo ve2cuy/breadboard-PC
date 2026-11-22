@@ -1,6 +1,7 @@
 //! Simulateur de Solution-02 : ordinateur 8088 sur platine d'essai (VE2CUY).
 //! Le meme code sert aux essais natifs (cargo test) et au fureteur (WebAssembly).
 
+pub mod avr;
 pub mod cpu;
 pub mod disasm;
 pub mod lcd;
@@ -225,6 +226,66 @@ impl Sim {
             self.m.b.rx.clear();
         }
         self.m.b.next_ev = 0;
+    }
+    /// Vitesse du terminal (bauds) : doit suivre celle de l'UART (VITESSE de l'ATmega).
+    pub fn term_baud(&mut self, baud: u32) {
+        self.m.b.rx.baud = baud.max(300) as u64;
+        self.m.b.tx.baud = baud.max(300) as u64;
+        self.m.b.next_ev = 0;
+    }
+    /// Le terminal respecte RTS de l'ATmega (controle de flux materiel, J8).
+    pub fn term_rtscts(&mut self, on: bool) {
+        self.m.b.term_rtscts = on;
+        self.m.b.next_ev = 0;
+    }
+
+    // ------------------------------------------------------------ ATmega328P (U17)
+    /// Variante de la carte : ATmega328P U17 (schema du 2026-11-21, UART materiel et esclave
+    /// SPI du 8088) ou UART logiciel (schema d'avant, BIOS 2.6). Garde au fil des mises sous
+    /// tension ; l'ATmega repart a neuf a chaque changement.
+    pub fn set_atmega(&mut self, on: bool) {
+        let b = &mut self.m.b;
+        b.avr = if on { Some(avr::Avr::new()) } else { None };
+        b.rx.set_hold(false, self.m.cpu.cycles);
+        b.rx.garde = on;
+        b.rx.faites.clear();
+        b.next_ev = 0;
+    }
+    /// Journal des transactions recues par l'ATmega (mise au point) : "t:cmd:n" par ligne.
+    pub fn atmega_journal(&mut self) -> String {
+        match self.m.b.avr.as_mut() {
+            None => String::new(),
+            Some(a) => std::mem::take(&mut a.journal)
+                .iter()
+                .map(|(t, c, n)| format!("{:.4}:{:02X}:{}", *t as f64 / CLK_HZ, c, n))
+                .collect::<Vec<_>>()
+                .join("
+"),
+        }
+    }
+    pub fn atmega(&self) -> bool {
+        self.m.b.avr.is_some()
+    }
+    /// Etat de l'ATmega (JSON) : octets en attente, IRQ, RTS, vitesse, compteurs.
+    pub fn atmega_state(&self) -> String {
+        match &self.m.b.avr {
+            None => "null".into(),
+            Some(a) => format!(
+                concat!(
+                    "{{\"rx_nb\":{},\"tx_nb\":{},\"irq\":{},\"rts\":{},\"baud\":{},",
+                    "\"octets_spi\":{},\"trop_tot\":{},\"recus\":{},\"emis\":{}}}"
+                ),
+                a.p.rx_nb(),
+                a.p.tx_nb(),
+                a.irq(),
+                a.rts(),
+                a.baud,
+                a.octets_spi,
+                a.trop_tot,
+                a.recus,
+                a.emis
+            ),
+        }
     }
 
     // ------------------------------------------------------------ son
