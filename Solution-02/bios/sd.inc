@@ -86,6 +86,27 @@ spi_octet:
         pop     bx
         ret
 
+; sd_envoie : envoie a la carte (CS = 0) les CX octets (CX >= 1) de DS:SI, MISO ignore. 8 bits
+; deroules par octet (au lieu d'un appel de spi_octet par octet). Detruit AX, BX, CX, DX ; SI
+; avance.
+sd_envoie:
+        mov     dx, PPI2_PC
+.o:     lodsb
+        mov     bl, al
+%rep 8
+        shl     bl, 1
+        sbb     al, al                  ; FFh si le bit vaut 1
+        and     al, SD_MOSI
+        or      al, SD_REPOS & ~SD_MOSI
+        out     dx, al                  ; SCK = 0, MOSI pose
+        or      al, SD_SCK
+        out     dx, al                  ; SCK = 1 : la carte lit MOSI
+%endrep
+        loop    .o
+        mov     al, SD_REPOS
+        out     dx, al                  ; SCK = 0, MOSI = 1
+        ret
+
 ; spi_ff : recoit un octet (envoie FFh). AL = octet recu.
 spi_ff:
         mov     al, 0FFh
@@ -630,9 +651,11 @@ sd_ecrire:
         mov     al, 0FEh                ; jeton de debut
         call    spi_octet
         mov     cx, 512
-.d:     lodsb
-        call    spi_octet
-        loop    .d
+        push    bx
+        push    dx
+        call    sd_envoie               ; les 512 octets, deroules
+        pop     dx
+        pop     bx
         call    spi_ff                  ; CRC (ignore par la carte en SPI)
         call    spi_ff
         call    spi_ff                  ; reponse : xxx00101 = acceptee

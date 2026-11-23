@@ -76,6 +76,54 @@ avr_octet:
         pop     bx
         ret
 
+; avr_recoit : recoit CX octets (CX >= 1) de l'ATmega selectionne vers ES:DI, en envoyant
+; 00h (LIRE). 8 bits deroules par octet ; entre deux octets, ~35 us (AAM) : l'ATmega recharge
+; SPDR dans son interruption (25 us suffisent, mesure au banc simavr). ~115 us par octet au
+; lieu de ~215 avec avr_octet. Detruit AX, BX, CX, DX, DI.
+avr_recoit:
+        mov     dx, PPI2_PC
+        mov     bl, AVR_SEL & ~AVR_MOSI         ; SCK = 0, MOSI = 0
+        mov     bh, (AVR_SEL & ~AVR_MOSI) | AVR_SCK
+.o:
+%rep 8
+        mov     al, bl
+        out     dx, al
+        mov     al, bh
+        out     dx, al                  ; SCK = 1 : bit lu par les deux
+        in      al, PPI2_PB
+        and     al, AVR_MISO
+        add     al, 0F0h                ; CF = MISO
+        rcl     ah, 1
+%endrep
+        mov     al, ah
+        stosb
+        aam                             ; (~16 us : delai)
+        loop    .o
+        mov     al, AVR_SEL
+        out     dx, al                  ; SCK = 0, MOSI = 1
+        ret
+
+; avr_envoie : envoie a l'ATmega selectionne les CX octets (CX >= 1) de DS:SI (ECRIRE ; MISO
+; ignore). Deroule, ~35 us entre deux octets. Detruit AX, BX, CX, DX ; SI avance.
+avr_envoie:
+        mov     dx, PPI2_PC
+.o:     lodsb
+        mov     bl, al
+%rep 8
+        shl     bl, 1
+        sbb     al, al                  ; FFh si le bit vaut 1
+        and     al, AVR_MOSI
+        or      al, AVR_SEL & ~AVR_MOSI
+        out     dx, al                  ; SCK = 0, MOSI pose
+        or      al, AVR_SCK
+        out     dx, al                  ; SCK = 1
+%endrep
+        aam
+        loop    .o
+        mov     al, AVR_SEL
+        out     dx, al
+        ret
+
 ; avr_debut : prend le bus et selectionne l'ATmega. CF = 1 si le bus est occupe (autre
 ; transaction, ou carte SD selectionnee). ES = DSEG. Detruit AL.
 avr_debut:
@@ -293,12 +341,16 @@ avr_lire_bloc:
         jae     .n
         mov     cx, ax
 .n:     jcxz    .f
-.b:     xor     al, al
-        call    avr_octet
-        mov     [ss:di], al
-        inc     di
-        inc     bx
-        loop    .b
+        mov     bx, cx
+        push    bx
+        push    dx
+        push    es
+        push    ss
+        pop     es
+        call    avr_recoit              ; vers SS:DI
+        pop     es
+        pop     dx
+        pop     bx
 .f:     call    avr_fin
 .r:     mov     cx, bx
         pop     di
@@ -906,12 +958,16 @@ avr_lire_bloc_ds:
         jae     .n
         mov     cx, ax
 .n:     jcxz    .f
-.b:     xor     al, al
-        call    avr_octet
-        mov     [di], al
-        inc     di
-        inc     bx
-        loop    .b
+        mov     bx, cx
+        push    bx
+        push    dx
+        push    es
+        push    ds
+        pop     es
+        call    avr_recoit              ; vers DS:DI
+        pop     es
+        pop     dx
+        pop     bx
 .f:     call    avr_fin
 .r:     mov     cx, bx
         pop     di
@@ -943,12 +999,16 @@ avr_ecrire_bloc2:
         mov     bx, cx
 .m:     or      bx, bx
         jz      .plein
-.b:     lodsb
-        call    avr_octet
-        inc     bp
-        dec     cx
-        dec     bx
-        jnz     .b
+        push    cx
+        push    dx
+        push    bx
+        mov     cx, bx
+        call    avr_envoie              ; DS:SI, SI avance
+        pop     bx
+        pop     dx
+        pop     cx
+        add     bp, bx
+        sub     cx, bx
         call    avr_fin
         jmp     .essai
 .plein: call    avr_fin

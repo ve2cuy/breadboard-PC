@@ -335,6 +335,7 @@ ESP32 schematic of 2026-11-22 (Q1/Q2, R23–R30, 1 × 7 J13) is removed.
   `wifi/slip_outil.py` speaks SLIP from a PC through the bridge (ping, module console), with no
   driver nor administrator rights.
 - **ELKS networking**: see [elks/README.md](elks/README.md) (`net start slip`).
+- **DOS networking**: `S02PKT` packet driver and mTCP, see [dos/README.md](dos/README.md).
 
 ## 8259A (U13): keyboard and UART interrupts
 

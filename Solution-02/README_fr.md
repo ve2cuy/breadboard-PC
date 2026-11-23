@@ -345,6 +345,7 @@ micrologiciel AT, 115200 bauds) ; le terminal reste sur l'UART logiciel de l'ATm
   `wifi/sauvegarde/` (hors de git). `wifi/slip_outil.py` parle SLIP depuis un PC à travers le
   pont (ping, console du module), sans pilote ni droits d'administrateur.
 - **ELKS en réseau** : voir [elks/README_fr.md](elks/README_fr.md) (`net start slip`).
+- **DOS en réseau** : pilote de paquets `S02PKT` et mTCP, voir [dos/README_fr.md](dos/README_fr.md).
 
 ## 8259A (U13) : interruptions du clavier et de l'UART
 

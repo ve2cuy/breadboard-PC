@@ -1,4 +1,4 @@
-//! BIOS 3.1 sur la carte avec l'ATmega328P U17 (schema du 2026-11-23) : terminal par
+//! BIOS 3.2 sur la carte avec l'ATmega328P U17 (schema du 2026-11-23) : terminal par
 //! l'ATmega (esclave SPI du 8088), carte SD sur le meme bus.
 //! cargo test --release --test bios_atmega -- --nocapture
 
@@ -80,13 +80,13 @@ fn menu_et_info_par_le_terminal() {
     show(&s, "menu");
     let tx = texte_uart(&mut s);
     println!("UART ({} octets) : {}", tx.len(), &tx[..tx.len().min(300)]);
-    assert!(tx.contains("Solution-02 BIOS 3.1"), "banniere du BIOS 3.1 absente du terminal");
+    assert!(tx.contains("Solution-02 BIOS 3.2"), "banniere du BIOS 3.2 absente du terminal");
     assert!(tx.contains("6) BASIC"), "menu absent du terminal");
     s.uart_send(b"4");
     secs(&mut s, 1.0);
     show(&s, "Info (touche 4 au terminal)");
     let l = s.lcd_lines();
-    assert!(l[0].contains("BIOS 3.1"), "Info : version");
+    assert!(l[0].contains("BIOS 3.2"), "Info : version");
     assert_eq!(l[2], "AVR04 L0040 P00 FC0 ", "Info : diagnostic de l'ATmega (version 4, 64 octets libres)");
     println!("ATmega : {}", s.atmega_state());
     assert!(s.atmega_state().contains("\"trop_tot\":0"));
@@ -255,7 +255,7 @@ fn vitesse_uart_menu_8() {
     s.uart_send(b"4");
     secs(&mut s, 1.0);
     let t = net(&texte_uart(&mut s));
-    assert!(t.contains("SOLUTION-02 BIOS 3.1"), "Info lisible a 19200 bauds : {:?}", t);
+    assert!(t.contains("SOLUTION-02 BIOS 3.2"), "Info lisible a 19200 bauds : {:?}", t);
     s.uart_send(b"x");
     secs(&mut s, 0.5);
     // RESET : l'ATmega garde sa vitesse, le BIOS la relit (IDENT, version 2)
@@ -266,7 +266,7 @@ fn vitesse_uart_menu_8() {
     secs(&mut s, 6.0);
     let t = texte_uart(&mut s);
     show(&s, "apres RESET");
-    assert!(t.contains("Solution-02 BIOS 3.1"), "banniere a 19200 apres RESET");
+    assert!(t.contains("Solution-02 BIOS 3.2"), "banniere a 19200 apres RESET");
     assert_eq!(s.lcd_lines()[1], "2)RAM 8)19200 9)WiFi");
     s.uart_send(b"8");
     secs(&mut s, 1.0);
@@ -281,13 +281,13 @@ fn vitesse_uart_menu_8() {
     let t = net(&texte_uart(&mut s));
     println!("ATmega : {}", s.atmega_state());
     println!("a 115200 : {:?} ; LCD {:?} ; journal {}", t, s.lcd_lines(), s.take_log());
-    assert!(t.contains("SOLUTION-02 BIOS 3.1"), "Info lisible a 115200 bauds : {:?}", t);
+    assert!(t.contains("SOLUTION-02 BIOS 3.2"), "Info lisible a 115200 bauds : {:?}", t);
     assert!(s.atmega_state().contains("\"baud\":115200"));
 }
 
 /// ELKS (image sans Ethernet : ses sondes en 300h/330h/240h tombaient sur le LCD, U12 et la
 /// 8253) : les sequences ANSI envoyees au terminal (clear, edition de ligne) sont interpretees par
-/// le BIOS 3.1 au lieu d'apparaitre au LCD ; aucune commande parasite au LCD.
+/// le BIOS 3.2 au lieu d'apparaitre au LCD ; aucune commande parasite au LCD.
 #[test]
 fn elks_lcd_sans_sequences() {
     let Some(img) = image("ELKS-0.9.2/fd360-minix-s02.img") else {
