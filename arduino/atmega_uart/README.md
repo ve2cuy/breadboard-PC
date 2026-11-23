@@ -27,7 +27,7 @@ when its interrupts stay masked.
 The Grove module level-shifts its own RX input (2N7002, 1 kΩ pull-up to its 5 V VCC); its
 TX output (3.3 V) is enough for the ATmega (VIH = 3.0 V at 5 V). Direct wiring, no divider.
 
-## SPI protocol (version 3)
+## SPI protocol (version 4)
 
 - SPI mode 0, MSB first, like the SD card. The SD card is deselected (U12 PC4 = 1) while
   SS (U12 PC0) = 0. At least 10 µs between two bytes: the ATmega prepares the next byte in
@@ -41,12 +41,13 @@ TX output (3.3 V) is enough for the ATmega (VIH = 3.0 V at 5 V). Direct wiring, 
 
 | Command | Bytes sent by the 8088 after the command | Bytes received |
 |---|---|---|
-| `00h` IDENT | 5 fillers | `'S'`, `'2'`, version (3), channel 1 speed, channel 2 speed |
+| `00h` IDENT | 5 fillers | `'S'`, `'2'`, version (4), channel 1 speed, channel 2 speed |
 | `01h` / `11h` STATUS | 5 fillers | received count (low, high), free transmit space (low, high), flags |
 | `02h` / `12h` READ | 1 filler, then *n* | *n* = min(received, 255), then the *n* bytes |
 | `03h` / `13h` WRITE | 1 filler, then the bytes to send | *f* = min(free space, 255), then 00h |
 | `04h` / `14h` SPEED | speed code | 00h |
 | `05h` / `15h` FLUSH | A5h (confirmation) | 00h |
+| `06h` BRIDGE (version 4) | A5h: bridge; any other value: end | 00h |
 
 - **READ**: a byte leaves the buffer only once fully transferred. Raising SS early loses
   nothing; the rest comes with the next READ.
@@ -59,6 +60,10 @@ TX output (3.3 V) is enough for the ATmega (VIH = 3.0 V at 5 V). Direct wiring, 
   6 = 2400 baud, 8N1. Applied once everything pending has been sent. Power-up: channel 1 at
   57600, channel 2 at 115200 (AT firmware speed). The ATmega is not reset with the 8088
   (RESET button, Ctrl+Alt+Del): it keeps its speeds, which the BIOS reads back with IDENT.
+- **BRIDGE**: bytes received from the terminal go to the module and the module's go to the
+  terminal, without the 8088. Used to flash the module with esptool through the board (BIOS
+  3.0, menu 9, Ctrl+B): USB-serial adapters with a series resistor cannot pull the module's
+  input low (1 kΩ pull-up). Both channels must run at the same speed.
 - **FLUSH** acts only with the A5h confirmation: a stray byte (SD card SPI traffic with
   SS = 0 by mistake) cannot flush the buffers.
 
@@ -111,12 +116,16 @@ make flash PUCE=ok   # TL866CS, chip in the ZIF socket: firmware then fuses
 make fusibles        # read the fuses back
 ```
 
-`make banc` needs simavr in WSL, extracted without `sudo` (see the Makefile). The bench
-makes up for three differences between simavr 1.6 and the real AVR: an interrupt unmasked
+`make banc` needs simavr in WSL, extracted without `sudo` (see the Makefile). The bench fills
+the registers with random values first (the real AVR does not clear them) and makes up for
+several differences between simavr 1.6 and the real AVR: an interrupt unmasked
 while its flag is set is not triggered there; writing TIFR1 clears all timer flags there
 (the hardware clears only the bits written as 1); the OC1A pin changes there as soon as
-TCCR1A is written. Variables: `BANC_VITESSES` (speed codes), `BANC_OCTETS`, `BANC_US`
-(µs per SPI byte).
+TCCR1A is written. simavr's USART also counts a parity bit in every byte
+and has no double transmit buffer: the bench fixes the first point; the second makes its
+terminal → module figures in bridge mode pessimistic. Variables: `BANC_VITESSES` (speed
+codes), `BANC_OCTETS`, `BANC_US` (µs per SPI byte), `BANC_PONT` (1: full-duplex bridge, 2: one
+way then the other), `BANC_V2` (module speed), `BANC_GRAINE`.
 
 The chip is programmed out of circuit. `minipro` reports *Fuses verify error*: it reads
 back hfuse's SPIEN bit as 1 (F9h), which cannot be changed in this programming mode. The

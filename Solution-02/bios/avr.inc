@@ -41,6 +41,8 @@ AVR_ECRIRE      equ     03h
 AVR_VITESSE     equ     04h
 AVR_VIDER       equ     05h
 AVR_CANAL2      equ     10h             ; + ETAT ... VIDER : canal 2 (Wi-Fi), version 3
+AVR_PONT        equ     06h             ; A5h : pont terminal <-> module (version 4), autre : fin
+AVR_V_115200    equ     4
 AVR_V_DEFAUT    equ     3               ; 57600 bauds (vitesse de l'ATmega a la mise sous tension)
 
 AVR_V_NB        equ     7               ; codes de vitesse connus de l'ATmega
@@ -595,6 +597,11 @@ wifi_menu:
         jc      .module
         cmp     al, 1Bh                 ; Echap : retour au menu
         je      .fin
+        cmp     al, 02h                 ; Ctrl+B : pont terminal <-> module (esptool)
+        jne     .pas_pont
+        call    wifi_pont
+        jmp     .fin
+.pas_pont:
         cmp     al, 13
         je      .entree
         or      al, al                  ; touches sans caractere (fleches...) : ignorees
@@ -624,6 +631,55 @@ wifi_menu:
 .fin:   add     sp, WIFI_BLOC
         mov     si, txt_wifi_fin        ; CR LF au terminal
         call    uart_texte
+        ret
+
+; wifi_pont : menu 9), Ctrl+B : pont terminal <-> module (commande PONT, ATmega version 4) pour
+; graver le module avec esptool a travers la carte (adaptateur du terminal sur J5). Le terminal
+; passe a 115200 bauds (vitesse du module) le temps du pont ; Echap au clavier PS/2 y met fin
+; et rend la vitesse d'avant. Pendant le pont, le BIOS n'envoie rien au terminal.
+; DS = CS, ES = DSEG. Detruit AX, BX, CX, DX, SI.
+wifi_pont:
+        cmp     byte [es:V_AVR_VER], 4
+        jae     .ok
+        mov     si, txt_pont_v4         ; micrologiciel de l'ATmega trop ancien
+        call    lcd_ecran
+        PAUSE   10
+        ret
+.ok:    mov     si, txt_pont_ecran
+        call    lcd_ecran
+        mov     si, txt_pont_uart       ; annonce, a la vitesse du terminal en service
+        call    uart_texte
+        mov     al, [es:V_AVR_VIT]
+        push    ax                      ; vitesse a rendre a la fin
+        mov     al, AVR_V_115200
+        call    avr_vitesse             ; (appliquee quand l'annonce est partie)
+        mov     al, AVR_SIGNATURE
+        call    avr_pont                ; PONT
+.att:   call    kbd_attend              ; seul le clavier PS/2 arrive ici (le terminal va au module)
+        cmp     al, 1Bh
+        jne     .att
+        xor     al, al
+        call    avr_pont                ; fin du pont
+        pop     ax
+        call    avr_vitesse             ; vitesse d'avant
+        mov     si, txt_pont_fin
+        call    uart_texte
+        ret
+
+; avr_pont : PONT, AL = A5h (pont) ou autre (fin). ES = DSEG. Preserve tout.
+avr_pont:
+        push    ax
+        push    ax
+        call    avr_debut
+        pop     ax
+        jc      .r
+        push    ax
+        mov     al, AVR_PONT
+        call    avr_octet
+        pop     ax
+        call    avr_octet
+        call    avr_fin
+.r:     pop     ax
         ret
 
 ; wifi_lcd : caractere AL du module aux lignes 2 et 3 du LCD : la ligne en cours s'ecrit en
@@ -739,7 +795,15 @@ wifi_l4_vide:
 ; int14_wifi : INT 14h, DX = 1 : module Wi-Fi (canal 2 de l'ATmega, version 3). AH = 00h ou
 ; 03h : etat (AH bit 0 = octet en attente, 60h emetteur vide ; AL = 30h) ; AH = 01h : envoie
 ; AL ; AH = 02h : octet recu (attente ~0,5 s, puis AH = 80h). Sans module : AH = 80h.
+; Par blocs (BIOS 3.1, pour les pilotes d'ELKS et du DOS) : AH = 08h : lit au plus CX octets
+; (1 a 255) recus du module vers ES:BX, sans attendre ; AH = 09h : envoie CX octets de ES:BX
+; au module (attend la place, ~1 s au plus). Sortie : CX = octets lus / envoyes, AH = 00h
+; (80h : pas d'ATmega de version 3). Une seule transaction SPI pour jusqu'a 255 octets.
 int14_wifi:
+        cmp     ah, 08h
+        je      int14_bloc
+        cmp     ah, 09h
+        je      int14_bloc
         push    es
         push    cx
         push    dx
@@ -781,6 +845,126 @@ int14_wifi:
         pop     cx
         pop     es
         iret
+
+int14_bloc:
+        push    ds
+        push    es
+        push    si
+        push    di
+        push    dx
+        push    ax
+        mov     dx, es
+        mov     ds, dx                  ; DS = segment du tampon de l'appelant
+        mov     dx, DSEG
+        mov     es, dx
+        cmp     byte [es:V_AVR], 0
+        je      .absent
+        cmp     byte [es:V_AVR_VER], 3
+        jb      .absent
+        pop     ax
+        push    ax
+        cmp     ah, 08h
+        jne     .ecrire
+        cmp     cx, 255
+        jbe     .n
+        mov     cx, 255
+.n:     mov     di, bx
+        mov     dl, AVR_CANAL2 | AVR_LIRE
+        call    avr_lire_bloc_ds
+        jmp     .ok
+.ecrire:
+        mov     si, bx
+        call    avr_ecrire_bloc2
+.ok:    pop     ax
+        xor     ah, ah
+        jmp     .fin
+.absent:
+        pop     ax
+        mov     ah, 80h
+        xor     cx, cx
+.fin:   pop     dx
+        pop     di
+        pop     si
+        pop     es
+        pop     ds
+        iret
+
+; avr_lire_bloc_ds : comme avr_lire_bloc, vers DS:DI. ES = DSEG. Preserve le reste.
+avr_lire_bloc_ds:
+        push    ax
+        push    bx
+        push    di
+        xor     bx, bx
+        call    avr_debut
+        jc      .r
+        mov     al, dl
+        call    avr_octet               ; A5h
+        xor     al, al
+        call    avr_octet               ; nombre en attente
+        xor     ah, ah
+        cmp     ax, cx
+        jae     .n
+        mov     cx, ax
+.n:     jcxz    .f
+.b:     xor     al, al
+        call    avr_octet
+        mov     [di], al
+        inc     di
+        inc     bx
+        loop    .b
+.f:     call    avr_fin
+.r:     mov     cx, bx
+        pop     di
+        pop     bx
+        pop     ax
+        ret
+
+; avr_ecrire_bloc2 : envoie au module (ECRIRE du canal 2) les CX octets de DS:SI, par
+; transactions d'au plus la place libre dans l'ATmega ; ATmega plein ou bus occupe : nouvel
+; essai ~1 ms plus tard, ~1 s au plus. CX = octets envoyes. ES = DSEG. Detruit SI.
+avr_ecrire_bloc2:
+        push    ax
+        push    bx
+        push    dx
+        push    bp
+        xor     bp, bp                  ; octets envoyes
+        mov     dx, AVR_ESSAIS_TX
+.essai: jcxz    .fin
+        call    avr_debut
+        jc      .attente                ; bus occupe (carte SD, autre transaction)
+        mov     al, AVR_CANAL2 | AVR_ECRIRE
+        call    avr_octet               ; A5h
+        xor     al, al
+        call    avr_octet               ; place libre (au plus 255)
+        xor     ah, ah
+        mov     bx, ax
+        cmp     bx, cx
+        jbe     .m
+        mov     bx, cx
+.m:     or      bx, bx
+        jz      .plein
+.b:     lodsb
+        call    avr_octet
+        inc     bp
+        dec     cx
+        dec     bx
+        jnz     .b
+        call    avr_fin
+        jmp     .essai
+.plein: call    avr_fin
+.attente:
+        push    cx
+        mov     cx, 200                 ; ~1 ms
+.p:     loop    .p
+        pop     cx
+        dec     dx
+        jnz     .essai
+.fin:   mov     cx, bp
+        pop     bp
+        pop     dx
+        pop     bx
+        pop     ax
+        ret
 
 ; IRQ4 (INT 0Ch) avec l'ATmega : un octet recu attend. Note seulement (aucune transaction
 ; en interruption) ; avr_service le lira au premier plan.

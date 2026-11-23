@@ -12,7 +12,7 @@
 
 use crate::serial::{bit_t, UartRx};
 
-pub const VERSION: u8 = 3;
+pub const VERSION: u8 = 4;
 pub const SIGNATURE: u8 = 0xA5;
 
 pub const IDENT: u8 = 0x00;
@@ -21,6 +21,8 @@ pub const LIRE: u8 = 0x02;
 pub const ECRIRE: u8 = 0x03;
 pub const VITESSE: u8 = 0x04;
 pub const VIDER: u8 = 0x05;
+/// Pont terminal <-> module (version 4) : octet suivant A5h = pont, autre = fin.
+pub const PONT: u8 = 0x06;
 /// + ETAT ... VIDER : canal 2 (Wi-Fi).
 pub const CANAL2: u8 = 0x10;
 
@@ -58,6 +60,7 @@ enum E {
     Ecrire,
     Vitesse,
     Vider,
+    Pont,
     Ignore,
 }
 
@@ -129,6 +132,8 @@ pub struct Proto {
     /// Canal 2 : idem.
     pub vitesse2: u8,
     pub vit_courante2: u8,
+    /// Pont (PONT) : terminal <-> module sans le 8088.
+    pub pont: bool,
     c: [Canal; 2],
     can: usize,
     etat: E,
@@ -156,6 +161,7 @@ impl Proto {
             vit_courante: V1_DEFAUT,
             vitesse2: V_AUCUNE,
             vit_courante2: V2_DEFAUT,
+            pont: false,
             c: [Canal::new(RX_TAILLE, TX_TAILLE), Canal::new(RX2_TAILLE, TX2_TAILLE)],
             can: 0,
             etat: E::Cmd,
@@ -240,6 +246,10 @@ impl Proto {
                 if recu == IDENT {
                     self.etat = E::Ident;
                     return b'S';
+                }
+                if recu == PONT {
+                    self.etat = E::Pont;
+                    return 0;
                 }
                 let op = recu & !CANAL2;
                 if !(ETAT..=VIDER).contains(&op) {
@@ -340,8 +350,34 @@ impl Proto {
                 self.etat = E::Ignore;
                 0
             }
+            E::Pont => {
+                self.pont = recu == SIGNATURE;
+                self.etat = E::Ignore;
+                0
+            }
             E::Ignore => 0,
         }
+    }
+
+    /// Pont : octet recu du terminal, a emettre au module (false : plus de place, perdu).
+    pub fn pont_vers_module(&mut self, octet: u8) -> bool {
+        Self::ajoute(&mut self.c[1], octet)
+    }
+
+    /// Pont : octet recu du module, a emettre au terminal.
+    pub fn pont_vers_terminal(&mut self, octet: u8) -> bool {
+        Self::ajoute(&mut self.c[0], octet)
+    }
+
+    fn ajoute(c: &mut Canal, octet: u8) -> bool {
+        let n = c.tx.len();
+        if c.tx_nb >= n {
+            c.drapeaux |= ETAT_TX_PLEIN;
+            return false;
+        }
+        c.tx[(c.tx_tete + c.tx_nb) & (n - 1)] = octet;
+        c.tx_nb += 1;
+        true
     }
 
     /// Canal 1 (terminal).
@@ -374,6 +410,14 @@ impl Proto {
 pub struct Wifi {
     ligne: Vec<u8>,
     echo: bool,
+    /// Micrologiciel esp_slip_router (au lieu des commandes AT) : SLIP a 115200, le module
+    /// (192.168.240.1) repond aux pings, et ceux vers une autre adresse comme s'ils
+    /// traversaient le NAT vers Internet.
+    pub slip: bool,
+    trame: Vec<u8>,
+    dans_esc: bool,
+    /// Paquets IP recus en SLIP (mise au point, essais).
+    pub paquets: u32,
     /// Octets a rendre a l'ATmega.
     pub sortie: std::collections::VecDeque<u8>,
     /// Lignes recues (mise au point, essais).
@@ -388,7 +432,16 @@ impl Default for Wifi {
 
 impl Wifi {
     pub fn new() -> Self {
-        let mut w = Wifi { ligne: Vec::new(), echo: true, sortie: Default::default(), journal: Vec::new() };
+        let mut w = Wifi {
+            ligne: Vec::new(),
+            echo: true,
+            slip: false,
+            trame: Vec::new(),
+            dans_esc: false,
+            paquets: 0,
+            sortie: Default::default(),
+            journal: Vec::new(),
+        };
         w.dire("\r\nready\r\n");
         w
     }
@@ -397,8 +450,89 @@ impl Wifi {
         self.sortie.extend(s.bytes());
     }
 
+    /// Passe au micrologiciel SLIP (ou revient aux commandes AT).
+    pub fn mode_slip(&mut self, on: bool) {
+        self.slip = on;
+        self.sortie.clear();
+        self.trame.clear();
+    }
+
+    fn slip_octet(&mut self, b: u8) {
+        const END: u8 = 0xC0;
+        const ESC: u8 = 0xDB;
+        if self.dans_esc {
+            self.trame.push(match b {
+                0xDC => END,
+                0xDD => ESC,
+                x => x,
+            });
+            self.dans_esc = false;
+        } else if b == ESC {
+            self.dans_esc = true;
+        } else if b == END {
+            if !self.trame.is_empty() {
+                let p = std::mem::take(&mut self.trame);
+                self.paquets += 1;
+                if let Some(r) = Self::reponse_ip(&p) {
+                    self.sortie.push_back(END);
+                    for x in r {
+                        match x {
+                            END => self.sortie.extend([ESC, 0xDC]),
+                            ESC => self.sortie.extend([ESC, 0xDD]),
+                            _ => self.sortie.push_back(x),
+                        }
+                    }
+                    self.sortie.push_back(END);
+                }
+            }
+        } else if self.trame.len() < 2048 {
+            self.trame.push(b);
+        }
+    }
+
+    fn somme(d: &[u8]) -> u16 {
+        let mut s: u32 = 0;
+        for c in d.chunks(2) {
+            s += (c[0] as u32) << 8 | *c.get(1).unwrap_or(&0) as u32;
+        }
+        while s >> 16 != 0 {
+            s = (s & 0xFFFF) + (s >> 16);
+        }
+        !(s as u16)
+    }
+
+    /// Reponse a un echo ICMP (IPv4) : adresses echangees, type 0, sommes recalculees.
+    fn reponse_ip(p: &[u8]) -> Option<Vec<u8>> {
+        if p.len() < 28 || p[0] >> 4 != 4 || p[9] != 1 {
+            return None;
+        }
+        let lh = (p[0] & 15) as usize * 4;
+        let total = (u16::from_be_bytes([p[2], p[3]]) as usize).min(p.len());
+        if total < lh + 8 || p[lh] != 8 {
+            return None;
+        }
+        let mut r = p[..total].to_vec();
+        r.copy_within(12..16, 16);
+        r[12..16].copy_from_slice(&p[16..20]);
+        r[8] = 64;
+        r[10] = 0;
+        r[11] = 0;
+        let c = Self::somme(&r[..lh]);
+        r[10..12].copy_from_slice(&c.to_be_bytes());
+        r[lh] = 0;
+        r[lh + 2] = 0;
+        r[lh + 3] = 0;
+        let c = Self::somme(&r[lh..total]);
+        r[lh + 2..lh + 4].copy_from_slice(&c.to_be_bytes());
+        Some(r)
+    }
+
     /// Octet recu du ATmega (canal 2).
     pub fn recu(&mut self, b: u8) {
+        if self.slip {
+            self.slip_octet(b);
+            return;
+        }
         if self.echo {
             self.sortie.push_back(b);
         }
@@ -554,7 +688,12 @@ impl Avr {
             while self.proch_rx2 <= t {
                 let Some(b) = self.wifi.sortie.pop_front() else { break };
                 let faux = self.baud2 != MODULE;
-                self.p.uart2_recu(if faux { b ^ 0x5A } else { b }, faux);
+                let b = if faux { b ^ 0x5A } else { b };
+                if self.p.pont {
+                    self.p.pont_vers_terminal(b);
+                } else {
+                    self.p.uart2_recu(b, faux);
+                }
                 self.recus2 += 1;
                 self.proch_rx2 += bit_t(10, MODULE);
             }
@@ -645,7 +784,11 @@ impl Avr {
     /// bit ne dure que 46 cycles du 8088, moins qu'une longue instruction (MUL, DIV).
     pub fn recu(&mut self, t: u64, octet: u8, erreur: bool) {
         self.service(t);
-        self.p.uart_recu(octet, erreur);
+        if self.p.pont {
+            self.p.pont_vers_module(octet);
+        } else {
+            self.p.uart_recu(octet, erreur);
+        }
         self.recus += 1;
     }
 
@@ -926,6 +1069,63 @@ mod essais {
         m.transaction(&[CANAL2 | VIDER, SIGNATURE]);
         assert!(m.p.rx2_nb() == 0 && m.p.rx_nb() == 1);
         assert_eq!(m.transaction(&[0x16, 0]), vec![0xA5, 0]);
+    }
+
+    /// PONT (version 4) : seulement avec A5h ; terminal -> module, module -> terminal.
+    #[test]
+    fn pont() {
+        let mut m = Maitre::new();
+        m.transaction(&[PONT, 0]);
+        assert!(!m.p.pont);
+        m.transaction(&[PONT, SIGNATURE]);
+        assert!(m.p.pont);
+        assert!(m.p.pont_vers_module(b'x') && m.p.uart2_a_emettre() == Some(b'x'));
+        assert!(m.p.pont_vers_terminal(b'y') && m.p.uart_a_emettre() == Some(b'y'));
+        m.transaction(&[PONT, 0]);
+        assert!(!m.p.pont);
+    }
+
+    /// Module en SLIP : un ping (ICMP echo) recoit sa reponse, adresses echangees.
+    #[test]
+    fn module_slip_ping() {
+        let mut w = Wifi::new();
+        w.mode_slip(true);
+        let mut p = vec![0x45, 0, 0, 28, 0x12, 0x34, 0, 0, 64, 1, 0, 0, 192, 168, 240, 2, 8, 8, 8, 8];
+        let c = Wifi::somme(&p);
+        p[10..12].copy_from_slice(&c.to_be_bytes());
+        let mut icmp = vec![8, 0, 0, 0, 0xAB, 0xCD, 0, 1];
+        let c = Wifi::somme(&icmp);
+        icmp[2..4].copy_from_slice(&c.to_be_bytes());
+        p.extend(icmp);
+        w.recu(0xC0);
+        for &b in &p {
+            match b {
+                0xC0 => [0xDB, 0xDC].iter().for_each(|&x| w.recu(x)),
+                0xDB => [0xDB, 0xDD].iter().for_each(|&x| w.recu(x)),
+                _ => w.recu(b),
+            }
+        }
+        w.recu(0xC0);
+        let brut: Vec<u8> = w.sortie.drain(..).collect();
+        let mut r = vec![0xC0];             // (desechappement de la reponse)
+        let mut i = 1;
+        while i < brut.len() - 1 {
+            if brut[i] == 0xDB {
+                r.push(if brut[i + 1] == 0xDC { 0xC0 } else { 0xDB });
+                i += 2;
+            } else {
+                r.push(brut[i]);
+                i += 1;
+            }
+        }
+        r.push(0xC0);
+        assert_eq!((r[0], *r.last().unwrap()), (0xC0, 0xC0));
+        let r = &r[1..r.len() - 1];
+        assert_eq!(&r[12..16], &[8, 8, 8, 8]);
+        assert_eq!(&r[16..20], &[192, 168, 240, 2]);
+        assert_eq!(r[20], 0, "echo reply");
+        assert_eq!(Wifi::somme(&r[..20]), 0);
+        assert_eq!(Wifi::somme(&r[20..]), 0);
     }
 
     /// Module AT : echo, OK, ATE0, ERROR.

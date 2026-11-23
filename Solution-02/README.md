@@ -325,7 +325,16 @@ ESP32 schematic of 2026-11-22 (Q1/Q2, R23–R30, 1 × 7 J13) is removed.
   ATmega's threshold (VIH = 3.0 V at 5 V). No RTS/CTS: PD3 and PD4 are free, and the
   ATmega's channel 2 has a 1 KB receive buffer.
 - Footprint: 1 × 4 header at 2.54 mm pitch (Grove-to-Dupont cable).
-- BIOS 2.9 talks to the module through menu **9) Wi-Fi** and **INT 14h, DX = 1** (COM2).
+- The BIOS talks to the module through menu **9) Wi-Fi** and **INT 14h, DX = 1** (COM2).
+- **The module was reflashed as a SLIP router** (martin-ger's esp_slip_router, 2026-11-23):
+  SLIP at 115200 baud, module at 192.168.240.1, client at 192.168.240.2, NAT to Wi-Fi; TCP
+  configuration console at 192.168.240.1:7777 (`set ssid`, `set password`, `save`,
+  `portmap add TCP 23 192.168.240.2 23`…). It was flashed **through the board** (menu 9,
+  Ctrl+B: ATmega bridge) with esptool (`--baud 115200 --before no-reset`, module buttons for
+  boot mode); the original AT firmware is saved in `wifi/sauvegarde/` (not in git).
+  `wifi/slip_outil.py` speaks SLIP from a PC through the bridge (ping, module console), with no
+  driver nor administrator rights.
+- **ELKS networking**: see [elks/README.md](elks/README.md) (`net start slip`).
 
 ## 8259A (U13): keyboard and UART interrupts
 
@@ -763,6 +772,10 @@ ATmega:
   gives its speed back through IDENT); power-up = **57600** (firmware version 3, BIOS 2.9;
   9600 before). Above 9600, turn RTS/CTS flow control on in the terminal to paste text: the
   BIOS reads about 3 KB/s from the ATmega.
+- **Menu 9) Wi-Fi, Ctrl+B = bridge** (BIOS 3.0, firmware version 4): the terminal switches to
+  115200 baud and talks straight to the module (esptool flashing, configuration); Esc on the
+  PS/2 keyboard ends the bridge and restores the previous speed. During the bridge the BIOS
+  sends nothing to the terminal.
 - **Menu 9) Wi-Fi** (BIOS 2.9, firmware version 3): the terminal and the PS/2 keyboard talk
   to the Grove - UART WiFi V2 module (AT commands at 115200 baud). Keys go to the module
   (Enter = CR LF, backspace passed on); what it returns goes unchanged to the terminal (it
@@ -772,6 +785,9 @@ ATmega:
 - **INT 14h, DX = 1** (COM2) = Wi-Fi module: AH = 01h sends AL, AH = 02h returns the oldest
   byte (waits ~0.5 s, then AH = 80h), AH = 00h/03h returns the status (AH bit 0 = byte
   waiting). Without a version 3 ATmega: AH = 80h. DX = 0 (COM1) stays the terminal.
+  Block mode (BIOS 3.1): AH = 08h reads up to CX bytes (1 to 255) into ES:BX without waiting,
+  AH = 09h sends CX bytes from ES:BX (waits for room, ~1 s at most); CX = bytes done, one SPI
+  transaction for up to 255 bytes. Used by the ELKS `ttyS1` driver.
 - Info (menu 4): line 3 = ATmega diagnostic `AVR02 L0200 P00 FC0` (version, free space in
   the ATmega, bytes dropped by the BIOS, ETAT flags: C0h = CTS and RTS asserted, 02h = framing
   errors).
@@ -1137,6 +1153,11 @@ files).
 
 ## Status
 
+- 2026-11-23: **ELKS networking**: `ttyS1` driver (Wi-Fi module through INT 14h, BIOS 3.1
+  blocks), `ktcp` over SLIP (MTU 512), Internet ping and telnet session from the PC through the
+  module's NAT; image with `buf=24` and no `ftpd` to keep memory. Module reflashed as a SLIP
+  router through the board: ATmega firmware version 4 (BRIDGE command), BIOS 3.0 (menu 9,
+  Ctrl+B); ATmega fix (reserved registers not initialized: freeze at boot).
 - 2026-11-23: **Grove - UART WiFi V2 Wi-Fi module** (1 × 4 J13, wired directly to the
   ATmega's USART; ESP32 schematic removed). ATmega firmware with **protocol version 3**:
   terminal on a software UART up to 115200 baud (timer 1 input capture and compare,

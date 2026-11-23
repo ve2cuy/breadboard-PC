@@ -20,6 +20,8 @@
  *  - emission : la comparaison A (OC1A) pose chaque bit au cycle pres ; l'interruption prepare
  *    le bit suivant (meme delai d'un bit).
  * Canal 2 (Wi-Fi) = USART materiel, scrute par la boucle principale (2 octets de FIFO).
+ * Pont (commande PONT, version 4) : les octets recus d'un canal partent sur l'autre sans passer
+ * par le 8088 (gravure du module par esptool a travers la carte).
  *
  * Interruptions : minuterie 1 (CAPT, COMPA) courtes et bloquantes ; SPI et PCINT (SS)
  * masquent SPI et PCINT puis rendent les interruptions, pour ne jamais retarder la minuterie
@@ -114,11 +116,15 @@ static uint8_t rx_actif, rx_n, rx_sh, rx_niv;
 static uint16_t rx_mil;                 /* milieu du bit rx_n */
 
 static void canal2_rx(void);
+static void canal2_tx(void);
 
 static void rx_octet(uint8_t octet, uint8_t arret)
 {
     PROTO_OFF();
-    p_uart_recu(octet, !arret);         /* arret a 0 : erreur de trame */
+    if (p_pont)                         /* pont (PONT) : directement au module */
+        (void)p_pont_vers_module(octet);
+    else
+        p_uart_recu(octet, !arret);     /* arret a 0 : erreur de trame */
     sorties();
     PROTO_ON();
 }
@@ -172,6 +178,8 @@ static void canal1_rx(void)
         }
         if (UCSR0A & (1 << RXC0))       /* (FIFO de l'USART : 2 octets seulement) */
             canal2_rx();
+        if (p_pont)                     /* pont : l'USART suit le terminal octet par octet */
+            canal2_tx();
     }
     rx_actif = actif;
     rx_n = n;
@@ -251,17 +259,17 @@ static void canal2_rx(void)
     if (st & (1 << RXC0)) {
         uint8_t b = UDR0;
         PROTO_OFF();
-        p2_uart_recu(b, st & ((1 << FE0) | (1 << DOR0)));
+        if (p_pont)                     /* pont (PONT) : directement au terminal */
+            (void)p_pont_vers_terminal(b);
+        else
+            p2_uart_recu(b, st & ((1 << FE0) | (1 << DOR0)));
         PROTO_ON();
     }
 }
 
-static void canal2(void)
+static void canal2_tx(void)
 {
-    uint8_t st;
-    canal2_rx();
-    st = UCSR0A;
-    if ((st & (1 << UDRE0)) && p2_tx_nb()) {   /* (lecture sans masque : indication) */
+    if ((UCSR0A & (1 << UDRE0)) && p2_tx_nb()) {       /* (lecture sans masque : indication) */
         int16_t b;
         PROTO_OFF();
         b = p2_uart_a_emettre();
@@ -272,6 +280,12 @@ static void canal2(void)
             emis2 = 1;
         }
     }
+}
+
+static void canal2(void)
+{
+    canal2_rx();
+    canal2_tx();
     if (p2_vitesse != P_V_AUCUNE) {
         PROTO_OFF();
         if (p2_tx_nb() == 0 && (!emis2 || (UCSR0A & (1 << TXC0)))) {  /* dernier octet parti */
@@ -293,6 +307,16 @@ int main(void)
     DDRD = IRQ | RTS;                   /* IRQ a 0, RTS actif (0) */
 
     p_init();
+
+    /* registres reserves a l'UART logiciel (uart_logiciel.h) : quelconques a la mise sous
+     * tension sur le vrai AVR (simavr les met a 0). Sans cela, fr_tete (r4) au hasard faisait
+     * decoder sans fin des fronts fantomes : rien n'etait emis au terminal et le BIOS 2.9
+     * semblait gele sur son ecran d'ouverture (1,3 s d'attente par octet de la banniere). */
+    REG_ECRIT("r4", 0);                 /* fr_tete */
+    REG_ECRIT("r10", 0);                /* fr_queue */
+    REG_ECRIT("r5", 0);                 /* tx_n */
+    REG_ECRIT("r6", 0);                 /* tx_sh */
+    fr_perdu = 0;
 
     /* minuterie 1 : mode normal, capture sur front descendant avec filtre, OC1A a 1 */
     TCCR1A = OC1A_UN;

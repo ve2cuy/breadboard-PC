@@ -269,6 +269,16 @@ impl Sim {
 "),
         }
     }
+    /// Module Wi-Fi : micrologiciel esp_slip_router (SLIP, repond aux pings) ou commandes AT.
+    pub fn wifi_slip(&mut self, on: bool) {
+        if let Some(a) = self.m.b.avr.as_mut() {
+            a.wifi.mode_slip(on);
+        }
+    }
+    /// Paquets IP recus par le module en SLIP.
+    pub fn wifi_paquets(&self) -> u32 {
+        self.m.b.avr.as_ref().map(|a| a.wifi.paquets).unwrap_or(0)
+    }
     /// Lignes de commande recues par le module Wi-Fi (canal 2 de l'ATmega), une par ligne.
     pub fn wifi_journal(&self) -> String {
         match &self.m.b.avr {

@@ -27,7 +27,7 @@ Le module Grove adapte lui-même son entrée RX (2N7002, tirage de 1 kΩ à son 
 sa sortie TX (3,3 V) suffit à l'ATmega (VIH = 3,0 V à 5 V). Branchement direct, sans
 diviseur.
 
-## Protocole SPI (version 3)
+## Protocole SPI (version 4)
 
 - SPI mode 0, poids fort en premier, comme pour la carte SD. La carte SD est
   désélectionnée (U12 PC4 = 1) tant que SS (U12 PC0) = 0. Au moins 10 µs entre deux
@@ -42,12 +42,13 @@ diviseur.
 
 | Commande | Octets envoyés par le 8088 après la commande | Octets reçus |
 |---|---|---|
-| `00h` IDENT | 5 de remplissage | `'S'`, `'2'`, version (3), vitesse du canal 1, vitesse du canal 2 |
+| `00h` IDENT | 5 de remplissage | `'S'`, `'2'`, version (4), vitesse du canal 1, vitesse du canal 2 |
 | `01h` / `11h` ETAT | 5 de remplissage | nombre reçus (poids faible, fort), place libre en émission (faible, fort), drapeaux |
 | `02h` / `12h` LIRE | 1 de remplissage, puis *n* | *n* = min(reçus, 255), puis les *n* octets |
 | `03h` / `13h` ECRIRE | 1 de remplissage, puis les octets à émettre | *f* = min(place libre, 255), puis 00h |
 | `04h` / `14h` VITESSE | code de vitesse | 00h |
 | `05h` / `15h` VIDER | A5h (confirmation) | 00h |
+| `06h` PONT (version 4) | A5h : pont ; autre valeur : fin | 00h |
 
 - **LIRE** : un octet ne quitte le tampon qu'une fois entièrement transmis. Remonter SS
   plus tôt ne perd rien ; le reste viendra au LIRE suivant.
@@ -63,6 +64,10 @@ diviseur.
   canal 1 à 57600, canal 2 à 115200 (vitesse du micrologiciel AT). L'ATmega n'est pas remis
   à zéro avec le 8088 (bouton RESET, Ctrl+Alt+Suppr) : il garde ses vitesses, que le BIOS
   relit par IDENT.
+- **PONT** : les octets reçus du terminal partent au module et ceux du module au terminal,
+  sans passer par le 8088. Sert à graver le module avec esptool à travers la carte (BIOS 3.0,
+  menu 9, Ctrl+B) : les adaptateurs USB-série à résistance en série ne savent pas tirer à 0
+  l'entrée du module (tirage de 1 kΩ). Les deux canaux doivent être à la même vitesse.
 - **VIDER** n'agit qu'avec la confirmation A5h : un octet parasite (trafic SPI de la
   carte SD avec SS = 0 par erreur) ne peut pas vider les tampons.
 
@@ -117,12 +122,16 @@ make flash PUCE=ok   # TL866CS, puce dans le support ZIF : micrologiciel puis fu
 make fusibles        # relit les fusibles
 ```
 
-`make banc` demande simavr dans WSL, extrait sans `sudo` (voir le Makefile). Le banc
-compense trois écarts de simavr 1.6 avec le vrai AVR : une interruption démasquée alors
+`make banc` demande simavr dans WSL, extrait sans `sudo` (voir le Makefile). Le banc remplit
+les registres au hasard avant le départ (le vrai AVR ne les met pas à zéro) et compense
+plusieurs écarts de simavr 1.6 avec le vrai AVR : une interruption démasquée alors
 que son drapeau est levé n'y est pas déclenchée ; écrire dans TIFR1 y efface tous les
 drapeaux de la minuterie (le matériel n'efface que les bits écrits à 1) ; la broche OC1A y
-change dès l'écriture de TCCR1A. Variables : `BANC_VITESSES` (codes de vitesse),
-`BANC_OCTETS`, `BANC_US` (µs par octet SPI).
+change dès l'écriture de TCCR1A. L'USART de simavr compte en outre un bit de parité
+dans chaque octet et n'a pas de double tampon d'émission : le banc corrige le premier point ;
+le second rend ses mesures du sens terminal → module, en mode pont, pessimistes. Variables :
+`BANC_VITESSES` (codes de vitesse), `BANC_OCTETS`, `BANC_US` (µs par octet SPI), `BANC_PONT`
+(1 : pont en duplex, 2 : un sens puis l'autre), `BANC_V2` (vitesse du module), `BANC_GRAINE`.
 
 La puce se programme hors du montage. `minipro` signale *Fuses verify error* : il relit
 à 1 le bit SPIEN de hfuse (F9h), qu'on ne peut pas changer dans ce mode de

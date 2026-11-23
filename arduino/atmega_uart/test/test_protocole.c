@@ -91,7 +91,7 @@ int main(void)
     {
         uint8_t o[7] = { P_IDENT, 0, 0, 0, 0, 0, 0 };
         transaction(o, r, 7);
-        VERIFIE(r[0] == 0xA5 && r[1] == 'S' && r[2] == '2' && r[3] == 3 && r[4] == P_V_57600
+        VERIFIE(r[0] == 0xA5 && r[1] == 'S' && r[2] == '2' && r[3] == 4 && r[4] == P_V_57600
                 && r[5] == P_V_115200 && r[6] == 0,
                 "IDENT : %02X %02X %02X %02X %02X %02X %02X", r[0], r[1], r[2], r[3], r[4], r[5], r[6]);
         p_vit_courante = P_V_115200;    /* vitesses en service rendues par IDENT (version 3) */
@@ -273,6 +273,30 @@ int main(void)
         uint8_t i6[2] = { 0x16, 0 };
         transaction(i6, q, 2);
         VERIFIE(q[1] == 0, "16h inconnue");
+    }
+
+    /* 14. PONT (version 4) : seulement avec A5h ; les octets passent d'un canal a l'autre */
+    raz();
+    {
+        uint8_t o[2] = { P_PONT, 0x00 }, q[4];
+        transaction(o, q, 2);
+        VERIFIE(p_pont == 0, "PONT sans confirmation : rien");
+        o[1] = P_SIGNATURE;
+        transaction(o, q, 2);
+        VERIFIE(p_pont == 1, "PONT active");
+        VERIFIE(p_pont_vers_module('x') == 1 && p2_tx_nb() == 1 && p2_uart_a_emettre() == 'x',
+                "pont : terminal -> module");
+        VERIFIE(p_pont_vers_terminal('y') == 1 && p_tx_nb() == 1 && p_uart_a_emettre() == 'y',
+                "pont : module -> terminal");
+        for (int i = 0; i < P2_TX_TAILLE; i++)
+            p_pont_vers_module((uint8_t)i);
+        VERIFIE(p_pont_vers_module(0) == 0, "pont : tampon du module plein");
+        uint8_t e[6] = { P_CANAL2 | P_ETAT }, f[6];
+        transaction(e, f, 6);
+        VERIFIE(f[5] & P_ETAT_TX_PLEIN, "pont : perte signalee (%02X)", f[5]);
+        o[1] = 0;
+        transaction(o, q, 2);
+        VERIFIE(p_pont == 0, "PONT termine");
     }
 
     printf("%d essais, %d echecs\n", essais, echecs);

@@ -36,7 +36,7 @@ start_network()
 	case "$link" in
 	slip|cslip)
 		getty_off
-		ktcp="ktcp -b -p $link -s $baud -l $device $localip $gateway $netmask"
+		ktcp="ktcp -b -p $link $mtu -s $baud -l $device $localip $gateway $netmask"
 		;;
 	*)
 		ktcp="ktcp -b -p $link $mtu $localip $gateway $netmask"

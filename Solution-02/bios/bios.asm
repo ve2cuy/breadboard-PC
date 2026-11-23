@@ -2155,7 +2155,7 @@ anim_vumetre:
 ;                12345678901234567890
 %ifdef LANG_EN
 ;                12345678901234567890      (BIOS anglais : make LANG=en)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.9'
+txt_ouv1:   db  'SOLUTION-02 BIOS 3.1'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 KB  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2182,7 +2182,7 @@ txt_led:    db  'LED SHOW   Esc=menu '
             db  '                    '
             db  'PS/2 keyboard >     '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.9'
+txt_sys:    db  'SOLUTION-02 BIOS 3.1'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512KB  ROM 256KB'
             db  '8259 absent         '
@@ -2195,7 +2195,7 @@ txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.9 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 3.1 - VE2CUY 2026', 13, 10
             db  'Menu (PS/2 keyboard): 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) LED Show ON/OFF'
             db  '  8) UART speed (ATmega)  9) Wi-Fi (AT)', 13, 10, 0
@@ -2210,7 +2210,24 @@ txt_wifi_v3:
             db  'required            '
             db  '                    '
 txt_wifi_uart:
-            db  13, 10, 'Wi-Fi: AT module (115200 baud). Enter = CR LF, Esc = menu.', 13, 10, 0
+            db  13, 10, 'Wi-Fi: AT module (115200 baud). Enter = CR LF, Esc = menu,'
+            db  ' Ctrl+B = bridge (esptool).', 13, 10, 0
+txt_pont_ecran:
+            db  'BRIDGE term.<->WiFi '
+            db  'Terminal: 115200    '
+            db  'Module: boot buttons'
+            db  'PS/2 Esc = end      '
+txt_pont_v4:
+            db  'BRIDGE              '
+            db  'ATmega firmware v4  '
+            db  'required            '
+            db  '                    '
+txt_pont_uart:
+            db  13, 10, 'Bridge terminal <-> Wi-Fi module at 115200 baud: set the terminal'
+            db  ' (esptool --baud 115200 --before no-reset). End: Esc on the PS/2 keyboard.'
+            db  13, 10, 0
+txt_pont_fin:
+            db  13, 10, 'Bridge ended.', 13, 10, 0
 txt_vit_titre:
             db  'UART speed:   '
 txt_vit_ecran:
@@ -2224,7 +2241,7 @@ txt_vit_msg2:
             db  ' baud (set the terminal)', 13, 10, 0
 %else
 ;                12345678901234567890      (BIOS francais, par defaut)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.9'
+txt_ouv1:   db  'SOLUTION-02 BIOS 3.1'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2251,7 +2268,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.9'
+txt_sys:    db  'SOLUTION-02 BIOS 3.1'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2264,7 +2281,7 @@ txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.9 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 3.1 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) DOS  2) Test memoire  3) Anim. DEL  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF'
             db  '  8) Vitesse UART (ATmega)  9) Wi-Fi (AT)', 13, 10, 0
@@ -2279,7 +2296,24 @@ txt_wifi_v3:
             db  "l'ATmega v3 requis  "
             db  '                    '
 txt_wifi_uart:
-            db  13, 10, 'Wi-Fi : module AT (115200 bauds). Entree = CR LF, Echap = menu.', 13, 10, 0
+            db  13, 10, 'Wi-Fi : module AT (115200 bauds). Entree = CR LF, Echap = menu,'
+            db  ' Ctrl+B = pont (esptool).', 13, 10, 0
+txt_pont_ecran:
+            db  'PONT terminal-WiFi  '
+            db  'Terminal : 115200   '
+            db  'Module : boutons    '
+            db  'Echap (PS/2) = fin  '
+txt_pont_v4:
+            db  'PONT                '
+            db  'Micrologiciel de    '
+            db  "l'ATmega v4 requis  "
+            db  '                    '
+txt_pont_uart:
+            db  13, 10, 'Pont terminal <-> module Wi-Fi a 115200 bauds : regler le terminal'
+            db  ' (esptool --baud 115200 --before no-reset). Fin : Echap au clavier PS/2.'
+            db  13, 10, 0
+txt_pont_fin:
+            db  13, 10, 'Pont termine.', 13, 10, 0
 txt_vit_titre:
             db  'Vitesse UART: '
 txt_vit_ecran:

@@ -26,6 +26,10 @@
  *   05h VIDER    -> octet suivant = A5h (confirmation) : tampons vides, drapeaux a 0.
  *   11h-15h      -> ETAT, LIRE, ECRIRE, VITESSE, VIDER du canal 2 (Wi-Fi). Pas de RTS/CTS
  *                   sur ce canal : ETAT2 les rend toujours actifs.
+ *   06h PONT     -> octet suivant = A5h : pont (version 4) : les octets recus du terminal
+ *                   partent au module et ceux du module au terminal, sans passer par le 8088
+ *                   (gravure du module par esptool a travers la carte) ; autre valeur : fin du
+ *                   pont. Les deux canaux doivent etre a la meme vitesse.
  *   autre        -> ignoree (00h).
  *
  * IRQ (PD2 -> IR4 du 8259, front montant) : 1 quand un octet recu du TERMINAL attend et
@@ -38,7 +42,7 @@
 
 #include <stdint.h>
 
-#define P_VERSION       3
+#define P_VERSION       4
 #define P_SIGNATURE     0xA5
 
 #define P_IDENT         0x00
@@ -47,6 +51,7 @@
 #define P_ECRIRE        0x03
 #define P_VITESSE       0x04
 #define P_VIDER         0x05
+#define P_PONT          0x06
 #define P_CANAL2        0x10            /* + P_ETAT ... P_VIDER : canal 2 (Wi-Fi) */
 
 /* drapeaux d'ETAT */
@@ -86,6 +91,7 @@ extern volatile uint8_t p_vitesse;      /* canal 1 : vitesse demandee, P_V_AUCUN
 extern volatile uint8_t p_vit_courante; /* canal 1 : vitesse en service, tenue par le materiel */
 extern volatile uint8_t p2_vitesse;     /* canal 2 : idem */
 extern volatile uint8_t p2_vit_courante;
+extern volatile uint8_t p_pont;         /* 1 = pont terminal <-> module (PONT) */
 
 void p_init(void);
 
@@ -102,6 +108,10 @@ uint16_t p_tx_nb(void);
 
 /* UART : canal 2 (Wi-Fi) */
 void p2_uart_recu(uint8_t octet, uint8_t erreur);
+
+/* pont : octet recu d'un canal, mis a emettre sur l'autre (0 si plus de place : perdu) */
+uint8_t p_pont_vers_module(uint8_t octet);
+uint8_t p_pont_vers_terminal(uint8_t octet);
 int16_t p2_uart_a_emettre(void);
 uint16_t p2_rx_nb(void);
 uint16_t p2_tx_nb(void);

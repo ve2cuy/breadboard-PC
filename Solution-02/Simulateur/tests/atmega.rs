@@ -169,7 +169,7 @@ fn atmega_ident_etat_lire_ecrire() {
     secs(&mut s, 0.02);
     let id = s.peek(0x600, 5);
     println!("IDENT : {:02X?}", id);
-    assert_eq!(id, vec![0xA5, b'S', b'2', 3, 3], "IDENT");
+    assert_eq!(id, vec![0xA5, b'S', b'2', 4, 3], "IDENT");
     s.uart_send(b"hello");
     secs(&mut s, 0.03);
     let etat = s.peek(0x610, 6);
@@ -202,7 +202,7 @@ fn atmega_sans_pause() {
     s.uart_send(b"hello");
     secs(&mut s, 0.05);
     println!("sans pause : IDENT {:02X?}, LIRE {:02X?}, {}", s.peek(0x600, 5), s.peek(0x620, 7), s.atmega_state());
-    assert_eq!(s.peek(0x600, 5), vec![0xA5, b'S', b'2', 3, 3]);
+    assert_eq!(s.peek(0x600, 5), vec![0xA5, b'S', b'2', 4, 3]);
     assert_eq!(&s.peek(0x622, 5)[..], b"hello");
     assert!(s.atmega_state().contains("\"trop_tot\":0"));
 }

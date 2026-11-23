@@ -152,6 +152,7 @@ static void compa(struct avr_irq_t *irq, uint32_t v, void *p)
 
 /* ---------------------------------------------------------------- module Wi-Fi */
 static avr_irq_t *uart_in;
+static double vit_module = 115200;      /* vitesse du module (BANC_V2 : code de vitesse) */
 static int wifi_i;
 
 static avr_cycle_count_t wifi_envoi(avr_t *a, avr_cycle_count_t when, void *p)
@@ -160,15 +161,30 @@ static avr_cycle_count_t wifi_envoi(avr_t *a, avr_cycle_count_t when, void *p)
     if (wifi_i >= n_octets)
         return 0;
     avr_raise_irq(uart_in, wifi_env[wifi_i++]);
-    return when + (avr_cycle_count_t)(10 * F / 115200);
+    return when + (avr_cycle_count_t)(10 * F / vit_module);
 }
 
 static void wifi_recu(struct avr_irq_t *irq, uint32_t v, void *p)
 {
     (void)irq; (void)p;
+    static avr_cycle_count_t premier, prec;
+    static long pire_ecart;
+    if (!wifi_nrec)
+        premier = avr->cycle;
+    else if (getenv("BANC_DEBIT")) {    /* temps de reaction : ecart au-dela d'un octet */
+        long e = (long)(avr->cycle - prec);
+        if (e < 5000 && e > pire_ecart) {
+            pire_ecart = e;
+            printf("  ecart max entre octets vers le module : %ld cycles\n", pire_ecart);
+        }
+    }
+    prec = avr->cycle;
     if (wifi_nrec < n_octets)
         wifi_rec[wifi_nrec] = (uint8_t)v;
     wifi_nrec++;
+    if (getenv("BANC_DEBIT") && (wifi_nrec % 500) == 0)
+        printf("  USART -> module : %d octets, %.0f cycles par octet\n", wifi_nrec,
+               (double)(avr->cycle - premier) / (wifi_nrec - 1));
 }
 
 /* ---------------------------------------------------------------- 8088 (SPI) */
@@ -222,6 +238,20 @@ static void tifr1_ecrit(struct avr_t *a, avr_io_addr_t addr, uint8_t v, void *pa
     for (int b = 0; b < 8; b++)
         if ((v & (1 << b)) && vec_t1[b])
             avr_clear_interrupt(avr, vec_t1[b]);
+}
+
+/* USART : simavr 1.6 (avr_uart_baud_write) compte toujours un bit de parite dans la duree d'un
+ * octet (11 bits en 8N1) : il emet ~10 % trop lentement. On remet 10 bits, d'apres UBRR0 et U2X0.
+ * A refaire apres chaque changement de vitesse de l'USART. */
+static void usart_10_bits(void)
+{
+    for (avr_io_t *io = avr->io_port; io; io = io->next)
+        if (io->kind && !strcmp(io->kind, "uart")) {
+            avr_uart_t *u = (avr_uart_t *)io;
+            uint16_t ubrr = avr->data[0xC4] | (avr->data[0xC5] & 0x0F) << 8;
+            int u2x = avr->data[0xC0] & 2;
+            u->cycles_per_byte = (avr_cycle_count_t)(ubrr + 1) * (u2x ? 8 : 16) * 10;
+        }
 }
 
 static void interruptions_en_niveau(void)
@@ -364,6 +394,15 @@ static uint8_t etat(uint8_t cmd)
     return etat_r[5];
 }
 
+static elf_firmware_t *fw_pont;
+static uint16_t a_fr_perdu_pont(void)
+{
+    for (uint32_t i = 0; i < fw_pont->symbolcount; i++)
+        if (!strcmp(fw_pont->symbol[i]->symbol, "fr_perdu"))
+            return fw_pont->symbol[i]->addr & 0xFFFF;
+    return 0;
+}
+
 static void montre(const char *titre, const uint8_t *a, int n)
 {
     printf("%-11s:", titre);
@@ -387,6 +426,7 @@ int main(int argc, char **argv)
     int code = atoi(argv[2]);
     n_octets = atoi(argv[3]);
     us_octet = atof(argv[4]);
+    fw_pont = &f;
     profiler = getenv("BANC_PROFIL") != NULL;
     fw = &f;
     for (uint32_t i = 0; i < f.symbolcount; i++)
@@ -424,6 +464,12 @@ int main(int argc, char **argv)
     fl &= ~AVR_UART_FLAG_STDIO;
     avr_ioctl(avr, AVR_IOCTL_UART_SET_FLAGS('0'), &fl);
 
+    /* registres au hasard, comme le vrai AVR a la mise sous tension (simavr les met a 0) :
+     * le micrologiciel doit initialiser ceux qu'il reserve (r2-r10) */
+    srand(getenv("BANC_GRAINE") ? atoi(getenv("BANC_GRAINE")) : 4321);
+    for (int i = 0; i < 32; i++)
+        avr->data[i] = (uint8_t)rand();
+
     avr_raise_irq(pin_rx, 1);
     avr_raise_irq(pin_ss, 1);
     avr_raise_irq(pin_cts, 0);          /* CTS actif (R22) */
@@ -436,14 +482,40 @@ int main(int argc, char **argv)
         wifi_env[i] = (uint8_t)rand();
     }
 
+    if (getenv("BANC_RX0")) {           /* RX a 0 au demarrage (adaptateur eteint), parasites */
+        avr_raise_irq(pin_rx, 0);
+        attendre(1000);
+        for (int i = 0; i < 200; i++) {
+            avr_raise_irq(pin_rx, i & 1);
+            attendre(0.3 + (i % 7) * 0.7);
+        }
+        avr_raise_irq(pin_rx, 0);
+        attendre(500);
+        avr_raise_irq(pin_rx, 1);
+    }
     attendre(2000);                     /* demarrage */
+    usart_10_bits();
+    if (getenv("BANC_IRQ")) {           /* un octet du terminal, sans 8088 : IRQ (PD2) doit monter */
+        int v = atoi(getenv("BANC_IRQ"));
+        bt_term = F / vit[3];
+        term_env = malloc(1);
+        term_env[0] = 'x';
+        n_octets = 1;
+        printf("IRQ avant : PORTD=%02X PIND=%02X DDRD=%02X\n", avr->data[0x2B], avr->data[0x29], avr->data[0x2A]);
+        term_t = (double)avr->cycle + 100;
+        avr_cycle_timer_register(avr, 100, term_envoi, NULL);
+        attendre(v);
+        printf("IRQ %d us apres : PORTD=%02X (PD2 = %d) ; fronts %ld, CAPT %ld\n", v, avr->data[0x2B],
+               (avr->data[0x2B] >> 2) & 1, n_fronts_term, n_capt);
+        return 0;
+    }
     uint8_t r[8];
     ss(0);
     for (int i = 0; i < 7; i++)
         r[i] = octet(0x00);
     ss(1);
     printf("IDENT : %02X %c%c v%d, vitesses %d et %d ; ", r[0], r[1], r[2], r[3], r[4], r[5]);
-    if (r[0] != 0xA5 || r[1] != 'S' || r[2] != '2' || r[3] != 3 || r[4] != 3 || r[5] != 4) {
+    if (r[0] != 0xA5 || r[1] != 'S' || r[2] != '2' || r[3] != 4 || r[4] != 3 || r[5] != 4) {
         printf("ECHEC\n");
         return 1;
     }
@@ -455,6 +527,44 @@ int main(int argc, char **argv)
     bt_tops = tops_bit[code];
 
     term_t = (double)avr->cycle + 1000;
+    if (getenv("BANC_PONT")) {          /* PONT : terminal <-> module, sans le 8088 */
+        if (getenv("BANC_V2")) {        /* VITESSE du canal 2 (le module suit) */
+            int v2 = atoi(getenv("BANC_V2"));
+            ss(0); octet(0x14); octet((uint8_t)v2); ss(1);
+            attendre(200);
+            vit_module = vit[v2];
+            usart_10_bits();
+        }
+        ss(0); octet(0x06); octet(0xA5); ss(1);
+        attendre(100);
+        int alterne = atoi(getenv("BANC_PONT")) == 2;   /* 2 : un sens puis l'autre (esptool) */
+        avr_cycle_timer_register(avr, (avr_cycle_count_t)term_t - avr->cycle, term_envoi, NULL);
+        if (!alterne)
+            avr_cycle_timer_register(avr, 1500, wifi_envoi, NULL);
+        double d = n_octets * 10 * F / (vit[code] < 115200 ? vit[code] : 115200) * 2 + 1.6e6;
+        avr_cycle_count_t debut = avr->cycle;
+        while (alterne && wifi_nrec < n_octets && avr->cycle - debut < d)
+            attendre(1000);
+        if (alterne)
+            avr_cycle_timer_register(avr, 1500, wifi_envoi, NULL);
+        while ((term_nrec < n_octets || wifi_nrec < n_octets) && avr->cycle - debut < 2 * d)
+            attendre(1000);
+        attendre(500);
+        ss(0); octet(0x06); octet(0x00); ss(1);
+        /* dans le pont : terminal -> module = wifi_rec doit valoir term_env ; module -> terminal
+           = term_rec doit valoir wifi_env */
+        int ok1 = wifi_nrec == n_octets && !memcmp(wifi_rec, term_env, n_octets);
+        int ok2 = term_nrec == n_octets && !memcmp(term_rec, wifi_env, n_octets);
+        uint8_t dr1 = etat(0x01), dr2 = etat(0x11);
+        printf("PONT %.0f / %.0f bauds : terminal -> module %d/%d %s, module -> terminal %d/%d %s ;"
+               " trames fausses %d, cadence %d, manquees %d, fronts perdus %d, drapeaux %02X %02X ; SPI %d"
+               " octets\n", vit[code], vit_module, wifi_nrec, n_octets, ok1 ? "OK" : "FAUX", term_nrec, n_octets,
+               ok2 ? "OK" : "FAUX", err_trame, err_cadence, err_manquee, avr->data[a_fr_perdu_pont()],
+               dr1, dr2, octets_spi);
+        int ok = ok1 && ok2 && !err_trame && !err_cadence && !err_manquee && !(dr1 & 7) && !(dr2 & 7);
+        printf("  %s\n", ok ? "REUSSI" : "ECHEC");
+        return !ok;
+    }
     avr_cycle_timer_register(avr, (avr_cycle_count_t)term_t - avr->cycle, term_envoi, NULL);
     avr_cycle_timer_register(avr, 1500, wifi_envoi, NULL);
 

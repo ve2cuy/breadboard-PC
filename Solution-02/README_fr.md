@@ -335,7 +335,16 @@ micrologiciel AT, 115200 bauds) ; le terminal reste sur l'UART logiciel de l'ATm
   le seuil de l'ATmega (VIH = 3,0 V à 5 V). Pas de RTS/CTS : PD3 et PD4 sont libres, et le
   canal 2 de l'ATmega a un tampon de réception de 1 Ko.
 - Empreinte : barrette 1 × 4 au pas de 2,54 mm (câble Grove vers Dupont).
-- Le BIOS 2.9 parle au module par le menu **9) Wi-Fi** et par **INT 14h, DX = 1** (COM2).
+- Le BIOS parle au module par le menu **9) Wi-Fi** et par **INT 14h, DX = 1** (COM2).
+- **Le module a été regravé en routeur SLIP** (esp_slip_router de martin-ger, 2026-11-23) : SLIP
+  à 115200 bauds, module en 192.168.240.1, client en 192.168.240.2, NAT vers le Wi-Fi ; console
+  de configuration en TCP sur 192.168.240.1:7777 (`set ssid`, `set password`, `save`,
+  `portmap add TCP 23 192.168.240.2 23`…). La gravure s'est faite **à travers la carte** (menu 9,
+  Ctrl+B : pont de l'ATmega) avec esptool (`--baud 115200 --before no-reset`, boutons du module
+  pour le mode chargement) ; le micrologiciel AT d'origine est sauvegardé dans
+  `wifi/sauvegarde/` (hors de git). `wifi/slip_outil.py` parle SLIP depuis un PC à travers le
+  pont (ping, console du module), sans pilote ni droits d'administrateur.
+- **ELKS en réseau** : voir [elks/README_fr.md](elks/README_fr.md) (`net start slip`).
 
 ## 8259A (U13) : interruptions du clavier et de l'UART
 
@@ -814,6 +823,10 @@ cartes**. Avec l'ATmega :
   micrologiciel rend sa vitesse par IDENT) ; mise sous tension = **57600** (micrologiciel
   version 3, BIOS 2.9 ; 9600 avant). Au-dessus de 9600, activer le contrôle de flux RTS/CTS du
   terminal pour coller du texte : le BIOS lit environ 3 Ko/s dans l'ATmega.
+- **Menu 9) Wi-Fi, Ctrl+B = pont** (BIOS 3.0, micrologiciel version 4) : le terminal passe à
+  115200 bauds et parle directement au module (gravure par esptool, configuration) ; Échap au
+  clavier PS/2 termine le pont et rend la vitesse d'avant. Pendant le pont, le BIOS n'envoie
+  rien au terminal.
 - **Menu 9) Wi-Fi** (BIOS 2.9, micrologiciel version 3) : le terminal et le clavier PS/2
   parlent au module Grove - UART WiFi V2 (commandes AT à 115200 bauds). Les touches vont au
   module (Entrée = CR LF, retour arrière transmis) ; ce qu'il rend va tel quel au terminal (il
@@ -823,6 +836,9 @@ cartes**. Avec l'ATmega :
 - **INT 14h, DX = 1** (COM2) = module Wi-Fi : AH = 01h envoie AL, AH = 02h rend l'octet le plus
   ancien (attente ~0,5 s, puis AH = 80h), AH = 00h/03h rend l'état (AH bit 0 = octet en
   attente). Sans ATmega de version 3 : AH = 80h. DX = 0 (COM1) reste le terminal.
+  Par blocs (BIOS 3.1) : AH = 08h lit au plus CX octets (1 à 255) vers ES:BX sans attendre,
+  AH = 09h envoie CX octets de ES:BX (attend la place, ~1 s au plus) ; CX = octets traités,
+  une transaction SPI pour jusqu'à 255 octets. Utilisé par le pilote `ttyS1` d'ELKS.
 - Info (menu 4) : ligne 3 = diagnostic de l'ATmega `AVR02 L0200 P00 FC0` (version, place libre
   dans l'ATmega, octets abandonnés par le BIOS, drapeaux d'ETAT : C0h = CTS et RTS actifs,
   02h = erreurs de trame).
@@ -1227,6 +1243,12 @@ Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 f
 
 ## État
 
+- 2026-11-23 : **ELKS en réseau** : pilote `ttyS1` (module Wi-Fi par INT 14h, blocs du BIOS
+  3.1), `ktcp` en SLIP (MTU 512), ping d'Internet et session telnet depuis le PC à travers le
+  NAT du module ; image `buf=24` sans `ftpd` pour garder de la mémoire. Module regravé en
+  routeur SLIP à travers la carte : micrologiciel de l'ATmega version 4 (commande PONT),
+  BIOS 3.0 (menu 9, Ctrl+B) ; correctif de l'ATmega (registres réservés non initialisés :
+  gel au démarrage).
 - 2026-11-23 : **module Wi-Fi Grove - UART WiFi V2** (J13 1 × 4, direct sur l'USART de
   l'ATmega ; schéma de l'ESP32 retiré). Micrologiciel de l'ATmega en **protocole version 3** :
   terminal sur un UART logiciel jusqu'à 115200 bauds (capture d'entrée et comparaison de la

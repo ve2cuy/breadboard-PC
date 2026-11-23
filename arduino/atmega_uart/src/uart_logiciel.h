@@ -17,7 +17,7 @@
 #ifndef UART_LOGICIEL_H
 #define UART_LOGICIEL_H
 
-#define FR_N    16      /* fronts de la ligne RX en attente de decodage (puissance de 2) */
+#define FR_N    32      /* fronts de la ligne RX en attente de decodage (puissance de 2) */
 #define EM_N    2       /* octets prets a emettre (puissance de 2 ; CTS respecte a 1 octet pres) */
 #define TX_BITS 9       /* tx_n au debut d'une trame : 8 donnees + l'arret */
 

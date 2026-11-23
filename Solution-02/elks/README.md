@@ -113,6 +113,38 @@ ld -0 -i -L/usr/lib -o hello hello.o -lc86
 
 `/usr/src/Makefile` (examples) shows the same steps for `make`.
 
+## Networking (Wi-Fi over SLIP)
+
+The Wi-Fi module on J13 is a SLIP router with NAT (esp_slip_router, see the Solution-02
+README). ELKS reaches it through **`/dev/ttyS1`**: driver
+`elks/arch/i86/drivers/char/serial-s02.c` (+ `serial-s02-asm.S`), used instead of the 8250
+driver when `CONFIG_HW_SOLUTION02` is set. It goes through BIOS 3.1 (INT 14h, DX = 1, AH =
+08h/09h: blocks), which shares the SPI bus with the SD card; reception is polled at every
+clock tick (`serial_bh`, 64 bytes at most), the speed is set by the module (115200). There is
+no `ttyS0`. At boot: `ttyS1 Wi-Fi module via BIOS INT 14h (ATmega U17 channel 2)`.
+
+```
+net start slip                 # ktcp -m 512 on /dev/ttyS1, 192.168.240.2, gateway .1; telnetd
+ping -c 3 192.168.240.1        # the module
+ping -c 3 8.8.8.8              # Internet, through the NAT
+ping google.com                # DNS through OpenDNS (208.67.222.222, over TCP)
+```
+
+- Image settings: `/etc/net.cfg` (`link=slip`, `device=/dev/ttyS1`, `baud=115200`,
+  `mtu="-m 512"`: TCP segments of 472 bytes at most, within the ATmega's 1 KB buffer,
+  `netstart="telnetd"`), `/bin/net` (passes the MTU to ktcp over SLIP), `/bootopts`
+  (`LOCALIP=192.168.240.2`, `GATEWAY=192.168.240.1`, `NETMASK=255.255.255.0`, `buf=24`).
+- **Memory**: `buf=24` (disk buffers 64 → 24 KB) and no `ftpd`: with 64 buffers and ftpd, a
+  telnet session left no block large enough to run `ls`.
+- **Telnet from the PC**: ELKS is behind the module's NAT. Add a port forward in the module
+  (console `telnet 192.168.240.1 7777` from ELKS: `portmap add TCP 23 192.168.240.2 23`,
+  `save`), then `telnet <module Wi-Fi address>` from the PC. Give root a password (`passwd`):
+  without one, the whole Wi-Fi network gets a root session.
+- Throughput: the 8088 reads the module at ~6 KB/s at most, with no flow control: ping, telnet
+  and small transfers work well; large transfers will see TCP retransmissions.
+- Simulator: `tests/elks_reseau.rs` (simulated SLIP module answering pings, local telnet
+  session).
+
 ## Build
 
 From Windows, with Docker Desktop running:

@@ -64,7 +64,11 @@ ifdef CONFIG_ARCH_IBMPC
   endif
 OBJS += crtc-6845.o                         # CONFIG_CONSOLE_DUAL
 OBJS += audio-8254.o                        # CONFIG_AUDIO
-OBJS += serial-8250.o serfast.o             # CONFIG_CHAR_DEV_RS
+  ifdef CONFIG_HW_SOLUTION02
+    OBJS += serial-s02.o serial-s02-asm.o   # ttyS1 = module Wi-Fi par le BIOS (Solution-02)
+  else
+    OBJS += serial-8250.o serfast.o         # CONFIG_CHAR_DEV_RS
+  endif
 endif
 
 ifdef CONFIG_ARCH_PC98

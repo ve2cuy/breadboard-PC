@@ -14,6 +14,7 @@ volatile uint8_t p_vitesse;
 volatile uint8_t p_vit_courante;
 volatile uint8_t p2_vitesse;
 volatile uint8_t p2_vit_courante;
+volatile uint8_t p_pont;
 
 typedef struct {
     uint8_t *rx, *tx;
@@ -29,7 +30,7 @@ static canal_t can[2] = {
     { rx2, tx2, P2_RX_TAILLE - 1, P2_TX_TAILLE - 1, 0, 0, 0, 0, 0 },
 };
 
-enum { E_CMD, E_IDENT, E_ETAT, E_LIRE, E_ECRIRE_F, E_ECRIRE, E_VITESSE, E_VIDER, E_IGNORE };
+enum { E_CMD, E_IDENT, E_ETAT, E_LIRE, E_ECRIRE_F, E_ECRIRE, E_VITESSE, E_VIDER, E_PONT, E_IGNORE };
 static uint8_t etat, k, n_lire, lus, donnee_chargee, en_transaction;
 static canal_t *c;                      /* canal de la transaction en cours */
 static uint8_t instantane[5];
@@ -55,6 +56,7 @@ void p_init(void)
     p_cts = 1;
     p_vitesse = p2_vitesse = P_V_AUCUNE;
     p_vit_courante = P_V1_DEFAUT;
+    p_pont = 0;
     p2_vit_courante = P_V2_DEFAUT;
     etat = E_CMD;
     c = &can[0];
@@ -116,6 +118,10 @@ uint8_t p_spi(uint8_t recu)
         if (recu == P_IDENT) {
             etat = E_IDENT;
             return 'S';
+        }
+        if (recu == P_PONT) {
+            etat = E_PONT;
+            return 0;
         }
         if ((recu & ~P_CANAL2) < P_ETAT || (recu & ~P_CANAL2) > P_VIDER) {
             etat = E_IGNORE;
@@ -186,6 +192,10 @@ uint8_t p_spi(uint8_t recu)
             vider(c);
         etat = E_IGNORE;
         return 0;
+    case E_PONT:
+        p_pont = (recu == P_SIGNATURE);
+        etat = E_IGNORE;
+        return 0;
     default:
         return 0;
     }
@@ -230,3 +240,18 @@ void p2_uart_recu(uint8_t octet, uint8_t erreur)
 
 int16_t p_uart_a_emettre(void) { return a_emettre(&can[0]); }
 int16_t p2_uart_a_emettre(void) { return a_emettre(&can[1]); }
+
+/* pont : l'octet va directement dans le tampon d'emission de l'autre canal */
+static uint8_t a_emettre_ajoute(canal_t *x, uint8_t octet)
+{
+    if (x->tx_nb > x->tx_masque) {
+        x->drapeaux |= P_ETAT_TX_PLEIN;
+        return 0;
+    }
+    x->tx[(x->tx_tete + x->tx_nb) & x->tx_masque] = octet;
+    x->tx_nb++;
+    return 1;
+}
+
+uint8_t p_pont_vers_module(uint8_t octet) { return a_emettre_ajoute(&can[1], octet); }
+uint8_t p_pont_vers_terminal(uint8_t octet) { return a_emettre_ajoute(&can[0], octet); }
