@@ -88,7 +88,7 @@ fn elks_disque_dur_et_c86() {
     let t = texte(&mut s);
     println!("{}", t);
     assert!(t.contains("login:"), "ELKS n'a pas demarre depuis C:");
-    // BIOS 2.8 : partition MINIX sur C: -> pas de disque B: en RAM, 507 Ko annonces
+    // BIOS 2.8 et suivants : partition MINIX sur C: -> pas de disque B: en RAM, 507 Ko annonces
     assert!(t.contains("506K ram"), "memoire vue par ELKS (507 Ko attendus)");
     commande(&mut s, "root", 15.0);
     let r = commande(&mut s, "df", 10.0);

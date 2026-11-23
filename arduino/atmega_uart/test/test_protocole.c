@@ -89,13 +89,15 @@ int main(void)
     /* 1. signature et IDENT */
     raz();
     {
-        uint8_t o[6] = { P_IDENT, 0, 0, 0, 0, 0 };
-        transaction(o, r, 6);
-        VERIFIE(r[0] == 0xA5 && r[1] == 'S' && r[2] == '2' && r[3] == P_VERSION && r[4] == P_V_9600 && r[5] == 0,
-                "IDENT : %02X %02X %02X %02X %02X %02X", r[0], r[1], r[2], r[3], r[4], r[5]);
-        p_vit_courante = P_V_115200;    /* vitesse en service rendue par IDENT (version 2) */
-        transaction(o, r, 6);
-        VERIFIE(r[4] == P_V_115200, "IDENT : vitesse courante %02X", r[4]);
+        uint8_t o[7] = { P_IDENT, 0, 0, 0, 0, 0, 0 };
+        transaction(o, r, 7);
+        VERIFIE(r[0] == 0xA5 && r[1] == 'S' && r[2] == '2' && r[3] == 3 && r[4] == P_V_57600
+                && r[5] == P_V_115200 && r[6] == 0,
+                "IDENT : %02X %02X %02X %02X %02X %02X %02X", r[0], r[1], r[2], r[3], r[4], r[5], r[6]);
+        p_vit_courante = P_V_115200;    /* vitesses en service rendues par IDENT (version 3) */
+        p2_vit_courante = P_V_9600;
+        transaction(o, r, 7);
+        VERIFIE(r[4] == P_V_115200 && r[5] == P_V_9600, "IDENT : vitesses courantes %02X %02X", r[4], r[5]);
     }
 
     /* 2. reception, IRQ, ETAT, LIRE */
@@ -134,7 +136,7 @@ int main(void)
     {
         uint8_t f;
         ecrire("hello", &f);
-        VERIFIE(f == 255, "place annoncee %u", f);
+        VERIFIE(f == (P_TX_TAILLE > 255 ? 255 : P_TX_TAILLE), "place annoncee %u", f);
         char e[8] = { 0 };
         for (int i = 0; i < 5; i++)
             e[i] = (char)p_uart_a_emettre();
@@ -233,6 +235,45 @@ int main(void)
     p_uart_recu('e', 1);
     etat(&rx, &libre, &dr);
     VERIFIE(rx == 1 && (dr & P_ETAT_UART_ERR), "UART_ERR dr=%02X", dr);
+
+    /* 13. canal 2 (Wi-Fi) : independant du canal 1, pas d'IRQ ni de RTS */
+    raz();
+    p2_uart_recu('O', 0);
+    p2_uart_recu('K', 0);
+    VERIFIE(p_irq == 0 && p_rx_nb() == 0 && p2_rx_nb() == 2, "canal 2 : pas d'IRQ, rien au canal 1");
+    {
+        uint8_t o[6] = { P_CANAL2 | P_ETAT }, q[8];
+        transaction(o, q, 6);
+        VERIFIE(q[1] == 2 && q[2] == 0 && (q[3] | q[4] << 8) == P2_TX_TAILLE
+                && q[5] == (P_ETAT_CTS | P_ETAT_RTS), "ETAT2 %02X %02X %02X %02X %02X", q[1], q[2], q[3], q[4], q[5]);
+        recevoir("t");
+        uint8_t l[5] = { P_CANAL2 | P_LIRE, 0, 0, 0, 0 };
+        transaction(l, q, 5);
+        VERIFIE(q[1] == 2 && q[2] == 'O' && q[3] == 'K' && q[4] == 0, "LIRE2 %02X '%c%c'", q[1], q[2], q[3]);
+        VERIFIE(p2_rx_nb() == 0 && p_rx_nb() == 1 && p_irq == 1, "LIRE2 laisse le canal 1");
+        uint8_t e[6] = { P_CANAL2 | P_ECRIRE, 0, 'A', 'T', 13, 10 };
+        transaction(e, q, 6);
+        VERIFIE(q[1] == (P2_TX_TAILLE > 255 ? 255 : P2_TX_TAILLE), "ECRIRE2 place %u", q[1]);
+        VERIFIE(p2_tx_nb() == 4 && p_tx_nb() == 0, "ECRIRE2 : 4 octets au canal 2");
+        char t[5] = { 0 };
+        for (int i = 0; i < 4; i++)
+            t[i] = (char)p2_uart_a_emettre();
+        VERIFIE(!strcmp(t, "AT\r\n") && p2_uart_a_emettre() == -1, "emis au module");
+        uint8_t v[2] = { P_CANAL2 | P_VITESSE, P_V_9600 };
+        transaction(v, q, 2);
+        VERIFIE(p2_vitesse == P_V_9600 && p_vitesse == P_V_AUCUNE, "VITESSE2");
+        for (int i = 0; i < P2_RX_TAILLE + 2; i++)
+            p2_uart_recu((uint8_t)i, 0);
+        VERIFIE(p2_rx_nb() == P2_RX_TAILLE && p_rts == 1, "canal 2 plein, RTS du canal 1 intact");
+        transaction(o, q, 6);
+        VERIFIE((q[1] | q[2] << 8) == P2_RX_TAILLE && (q[5] & P_ETAT_RX_PLEIN), "RX_PLEIN au canal 2");
+        uint8_t z[2] = { P_CANAL2 | P_VIDER, P_SIGNATURE };
+        transaction(z, q, 2);
+        VERIFIE(p2_rx_nb() == 0 && p_rx_nb() == 1, "VIDER2 laisse le canal 1");
+        uint8_t i6[2] = { 0x16, 0 };
+        transaction(i6, q, 2);
+        VERIFIE(q[1] == 0, "16h inconnue");
+    }
 
     printf("%d essais, %d echecs\n", essais, echecs);
     return echecs != 0;

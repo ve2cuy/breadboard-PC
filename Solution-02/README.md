@@ -286,15 +286,14 @@ instead of U12 in mode 2 (PC4–PC6 now carry the SD card).
 | 17 PB3 MOSI | SD_MOSI | U12 PC6 (shared with the SD card) |
 | 18 PB4 MISO | AVR_MISO | U12 **PB4**; R20 10 kΩ to +5 V. Separate line: many microSD modules never release their MISO |
 | 16 PB2 SS | AVR_SS | U12 **PC0**; R21 10 kΩ to +5 V (ATmega not selected during RESET, 8255 as input) |
-| 14 PB0 (ICP1) / 15 PB1 (OC1A) | UART_RX / UART_TX | J5 pins 2 / 1 (R4 keeps RX idle). **Terminal on a software UART of the ATmega** (schematic of 2026-11-22): input capture of timer 1 for reception, output compare for sending, up to 38400 baud |
-| 2 PD0 RXD / 3 PD1 TXD | ESP_TX5 / ESP_RX5 | Hardware USART → **ESP32** (J13): RXD ← Q1 (2N3904, common base) ← ESP32 TX (3.3 V); TXD → R23/R24 divider (2.2k/3.3k, 3 V) → ESP32 RX |
+| 14 PB0 (ICP1) / 15 PB1 (OC1A) | UART_RX / UART_TX | J5 pins 2 / 1 (R4 keeps RX idle). **Terminal on a software UART of the ATmega** (schematic of 2026-11-22): input capture of timer 1 for reception, output compare for sending, 2400 to 115200 baud, 57600 at power-up |
+| 2 PD0 RXD / 3 PD1 TXD | WIFI_TX / WIFI_RX | Hardware USART → **Grove - UART WiFi V2 module** (J13, schematic of 2026-11-23): RXD ← J13-1 (module TX, 3.3 V); TXD → J13-2 (module RX, level-shifted on board) |
 | 4 PD2 | IRQ4 | U13 IR4: rising edge = a received byte is waiting |
 | 12 PD6 / 13 PD7 | UART_RTS / UART_CTS | J8 pins 1 / 2 (3 = GND); R22 10 kΩ pulls CTS to ground (asserted with no terminal) |
 | 9 / 10 XTAL1 / XTAL2 | AVR_XTAL1 / AVR_XTAL2 | Y2 16 MHz, C21 / C22 22 pF to ground |
 | 1 RESET | AVR_RESET | R19 10 kΩ to +5 V only: no link with the 8088 RESET |
 | 7 VCC, 20 AVCC / 8, 22 GND | | +5 V / ground; C23 100 nF |
-| 5 PD3 / 6 PD4 | ESP_RTS5 / ESP_CTS5 | ESP32 flow control: PD3 (ATmega CTS) ← Q2 ← ESP32 RTS; PD4 (ATmega RTS) → R25/R26 divider → ESP32 CTS |
-| | | PC0–PC5, PD5 and AREF free |
+| | | PC0–PC5, PD3–PD5 and AREF free |
 
 - The ATmega is programmed **off the board**, in the TL866 socket: no ISP
   header.
@@ -303,36 +302,30 @@ instead of U12 in mode 2 (PC4–PC6 now carry the SD card).
   The firmware must never switch to SPI master.
 - U12 keeps control word 82h (PC0 output, PB4 input). PA7 and PB2 are free;
   gate U14B (former inverted UART_RX to IR4) is unused, input grounded.
-- **Firmware** (2026-11-21): [arduino/atmega_uart/](../arduino/atmega_uart/README.md),
-  SPI protocol version 1 (IDENT, ETAT, LIRE, ECRIRE, VITESSE, VIDER), programmed.
-- **Not wired yet.** BIOS 2.7 (below) supports it and keeps the software UART when the
-  ATmega is absent: burn BIOS 2.7 first, then wire the ATmega. The PCB
-  (172 × 100 mm) has to be redone.
+- **Firmware**: [arduino/atmega_uart/](../arduino/atmega_uart/README.md), SPI protocol
+  version 3 (2026-11-23): IDENT, ETAT, LIRE, ECRIRE, VITESSE, VIDER for the terminal
+  (00h–05h, as in version 2), and the same for the Wi-Fi module (11h–15h).
+- Wired and validated with BIOS 2.7 (2026-11-21); the BIOS keeps the software UART when
+  the ATmega is absent. The PCB (172 × 100 mm) has to be redone.
 
-### ESP32 (J13): Internet access for ELKS (schematic of 2026-11-22, to be validated)
+### Wi-Fi module (J13): Grove - UART WiFi V2 (schematic of 2026-11-23)
 
-The ATmega's hardware USART goes to an **ESP32** (DevKit V1 or Heltec WiFi Kit 32), which
-acts as a SLIP router with NAT to Wi-Fi: ELKS (`ktcp` in SLIP) reaches the Internet through
-it. The terminal moves to a software UART of the ATmega (PB0/PB1, up to 38400 baud). Copy
-of the schematic before the change: `Solution02.avant-esp32-2026-11-22.kicad_sch`.
+The ATmega's hardware USART goes to Seeed's **Grove - UART WiFi V2** module (ESP8285, AT
+firmware, 115200 baud); the terminal stays on the ATmega's software UART (PB0/PB1). The
+ESP32 schematic of 2026-11-22 (Q1/Q2, R23–R30, 1 × 7 J13) is removed.
 
-| J13 (1 × 7) | Net | ESP32 (UART2 routed through the GPIO matrix) |
+| J13 (1 × 4, Grove cable order) | Net | Module |
 |---|---|---|
-| 1 | +5V | 5V / VIN (its 3.3 V regulator); C25 100 µF for Wi-Fi peaks (up to 500 mA) |
-| 2 | ESP_3V3 | 3V3 (output of the ESP32's regulator): bases of Q1/Q2 through R29/R30 10k |
-| 3 | ESP_RX | GPIO26 = RX ← R23/R24 divider ← ATmega TXD |
-| 4 | ESP_TX | GPIO27 = TX → emitter of Q1 → ATmega RXD (collector, R27 4k7 to +5 V) |
-| 5 | ESP_CTS | GPIO33 = CTS ← R25/R26 divider ← ATmega PD4 |
-| 6 | ESP_RTS | GPIO32 = RTS → emitter of Q2 → ATmega PD3 (collector, R28 4k7 to +5 V) |
-| 7 | GND | GND |
+| 1 (yellow) | WIFI_TX | module TX (U0TXD, 3.3 V, direct) → ATmega PD0 RXD |
+| 2 (white) | WIFI_RX | module RX ← ATmega PD1 TXD (5 V accepted: 2N7002 and 1 kΩ pull-up to VCC on board) |
+| 3 (red) | +5V | module VCC (on-board ETA3410 buck, 3 V to 5 V); C25 100 µF for Wi-Fi peaks |
+| 4 (black) | GND | GND |
 
-- Q1/Q2 2N3904 (any small NPN: BC547, 2N2222…) in common base, non-inverting: ESP32
-  pin at 0 → the transistor conducts, collector at 0; pin at 3.3 V → blocked, collector
-  pulled to 5 V. Without the ESP32 (or while it boots, pins still inputs) both are
-  blocked: TX idle and RTS = 1, so the ATmega does not send.
-- GPIO 26, 27, 32 and 33 are free on both boards; on the Heltec WiFi Kit 32 (V1/V2), the
-  OLED keeps GPIO4 (SDA), GPIO15 (SCL) and GPIO16 (RST) and can show the Wi-Fi state and
-  the IP address. Pins are set in the ESP32 firmware.
+- Direct wiring: the module level-shifts its own input; its 3.3 V output is above the
+  ATmega's threshold (VIH = 3.0 V at 5 V). No RTS/CTS: PD3 and PD4 are free, and the
+  ATmega's channel 2 has a 1 KB receive buffer.
+- Footprint: 1 × 4 header at 2.54 mm pitch (Grove-to-Dupont cable).
+- BIOS 2.9 talks to the module through menu **9) Wi-Fi** and **INT 14h, DX = 1** (COM2).
 
 ## 8259A (U13): keyboard and UART interrupts
 
@@ -764,12 +757,21 @@ ATmega:
   boot, which would cut the terminal console.
 - **Menu 8) UART speed**: a sub-menu (LCD and terminal) shows the speed in service and
   1) 9600, 2) 19200, 3) 38400, 4) 57600, 5) 115200; Esc returns without change. The menu
-  shows it on line 2 (`2) Test RAM 8)19200`). The new speed is announced on the terminal at the old one
+  shows it on line 2 (`2)RAM 8)19200 9)WiFi`; 115200 is written `115k2` there). The new speed is announced on the terminal at the old one
   ("UART: 19200 baud (set the terminal)"), then the ATmega switches once everything waiting
-  has been sent. Kept across RESET and Ctrl+Alt+Del (the ATmega is not reset; firmware
-  version 2 gives its speed back through IDENT; version 1: 9600 at every boot); power-up =
-  9600. Above 9600, turn RTS/CTS flow control on in the terminal to paste text: the BIOS
-  reads about 3 KB/s from the ATmega.
+  has been sent. Kept across RESET and Ctrl+Alt+Del (the ATmega is not reset; the firmware
+  gives its speed back through IDENT); power-up = **57600** (firmware version 3, BIOS 2.9;
+  9600 before). Above 9600, turn RTS/CTS flow control on in the terminal to paste text: the
+  BIOS reads about 3 KB/s from the ATmega.
+- **Menu 9) Wi-Fi** (BIOS 2.9, firmware version 3): the terminal and the PS/2 keyboard talk
+  to the Grove - UART WiFi V2 module (AT commands at 115200 baud). Keys go to the module
+  (Enter = CR LF, backspace passed on); what it returns goes unchanged to the terminal (it
+  echoes by itself: ATE1) and, line by line, to LCD lines 2 and 3; the command being typed
+  shows on line 4 after `>`. Esc returns to the menu. Examples: `AT`, `AT+GMR`,
+  `AT+CWMODE_CUR=1`, `AT+CWJAP_CUR="network","password"`, `AT+CIFSR`.
+- **INT 14h, DX = 1** (COM2) = Wi-Fi module: AH = 01h sends AL, AH = 02h returns the oldest
+  byte (waits ~0.5 s, then AH = 80h), AH = 00h/03h returns the status (AH bit 0 = byte
+  waiting). Without a version 3 ATmega: AH = 80h. DX = 0 (COM1) stays the terminal.
 - Info (menu 4): line 3 = ATmega diagnostic `AVR02 L0200 P00 FC0` (version, free space in
   the ATmega, bytes dropped by the BIOS, ETAT flags: C0h = CTS and RTS asserted, 02h = framing
   errors).
@@ -1135,6 +1137,12 @@ files).
 
 ## Status
 
+- 2026-11-23: **Grove - UART WiFi V2 Wi-Fi module** (1 × 4 J13, wired directly to the
+  ATmega's USART; ESP32 schematic removed). ATmega firmware with **protocol version 3**:
+  terminal on a software UART up to 115200 baud (timer 1 input capture and compare,
+  assembly interrupts), Wi-Fi module on the USART (commands 11h–15h), tested cycle by cycle
+  under simavr (`make banc`). **BIOS 2.9**: terminal at 57600 baud by default (115200 in
+  menu 8), menu 9) Wi-Fi, INT 14h DX = 1. Simulator: channel 2 and a simplified AT module.
 - 2026-11-22: **ELKS hard disk image** (`elks/construire-hd.ps1`): 32 MB MINIX partition on C:, every ELKS program, C86 native C compiler (`cpp`, `c86`, `as`, `ld`, `make`, headers, libc86), dcc, Lua, a small `top`. BIOS 2.8: booting C: from a MINIX partition drops the RAM disk B: and gives 507 KB (the compiler needs it). Simulator: `hello.c` compiled and run on the 8088.
 - 2026-11-22: **BIOS 2.8**: ANSI sequences (ESC [ ... : cursor moves A/B/C/D/H/f/G/d, erase J/K; others swallowed) sent through INT 10h AH=0Eh are interpreted in the BIOS screen buffer instead of being written to the LCD (they still go to the terminal unchanged). ELKS rebuilt without Ethernet drivers (their ISA probes hit the LCD, the 8253 and U12 through the 8-bit port decoding). Simulator: ELKS session with a clean LCD, BASIC test of the sequences.
 - 2026-11-21: **BIOS 2.7**: terminal through the ATmega U17 when present (detected by IDENT), software UART otherwise; reception in the foreground without loss (queues fed as they empty, RTS), sending without masking interrupts, shared SPI bus protected (no transaction in interrupts, SD card deselected). Simulator: DOS, CP/M-86 from C:, ELKS without loss (typed or pasted lines); Rust and Python suites unchanged without the ATmega. Not burned.

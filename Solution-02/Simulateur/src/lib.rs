@@ -240,12 +240,18 @@ impl Sim {
     }
 
     // ------------------------------------------------------------ ATmega328P (U17)
-    /// Variante de la carte : ATmega328P U17 (schema du 2026-11-21, UART materiel et esclave
-    /// SPI du 8088) ou UART logiciel (schema d'avant, BIOS 2.6). Garde au fil des mises sous
-    /// tension ; l'ATmega repart a neuf a chaque changement.
+    /// Variante de la carte : ATmega328P U17 (schema du 2026-11-23 : terminal sur l'UART
+    /// logiciel de l'ATmega, module Wi-Fi sur son USART, esclave SPI du 8088) ou UART logiciel du
+    /// 8088 (schema d'avant, BIOS 2.6). Garde au fil des mises sous tension ; l'ATmega repart a
+    /// neuf a chaque changement, et le terminal prend sa vitesse de mise sous tension (57600).
     pub fn set_atmega(&mut self, on: bool) {
         let b = &mut self.m.b;
         b.avr = if on { Some(avr::Avr::new()) } else { None };
+        if on {
+            let v = avr::VITESSES[avr::V1_DEFAUT as usize];
+            b.rx.baud = v;
+            b.tx.baud = v;
+        }
         b.rx.set_hold(false, self.m.cpu.cycles);
         b.rx.garde = on;
         b.rx.faites.clear();
@@ -263,6 +269,13 @@ impl Sim {
 "),
         }
     }
+    /// Lignes de commande recues par le module Wi-Fi (canal 2 de l'ATmega), une par ligne.
+    pub fn wifi_journal(&self) -> String {
+        match &self.m.b.avr {
+            None => String::new(),
+            Some(a) => a.wifi.journal.join("\n"),
+        }
+    }
     pub fn atmega(&self) -> bool {
         self.m.b.avr.is_some()
     }
@@ -273,7 +286,8 @@ impl Sim {
             Some(a) => format!(
                 concat!(
                     "{{\"rx_nb\":{},\"tx_nb\":{},\"irq\":{},\"rts\":{},\"baud\":{},",
-                    "\"octets_spi\":{},\"trop_tot\":{},\"recus\":{},\"emis\":{}}}"
+                    "\"octets_spi\":{},\"trop_tot\":{},\"recus\":{},\"emis\":{},",
+                    "\"baud2\":{},\"rx2_nb\":{},\"tx2_nb\":{},\"recus2\":{},\"emis2\":{}}}"
                 ),
                 a.p.rx_nb(),
                 a.p.tx_nb(),
@@ -283,7 +297,12 @@ impl Sim {
                 a.octets_spi,
                 a.trop_tot,
                 a.recus,
-                a.emis
+                a.emis,
+                a.baud2,
+                a.p.rx2_nb(),
+                a.p.tx2_nb(),
+                a.recus2,
+                a.emis2
             ),
         }
     }

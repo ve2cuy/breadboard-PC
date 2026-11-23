@@ -1,8 +1,11 @@
 ; =============================================================================
-; avr.inc - UART par l'ATmega328P U17 (schema du 2026-11-21), esclave SPI du 8088.
+; avr.inc - UART par l'ATmega328P U17, esclave SPI du 8088 (schema du 2026-11-23).
 ;   SS = U12 PC0, SCK = PC5, MOSI = PC6 (partages avec la carte SD), MISO = U12 PB4.
-;   Protocole (version 1) : arduino/atmega_uart/README_fr.md. Sans ATmega (V_AVR = 0),
-;   le BIOS garde l'UART logiciel (PA7, PB2) : une seule ROM pour les deux cartes.
+;   Protocole (version 3) : arduino/atmega_uart/README_fr.md. Canal 1 = terminal (J5, UART
+;   logiciel de l'ATmega, 57600 bauds a la mise sous tension) ; canal 2 (version 3) = module
+;   Grove - UART WiFi V2 (J13, USART de l'ATmega, 115200 bauds, commandes AT) : INT 14h DX = 1
+;   et menu 9). Sans ATmega (V_AVR = 0), le BIOS garde l'UART logiciel du 8088 (PA7, PB2) :
+;   une seule ROM pour les deux cartes.
 ;
 ; Aucune transaction SPI en interruption n'est necessaire : IRQ4 (irq_uart_avr) ne fait que
 ; noter qu'un octet attend (V_AVR_DISPO). Les octets sont lus au premier plan, quand on
@@ -20,6 +23,9 @@ V_AVR_DISPO     equ     7FCh            ; 1 = IRQ4 : un octet recu attend dans l
 V_AVR_SERV      equ     7FDh            ; 1 = avr_service en cours (pas de 2e appel)
 V_AVR_VER       equ     7FEh            ; version du protocole de l'ATmega
 V_AVR_PERDUS    equ     7FFh            ; octets a emettre abandonnes (bus occupe, ATmega plein)
+V_AVR_VIT2      equ     8FAh            ; vitesse du canal 2 (Wi-Fi), version 3
+V_WIFI_COL3     equ     8FBh            ; menu 9) : colonne de la sortie du module (ligne 3)
+V_WIFI_COL4     equ     8FCh            ; menu 9) : colonne de la commande tapee (ligne 4)
 
 AVR_REPOS       equ     51h             ; PC0 = 1 (ATmega libre), CS de la SD = 1, MOSI = 1
 AVR_SEL         equ     50h             ; PC0 = 0 : ATmega selectionne (SD toujours libre)
@@ -29,10 +35,13 @@ AVR_MISO        equ     10h             ; PB4
 
 AVR_SIGNATURE   equ     0A5h
 AVR_IDENT       equ     00h
+AVR_ETAT        equ     01h
 AVR_LIRE        equ     02h
 AVR_ECRIRE      equ     03h
 AVR_VITESSE     equ     04h
 AVR_VIDER       equ     05h
+AVR_CANAL2      equ     10h             ; + ETAT ... VIDER : canal 2 (Wi-Fi), version 3
+AVR_V_DEFAUT    equ     3               ; 57600 bauds (vitesse de l'ATmega a la mise sous tension)
 
 AVR_V_NB        equ     7               ; codes de vitesse connus de l'ATmega
 AVR_V_MENU      equ     5               ; menu 8) : 9600, 19200, 38400, 57600, 115200
@@ -97,7 +106,8 @@ avr_fin:
 ; avr_detecte : IDENT ; A5h 'S' '2' -> V_AVR = 1, V_AVR_VER ; puis tampons vides. Version 2 :
 ; IDENT rend aussi la vitesse en service, gardee (V_AVR_VIT) : apres RESET ou Ctrl+Alt+Suppr,
 ; le terminal reste a la vitesse choisie au menu 8) (l'ATmega n'est pas remis a zero) ;
-; version 1 : 9600 bauds imposes. Sans ATmega, MISO (PB4) est lu a 1 : V_AVR = 0.
+; version 1 (ou vitesse inconnue) : 57600 bauds imposes. Version 3 : vitesse du canal 2
+; (V_AVR_VIT2). Sans ATmega, MISO (PB4) est lu a 1 : V_AVR = 0.
 ; ES = DSEG. Preserve tout.
 avr_detecte:
         push    ax
@@ -126,6 +136,9 @@ avr_detecte:
         xor     al, al
         call    avr_octet               ; vitesse en service (version 2 ; 00h en version 1)
         mov     [es:V_AVR_VIT], al
+        xor     al, al
+        call    avr_octet               ; vitesse du canal 2 (version 3)
+        mov     [es:V_AVR_VIT2], al
         call    avr_fin
         pop     ax
         cmp     bx, AVR_SIGNATURE | ('S' << 8)
@@ -141,10 +154,11 @@ avr_detecte:
         call    avr_octet
         call    avr_fin
         cmp     byte [es:V_AVR_VER], 2  ; version 2 : vitesse en service gardee
-        jb      .v9600
+        jb      .defaut
         cmp     byte [es:V_AVR_VIT], AVR_V_NB
         jb      .fin
-.v9600: xor     al, al                  ; VITESSE 0 = 9600 bauds
+.defaut:
+        mov     al, AVR_V_DEFAUT        ; 57600 bauds
         call    avr_vitesse
 .fin:   pop     bx
         pop     ax
@@ -173,6 +187,24 @@ avr_vitesse:
 ; lent, RTS/CTS), reessaie ~1,3 s ; bus occupe ou delai depasse : octet perdu.
 ; Preserve tout (appele par uart_tx, avec n'importe quels DS et ES).
 avr_tx:
+        push    dx
+        mov     dl, AVR_ECRIRE
+        call    avr_ecrire_c
+        pop     dx
+        ret
+
+; avr_tx2 : envoie AL au module Wi-Fi (ECRIRE du canal 2), comme avr_tx. CF = 1 : perdu.
+; Preserve le reste.
+avr_tx2:
+        push    dx
+        mov     dl, AVR_CANAL2 | AVR_ECRIRE
+        call    avr_ecrire_c
+        pop     dx
+        ret
+
+; avr_ecrire_c : envoie AL par la commande ECRIRE DL (03h ou 13h). CF = 1 si l'octet est
+; perdu (bus occupe, ATmega plein ~1,3 s). Preserve le reste.
+avr_ecrire_c:
         push    ax
         push    bx
         push    cx
@@ -183,7 +215,7 @@ avr_tx:
         mov     cx, AVR_ESSAIS_TX
 .essai: call    avr_debut
         jc      .perdu                  ; appele au milieu d'un acces SPI : ne peut attendre
-        mov     al, AVR_ECRIRE
+        mov     al, dl
         call    avr_octet
         xor     al, al
         call    avr_octet               ; place libre
@@ -192,6 +224,7 @@ avr_tx:
         mov     al, bh
         call    avr_octet
         call    avr_fin
+        clc
         jmp     .fin
 .plein: call    avr_fin
         push    cx
@@ -200,8 +233,9 @@ avr_tx:
         pop     cx
         loop    .essai
 .perdu: cmp     byte [es:V_AVR_PERDUS], 0FFh
-        je      .fin
+        je      .stc
         inc     byte [es:V_AVR_PERDUS]
+.stc:   stc
 .fin:   pop     es
         pop     cx
         pop     bx
@@ -210,12 +244,18 @@ avr_tx:
 
 ; avr_lire1 : un octet recu de l'ATmega (LIRE, on n'en prend qu'un : les autres restent
 ; dans l'ATmega). AL = octet, CF = 0 ; CF = 1 : rien (ou bus occupe). ES = DSEG.
-; Preserve le reste.
+; Preserve le reste. avr_lire_c : idem avec la commande DL (02h ou 12h).
 avr_lire1:
+        push    dx
+        mov     dl, AVR_LIRE
+        call    avr_lire_c
+        pop     dx
+        ret
+avr_lire_c:
         push    bx
         call    avr_debut
         jc      .r
-        mov     al, AVR_LIRE
+        mov     al, dl
         call    avr_octet
         xor     al, al
         call    avr_octet               ; nombre en attente
@@ -231,6 +271,61 @@ avr_lire1:
 .vide:  call    avr_fin
         stc
 .r:     pop     bx
+        ret
+
+; avr_lire_bloc : LIRE DL (02h ou 12h) : au plus CX octets (1 a 255) vers SS:DI, en une
+; transaction. CX = nombre lu (0 : rien, ou bus occupe). ES = DSEG. Preserve le reste.
+avr_lire_bloc:
+        push    ax
+        push    bx
+        push    di
+        xor     bx, bx
+        call    avr_debut
+        jc      .r
+        mov     al, dl
+        call    avr_octet               ; A5h
+        xor     al, al
+        call    avr_octet               ; nombre en attente
+        xor     ah, ah
+        cmp     ax, cx
+        jae     .n
+        mov     cx, ax
+.n:     jcxz    .f
+.b:     xor     al, al
+        call    avr_octet
+        mov     [ss:di], al
+        inc     di
+        inc     bx
+        loop    .b
+.f:     call    avr_fin
+.r:     mov     cx, bx
+        pop     di
+        pop     bx
+        pop     ax
+        ret
+
+; avr_attente2 : nombre d'octets recus du module Wi-Fi en attente dans l'ATmega (ETAT du
+; canal 2) -> CX ; CF = 1 si le bus est occupe (CX = 0). ES = DSEG. Preserve le reste.
+avr_attente2:
+        push    ax
+        xor     cx, cx
+        call    avr_debut
+        jc      .r
+        mov     al, AVR_CANAL2 | AVR_ETAT
+        call    avr_octet               ; A5h
+        xor     al, al
+        call    avr_octet
+        mov     cl, al                  ; recus (poids faible)
+        xor     al, al
+        call    avr_octet
+        mov     ch, al                  ; recus (poids fort)
+        mov     al, 0
+        call    avr_octet               ; place libre, drapeaux : ignores
+        call    avr_octet
+        call    avr_octet
+        call    avr_fin
+        clc
+.r:     pop     ax
         ret
 
 ; avr_service : apporte les octets recus par l'ATmega dans les files, comme le faisait IRQ4
@@ -372,20 +467,31 @@ avr_diag:
 
 txt_avr_diag:   db      'AVR L P F '
 
-; menu_vit : ligne 2 du menu avec l'ATmega : "2) Test RAM 8)19200 " (sans ATmega : rien, la ligne
-; de txt_menu reste). DS = CS, ES = DSEG. Detruit AX, BX, CX, SI.
+; menu_vit : ligne 2 du menu avec l'ATmega : "2)RAM 8)57600 9)WiFi" (sans ATmega : rien, la
+; ligne de txt_menu reste). DS = CS, ES = DSEG. Detruit AX, BX, CX, SI.
 menu_vit:
         cmp     byte [es:V_AVR], 0
         je      .r
         mov     al, 80h | LIGNE2
         call    lcd_cmd
         mov     si, txt_menu2_vit
-        mov     bx, 14
-        call    lcd_texte
+        mov     bx, 8
+        call    lcd_texte               ; "2)RAM 8)"
         call    vit_si
-        mov     bx, 6
+        cmp     byte [es:V_AVR_VIT], 4  ; 115200 : 6 chiffres, "115k2 "
+        jne     .v
+        mov     si, txt_115k2
+.v:     mov     bx, 6
         call    lcd_texte
+        mov     si, txt_menu2_wifi
+        mov     bx, 6
+        call    lcd_texte               ; "9)WiFi"
 .r:     ret
+
+txt_115k2:      db      '115k2 '
+txt_menu2_vit:  db      '2)RAM 8)'
+txt_menu2_wifi: db      '9)WiFi'
+
 
 ; vit_si : SI = texte de la vitesse V_AVR_VIT (6 caracteres). Detruit AX.
 vit_si:
@@ -448,6 +554,233 @@ menu_vitesse:
 .r:     ret
 
 txt_vitesses:   db      '9600  19200 38400 57600 1152004800  2400  '
+
+; wifi_menu : menu 9) : le terminal (et le clavier PS/2) parle au module Wi-Fi (canal 2 de
+; l'ATmega, commandes AT a 115200 bauds). Les touches vont au module (Entree = CR LF) ; ce que
+; le module rend va tel quel au terminal (il renvoie lui-meme l'echo des commandes, ATE1)
+; et, ligne par ligne, aux lignes 2 et 3 du LCD ; la commande tapee s'affiche en ligne 4.
+; Echap : retour au menu. Sans ATmega de version 3 : message, puis retour. L'appelant
+; redessine le menu. DS = CS, ES = DSEG. Detruit AX, BX, CX, DX, SI, DI, BP.
+WIFI_BLOC       equ     32
+
+wifi_menu:
+        cmp     byte [es:V_AVR], 0
+        je      .r
+        cmp     byte [es:V_AVR_VER], 3
+        jae     .ok
+        mov     si, txt_wifi_v3         ; micrologiciel de l'ATmega trop ancien
+        call    lcd_ecran
+        call    ecran_uart
+        PAUSE   10
+.r:     ret
+.ok:    mov     si, txt_wifi_ecran
+        call    lcd_ecran
+        mov     byte [es:V_WIFI_COL3], 0
+        mov     byte [es:V_WIFI_COL4], 2
+        call    uart_calme
+        mov     si, txt_wifi_uart
+        call    uart_texte
+        sub     sp, WIFI_BLOC
+        mov     bp, sp
+.boucle:
+        sti
+        cmp     byte [es:V_PIC], 0      ; sans 8259 : clavier PS/2 scrute ici
+        jne     .touche
+        call    kbd_libere
+        mov     cx, 300
+        call    kbd_scrute
+        call    kbd_bloque
+.touche:
+        call    file_retire             ; (amene aussi les octets du terminal)
+        jc      .module
+        cmp     al, 1Bh                 ; Echap : retour au menu
+        je      .fin
+        cmp     al, 13
+        je      .entree
+        or      al, al                  ; touches sans caractere (fleches...) : ignorees
+        jz      .boucle
+        call    avr_tx2
+        call    wifi_tape
+        jmp     .boucle
+.entree:
+        call    avr_tx2                 ; CR LF : fin de la commande AT
+        mov     al, 10
+        call    avr_tx2
+        call    wifi_l4_vide
+        jmp     .boucle
+.module:
+        mov     di, bp
+        mov     cx, WIFI_BLOC
+        mov     dl, AVR_CANAL2 | AVR_LIRE
+        call    avr_lire_bloc
+        jcxz    .boucle
+        mov     si, bp
+.m:     mov     al, [ss:si]
+        inc     si
+        call    uart_tx                 ; au terminal, tel quel
+        call    wifi_lcd                ; aux lignes 2 et 3
+        loop    .m
+        jmp     .boucle
+.fin:   add     sp, WIFI_BLOC
+        mov     si, txt_wifi_fin        ; CR LF au terminal
+        call    uart_texte
+        ret
+
+; wifi_lcd : caractere AL du module aux lignes 2 et 3 du LCD : la ligne en cours s'ecrit en
+; ligne 3 ; apres LF, le caractere suivant la monte en ligne 2 (lignes vides sautees) ; CR et
+; autres controles ignores.
+; ES = DSEG. Preserve tout.
+wifi_lcd:
+        push    ax
+        push    bx
+        push    cx
+        cmp     al, 10
+        je      .lf
+        cmp     al, ' '
+        jb      .r
+        cmp     al, 7Eh
+        ja      .r
+        cmp     byte [es:V_WIFI_COL3], LCD_COLS
+        jb      .ecrit
+        push    ax
+        call    wifi_monte              ; ligne pleine : a la suivante
+        pop     ax
+.ecrit: push    ax
+        mov     al, [es:V_WIFI_COL3]
+        add     al, 80h | LIGNE3
+        call    lcd_cmd
+        pop     ax
+        call    lcd_car
+        inc     byte [es:V_WIFI_COL3]
+        jmp     .r
+.lf:    cmp     byte [es:V_WIFI_COL3], 0
+        je      .r                      ; ligne vide : rien
+        mov     byte [es:V_WIFI_COL3], LCD_COLS ; montee au prochain caractere : les deux
+                                        ; dernieres lignes restent visibles
+.r:     pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; wifi_monte : ligne 3 -> ligne 2 (depuis la copie V_OMBRE), ligne 3 videe. Detruit AX, BX, CX.
+wifi_monte:
+        mov     al, 80h | LIGNE2
+        call    lcd_cmd
+        mov     bx, 40                  ; V_OMBRE : ligne 3 = octets 40 a 59
+.c:     mov     al, [es:V_OMBRE + bx]
+        call    lcd_car
+        inc     bx
+        cmp     bx, 60
+        jb      .c
+        mov     al, 80h | LIGNE3
+        call    lcd_cmd
+        mov     bx, LCD_COLS
+.e:     mov     al, ' '
+        call    lcd_car
+        dec     bx
+        jnz     .e
+        mov     byte [es:V_WIFI_COL3], 0
+        ret
+
+; wifi_tape : caractere AL tape, en ligne 4 apres "> " (retour arriere : efface le dernier).
+; ES = DSEG. Preserve tout.
+wifi_tape:
+        push    ax
+        push    cx
+        cmp     al, 8
+        jne     .car
+        cmp     byte [es:V_WIFI_COL4], 2
+        jbe     .r
+        dec     byte [es:V_WIFI_COL4]
+        mov     al, [es:V_WIFI_COL4]
+        add     al, 80h | LIGNE4
+        call    lcd_cmd
+        mov     al, ' '
+        call    lcd_car
+        jmp     .r
+.car:   cmp     al, ' '
+        jb      .r
+        cmp     byte [es:V_WIFI_COL4], LCD_COLS
+        jb      .ecrit
+        push    ax
+        call    wifi_l4_vide            ; ligne pleine : on repart au debut
+        pop     ax
+.ecrit: push    ax
+        mov     al, [es:V_WIFI_COL4]
+        add     al, 80h | LIGNE4
+        call    lcd_cmd
+        pop     ax
+        call    lcd_car
+        inc     byte [es:V_WIFI_COL4]
+.r:     pop     cx
+        pop     ax
+        ret
+
+; wifi_l4_vide : ligne 4 = "> " (commande vide). ES = DSEG. Preserve tout.
+wifi_l4_vide:
+        push    ax
+        push    bx
+        push    cx
+        mov     al, 80h | LIGNE4
+        call    lcd_cmd
+        mov     al, '>'
+        call    lcd_car
+        mov     bx, LCD_COLS - 1
+.e:     mov     al, ' '
+        call    lcd_car
+        dec     bx
+        jnz     .e
+        mov     byte [es:V_WIFI_COL4], 2
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; int14_wifi : INT 14h, DX = 1 : module Wi-Fi (canal 2 de l'ATmega, version 3). AH = 00h ou
+; 03h : etat (AH bit 0 = octet en attente, 60h emetteur vide ; AL = 30h) ; AH = 01h : envoie
+; AL ; AH = 02h : octet recu (attente ~0,5 s, puis AH = 80h). Sans module : AH = 80h.
+int14_wifi:
+        push    es
+        push    cx
+        push    dx
+        mov     cx, DSEG
+        mov     es, cx
+        cmp     byte [es:V_AVR], 0
+        je      .absent
+        cmp     byte [es:V_AVR_VER], 3
+        jb      .absent
+        cmp     ah, 01h
+        jne     .pas_tx
+        call    avr_tx2
+        mov     ah, 60h
+        jnc     .fin
+.absent:
+        mov     ah, 80h
+        jmp     .fin
+.pas_tx:
+        cmp     ah, 02h
+        jne     .etat
+        mov     cx, 2000                ; ~0,5 s
+.l:     mov     dl, AVR_CANAL2 | AVR_LIRE
+        call    avr_lire_c
+        jnc     .recu
+        push    cx
+        mov     cx, 30
+.p:     loop    .p
+        pop     cx
+        loop    .l
+        mov     ah, 80h
+        jmp     .fin
+.recu:  xor     ah, ah
+        jmp     .fin
+.etat:  call    avr_attente2
+        mov     ax, 6030h               ; emetteur vide ; CTS, DSR
+        jcxz    .fin
+        or      ah, 01h                 ; donnee prete
+.fin:   pop     dx
+        pop     cx
+        pop     es
+        iret
 
 ; IRQ4 (INT 0Ch) avec l'ATmega : un octet recu attend. Note seulement (aucune transaction
 ; en interruption) ; avr_service le lira au premier plan.

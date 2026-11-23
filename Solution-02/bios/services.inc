@@ -15,6 +15,7 @@
 ;   INT 13h  disquette A: = image de 180 Ko EN ROM (DISQUE_SEG), lecture seule ;
 ;            B: = disque virtuel de 128 Ko en RAM (DISQUE_B_SEG), lecture-ecriture.
 ;   INT 14h  UART logiciel : envoi (AH=01h) ; reception (AH=02h/03h) avec le 8259.
+;            DX = 1 : module Wi-Fi de l'ATmega U17 (int14_wifi, avr.inc).
 ;   INT 15h  non gere (CF = 1, AH = 86h).
 ;   INT 16h  file de FILE_N touches, remplie par IRQ1 (ou par scrutation sans 8259).
 ;   INT 17h  pas d'imprimante. INT 18h retour au menu. INT 19h amorcage de A:.
@@ -2109,7 +2110,10 @@ int12h:
 ; en attente. Sans 8259 : rien n'est recu.
 int14h:
         sti
-        cmp     ah, 01h
+        cmp     dx, 1                   ; COM2 = module Wi-Fi (ATmega U17, canal 2)
+        jne     .com1
+        jmp     int14_wifi
+.com1:  cmp     ah, 01h
         jne     .pas_tx
         call    uart_tx
         mov     ah, 60h                 ; emetteur vide

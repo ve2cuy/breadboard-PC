@@ -295,15 +295,14 @@ de U12 en mode 2 (PC4–PC6 portent maintenant la carte SD).
 | 17 PB3 MOSI | SD_MOSI | U12 PC6 (partagé avec la carte SD) |
 | 18 PB4 MISO | AVR_MISO | U12 **PB4** ; R20 10 kΩ au +5 V. Ligne à part : beaucoup de modules microSD ne libèrent jamais leur MISO |
 | 16 PB2 SS | AVR_SS | U12 **PC0** ; R21 10 kΩ au +5 V (ATmega non sélectionné pendant le RESET, 8255 en entrée) |
-| 14 PB0 (ICP1) / 15 PB1 (OC1A) | UART_RX / UART_TX | J5 broches 2 / 1 (R4 garde RX au repos). **Terminal sur un UART logiciel de l'ATmega** (schéma du 2026-11-22) : capture d'entrée de la minuterie 1 en réception, comparaison de sortie en émission, jusqu'à 38400 bauds |
-| 2 PD0 RXD / 3 PD1 TXD | ESP_TX5 / ESP_RX5 | USART matériel → **ESP32** (J13) : RXD ← Q1 (2N3904, base commune) ← TX de l'ESP32 (3,3 V) ; TXD → diviseur R23/R24 (2,2k/3,3k, 3 V) → RX de l'ESP32 |
+| 14 PB0 (ICP1) / 15 PB1 (OC1A) | UART_RX / UART_TX | J5 broches 2 / 1 (R4 garde RX au repos). **Terminal sur un UART logiciel de l'ATmega** (schéma du 2026-11-22) : capture d'entrée de la minuterie 1 en réception, comparaison de sortie en émission, de 2400 à 115200 bauds, 57600 à la mise sous tension |
+| 2 PD0 RXD / 3 PD1 TXD | WIFI_TX / WIFI_RX | USART matériel → **module Grove - UART WiFi V2** (J13, schéma du 2026-11-23) : RXD ← J13-1 (TX du module, 3,3 V) ; TXD → J13-2 (RX du module, adapté à bord) |
 | 4 PD2 | IRQ4 | U13 IR4 : front montant = un octet reçu attend |
 | 12 PD6 / 13 PD7 | UART_RTS / UART_CTS | J8 broches 1 / 2 (3 = GND) ; R22 10 kΩ tire CTS à la masse (actif sans terminal) |
 | 9 / 10 XTAL1 / XTAL2 | AVR_XTAL1 / AVR_XTAL2 | Y2 16 MHz, C21 / C22 22 pF à la masse |
 | 1 RESET | AVR_RESET | R19 10 kΩ au +5 V seulement : aucun lien avec le RESET du 8088 |
 | 7 VCC, 20 AVCC / 8, 22 GND | | +5 V / masse ; C23 100 nF |
-| 5 PD3 / 6 PD4 | ESP_RTS5 / ESP_CTS5 | Contrôle de flux de l'ESP32 : PD3 (CTS de l'ATmega) ← Q2 ← RTS de l'ESP32 ; PD4 (RTS de l'ATmega) → diviseur R25/R26 → CTS de l'ESP32 |
-| | | PC0–PC5, PD5 et AREF libres |
+| | | PC0–PC5, PD3–PD5 et AREF libres |
 
 - L'ATmega se programme **hors du montage**, dans le support du TL866 : pas de
   connecteur ISP.
@@ -313,36 +312,30 @@ de U12 en mode 2 (PC4–PC6 portent maintenant la carte SD).
 - U12 garde le mot de contrôle 82h (PC0 en sortie, PB4 en entrée). PA7 et PB2
   sont libres ; la porte U14B (ancien UART_RX inversé vers IR4) est inutilisée,
   entrée à la masse.
-- **Micrologiciel** (2026-11-21) : [arduino/atmega_uart/](../arduino/atmega_uart/README_fr.md),
-  protocole SPI version 1 (IDENT, ETAT, LIRE, ECRIRE, VITESSE, VIDER), gravé.
-- **Pas encore câblé.** Le BIOS 2.7 (plus bas) le gère et garde l'UART logiciel quand
-  l'ATmega est absent : graver d'abord le BIOS 2.7, puis câbler l'ATmega.
-  Le PCB (172 × 100 mm) est à reprendre.
+- **Micrologiciel** : [arduino/atmega_uart/](../arduino/atmega_uart/README_fr.md),
+  protocole SPI version 3 (2026-11-23) : IDENT, ETAT, LIRE, ECRIRE, VITESSE, VIDER pour le
+  terminal (00h–05h, comme la version 2), et les mêmes pour le module Wi-Fi (11h–15h).
+- Câblé et validé avec le BIOS 2.7 (2026-11-21) ; le BIOS garde l'UART logiciel quand
+  l'ATmega est absent. Le PCB (172 × 100 mm) est à reprendre.
 
-### ESP32 (J13) : accès Internet pour ELKS (schéma du 2026-11-22, à valider)
+### Module Wi-Fi (J13) : Grove - UART WiFi V2 (schéma du 2026-11-23)
 
-L'USART matériel de l'ATmega va à un **ESP32** (DevKit V1 ou Heltec WiFi Kit 32), routeur
-SLIP avec NAT vers le Wi-Fi : ELKS (`ktcp` en SLIP) atteint Internet par lui. Le terminal
-passe sur un UART logiciel de l'ATmega (PB0/PB1, jusqu'à 38400 bauds). Copie du schéma
-avant la modification : `Solution02.avant-esp32-2026-11-22.kicad_sch`.
+L'USART matériel de l'ATmega va au module **Grove - UART WiFi V2** de Seeed (ESP8285,
+micrologiciel AT, 115200 bauds) ; le terminal reste sur l'UART logiciel de l'ATmega
+(PB0/PB1). Le schéma de l'ESP32 du 2026-11-22 (Q1/Q2, R23–R30, J13 1 × 7) est retiré.
 
-| J13 (1 × 7) | Net | ESP32 (UART2 par la matrice des GPIO) |
+| J13 (1 × 4, ordre du câble Grove) | Net | Module |
 |---|---|---|
-| 1 | +5V | 5V / VIN (son régulateur 3,3 V) ; C25 100 µF pour les pointes du Wi-Fi (jusqu'à 500 mA) |
-| 2 | ESP_3V3 | 3V3 (sortie du régulateur de l'ESP32) : bases de Q1/Q2 par R29/R30 10k |
-| 3 | ESP_RX | GPIO26 = RX ← diviseur R23/R24 ← TXD de l'ATmega |
-| 4 | ESP_TX | GPIO27 = TX → émetteur de Q1 → RXD de l'ATmega (collecteur, R27 4k7 au +5 V) |
-| 5 | ESP_CTS | GPIO33 = CTS ← diviseur R25/R26 ← PD4 de l'ATmega |
-| 6 | ESP_RTS | GPIO32 = RTS → émetteur de Q2 → PD3 de l'ATmega (collecteur, R28 4k7 au +5 V) |
-| 7 | GND | GND |
+| 1 (jaune) | WIFI_TX | TX du module (U0TXD, 3,3 V, direct) → PD0 RXD de l'ATmega |
+| 2 (blanc) | WIFI_RX | RX du module ← PD1 TXD de l'ATmega (5 V admis : 2N7002 et tirage de 1 kΩ à VCC à bord) |
+| 3 (rouge) | +5V | VCC du module (abaisseur ETA3410 à bord, 3 V à 5 V) ; C25 100 µF pour les pointes du Wi-Fi |
+| 4 (noir) | GND | GND |
 
-- Q1/Q2 2N3904 (tout petit NPN : BC547, 2N2222…) en base commune, non inverseurs :
-  broche de l'ESP32 à 0 → le transistor conduit, collecteur à 0 ; broche à 3,3 V →
-  bloqué, collecteur tiré à 5 V. Sans ESP32 (ou pendant son démarrage, broches encore en
-  entrée), les deux sont bloqués : TX au repos et RTS = 1, l'ATmega n'émet pas.
-- GPIO 26, 27, 32 et 33 sont libres sur les deux cartes ; sur la Heltec WiFi Kit 32
-  (V1/V2), l'OLED garde GPIO4 (SDA), GPIO15 (SCL) et GPIO16 (RST) et peut afficher l'état
-  du Wi-Fi et l'adresse IP. Les broches se choisissent dans le micrologiciel de l'ESP32.
+- Branchement direct : le module adapte lui-même son entrée ; sa sortie de 3,3 V dépasse
+  le seuil de l'ATmega (VIH = 3,0 V à 5 V). Pas de RTS/CTS : PD3 et PD4 sont libres, et le
+  canal 2 de l'ATmega a un tampon de réception de 1 Ko.
+- Empreinte : barrette 1 × 4 au pas de 2,54 mm (câble Grove vers Dupont).
+- Le BIOS 2.9 parle au module par le menu **9) Wi-Fi** et par **INT 14h, DX = 1** (COM2).
 
 ## 8259A (U13) : interruptions du clavier et de l'UART
 
@@ -815,12 +808,21 @@ cartes**. Avec l'ATmega :
   démarrage, ce qui couperait la console du terminal.
 - **Menu 8) vitesse de l'UART** : un sous-menu (LCD et terminal) montre la vitesse en
   service et 1) 9600, 2) 19200, 3) 38400, 4) 57600, 5) 115200 ; Échap revient sans rien
-  changer. Le menu l'affiche en ligne 2 (`2) Test RAM 8)19200`). La nouvelle vitesse est annoncée au terminal à l'ancienne
+  changer. Le menu l'affiche en ligne 2 (`2)RAM 8)19200 9)WiFi` ; 115200 s'y écrit `115k2`). La nouvelle vitesse est annoncée au terminal à l'ancienne
   (« UART : 19200 bauds (regler le terminal) »), puis l'ATmega change quand tout ce qui attend
   est parti. Gardée au RESET et à Ctrl+Alt+Suppr (l'ATmega n'est pas remis à zéro ; le
-  micrologiciel version 2 rend sa vitesse par IDENT ; version 1 : 9600 à chaque démarrage) ;
-  mise sous tension = 9600. Au-dessus de 9600, activer le contrôle de flux RTS/CTS du terminal
-  pour coller du texte : le BIOS lit environ 3 Ko/s dans l'ATmega.
+  micrologiciel rend sa vitesse par IDENT) ; mise sous tension = **57600** (micrologiciel
+  version 3, BIOS 2.9 ; 9600 avant). Au-dessus de 9600, activer le contrôle de flux RTS/CTS du
+  terminal pour coller du texte : le BIOS lit environ 3 Ko/s dans l'ATmega.
+- **Menu 9) Wi-Fi** (BIOS 2.9, micrologiciel version 3) : le terminal et le clavier PS/2
+  parlent au module Grove - UART WiFi V2 (commandes AT à 115200 bauds). Les touches vont au
+  module (Entrée = CR LF, retour arrière transmis) ; ce qu'il rend va tel quel au terminal (il
+  renvoie lui-même l'écho : ATE1) et, ligne par ligne, aux lignes 2 et 3 du LCD ; la commande
+  tapée s'affiche en ligne 4 après `>`. Échap revient au menu. Exemples : `AT`, `AT+GMR`,
+  `AT+CWMODE_CUR=1`, `AT+CWJAP_CUR="reseau","mot de passe"`, `AT+CIFSR`.
+- **INT 14h, DX = 1** (COM2) = module Wi-Fi : AH = 01h envoie AL, AH = 02h rend l'octet le plus
+  ancien (attente ~0,5 s, puis AH = 80h), AH = 00h/03h rend l'état (AH bit 0 = octet en
+  attente). Sans ATmega de version 3 : AH = 80h. DX = 0 (COM1) reste le terminal.
 - Info (menu 4) : ligne 3 = diagnostic de l'ATmega `AVR02 L0200 P00 FC0` (version, place libre
   dans l'ATmega, octets abandonnés par le BIOS, drapeaux d'ETAT : C0h = CTS et RTS actifs,
   02h = erreurs de trame).
@@ -1225,6 +1227,13 @@ Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 f
 
 ## État
 
+- 2026-11-23 : **module Wi-Fi Grove - UART WiFi V2** (J13 1 × 4, direct sur l'USART de
+  l'ATmega ; schéma de l'ESP32 retiré). Micrologiciel de l'ATmega en **protocole version 3** :
+  terminal sur un UART logiciel jusqu'à 115200 bauds (capture d'entrée et comparaison de la
+  minuterie 1, interruptions en assembleur), module Wi-Fi sur l'USART (commandes 11h–15h),
+  éprouvé au cycle près sous simavr (`make banc`). **BIOS 2.9** : terminal à 57600 bauds par
+  défaut (115200 au menu 8), menu 9) Wi-Fi, INT 14h DX = 1. Simulateur : canal 2 et module AT
+  simplifié.
 - 2026-11-22 : **image de disque dur ELKS** (`elks/construire-hd.ps1`) : partition MINIX de 32 Mo sur C:, tous les programmes d'ELKS, compilateur C natif C86 (`cpp`, `c86`, `as`, `ld`, `make`, en-têtes, libc86), dcc, Lua, un petit `top`. BIOS 2.8 : le démarrage de C: depuis une partition MINIX retire le disque B: en RAM et donne 507 Ko (nécessaires au compilateur). Simulateur : `hello.c` compilé et exécuté sur le 8088.
 - 2026-11-22 : **BIOS 2.8** : les séquences ANSI (ESC [ ... : déplacements A/B/C/D/H/f/G/d, effacements J/K ; les autres sont avalées) envoyées par INT 10h AH=0Eh sont interprétées dans le tampon d'écran du BIOS au lieu d'être écrites au LCD (elles vont toujours telles quelles au terminal). ELKS recompilé sans pilotes Ethernet (leurs sondages ISA tombaient sur le LCD, le 8253 et U12 par le décodage des ports sur 8 bits). Simulateur : session ELKS au LCD propre, essai des séquences depuis le BASIC.
 - 2026-11-21 : **BIOS 2.7** : terminal par l'ATmega U17 quand il est présent (détecté par IDENT), UART logiciel sinon ; réception au premier plan sans perte (files remplies au fur et à mesure, RTS), émission sans masquer les interruptions, bus SPI partagé protégé (aucune transaction en interruption, carte SD désélectionnée). Simulateur : DOS, CP/M-86 depuis C:, ELKS sans perte (lignes tapées ou collées) ; suites Rust et Python inchangées sans l'ATmega. Pas encore gravé.

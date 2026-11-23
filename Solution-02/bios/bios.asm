@@ -823,6 +823,8 @@ menu:
         je      .led
         cmp     al, '8'
         je      .vitesse
+        cmp     al, '9'
+        je      .wifi
         cmp     al, '5'
         jne     .touche
         xor     byte [es:V_UCON], 1     ; console du DOS sur l'UART : ON <-> OFF
@@ -838,6 +840,8 @@ menu:
 .vitesse:
         call    menu_vitesse            ; 8) sous-menu des vitesses de l'UART (ATmega U17)
         jmp     menu                    ; menu redessine (LCD et terminal)
+.wifi:  call    wifi_menu               ; 9) terminal <-> module Wi-Fi (ATmega U17, canal 2)
+        jmp     menu
 .led:   xor     byte [es:V_LED_OFF], 1  ; 7) animations des DEL en arriere-plan : ON <-> OFF
         call    menu_led
         cmp     byte [es:V_LED_OFF], 0
@@ -2151,7 +2155,7 @@ anim_vumetre:
 ;                12345678901234567890
 %ifdef LANG_EN
 ;                12345678901234567890      (BIOS anglais : make LANG=en)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.8'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.9'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 KB  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2178,7 +2182,7 @@ txt_led:    db  'LED SHOW   Esc=menu '
             db  '                    '
             db  'PS/2 keyboard >     '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.8'
+txt_sys:    db  'SOLUTION-02 BIOS 2.9'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512KB  ROM 256KB'
             db  '8259 absent         '
@@ -2191,12 +2195,22 @@ txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.8 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.9 - VE2CUY 2026', 13, 10
             db  'Menu (PS/2 keyboard): 1) Load DOS  2) Test memory  3) LED Show  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) LED Show ON/OFF'
-            db  '  8) UART speed (ATmega)', 13, 10, 0
-txt_menu2_vit:
-            db  '2) Test RAM 8)'
+            db  '  8) UART speed (ATmega)  9) Wi-Fi (AT)', 13, 10, 0
+txt_wifi_ecran:
+            db  'WIFI AT    Esc=menu '
+            db  '                    '
+            db  '                    '
+            db  '>                   '
+txt_wifi_v3:
+            db  'WIFI                '
+            db  'ATmega firmware v3  '
+            db  'required            '
+            db  '                    '
+txt_wifi_uart:
+            db  13, 10, 'Wi-Fi: AT module (115200 baud). Enter = CR LF, Esc = menu.', 13, 10, 0
 txt_vit_titre:
             db  'UART speed:   '
 txt_vit_ecran:
@@ -2210,7 +2224,7 @@ txt_vit_msg2:
             db  ' baud (set the terminal)', 13, 10, 0
 %else
 ;                12345678901234567890      (BIOS francais, par defaut)
-txt_ouv1:   db  'SOLUTION-02 BIOS 2.8'
+txt_ouv1:   db  'SOLUTION-02 BIOS 2.9'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2237,7 +2251,7 @@ txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 2.8'
+txt_sys:    db  'SOLUTION-02 BIOS 2.9'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2250,12 +2264,22 @@ txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 2.8 - VE2CUY 2026', 13, 10
+            db  13, 10, 'Solution-02 BIOS 2.9 - VE2CUY 2026', 13, 10
             db  'Menu (clavier PS/2) : 1) DOS  2) Test memoire  3) Anim. DEL  4) Info'
             db  '  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF'
-            db  '  8) Vitesse UART (ATmega)', 13, 10, 0
-txt_menu2_vit:
-            db  '2) Test RAM 8)'
+            db  '  8) Vitesse UART (ATmega)  9) Wi-Fi (AT)', 13, 10, 0
+txt_wifi_ecran:
+            db  'WIFI AT  Echap=menu '
+            db  '                    '
+            db  '                    '
+            db  '>                   '
+txt_wifi_v3:
+            db  'WIFI                '
+            db  'Micrologiciel de    '
+            db  "l'ATmega v3 requis  "
+            db  '                    '
+txt_wifi_uart:
+            db  13, 10, 'Wi-Fi : module AT (115200 bauds). Entree = CR LF, Echap = menu.', 13, 10, 0
 txt_vit_titre:
             db  'Vitesse UART: '
 txt_vit_ecran:
@@ -2268,6 +2292,8 @@ txt_vit_msg1:
 txt_vit_msg2:
             db  ' bauds (regler le terminal)', 13, 10, 0
 %endif
+txt_wifi_fin:
+            db  13, 10, 0
 ; fleches (code XT) -> lettre de la sequence ANSI ESC [ x
 fleches_ansi:
             db  48h, 'A', 50h, 'B', 4Dh, 'C', 4Bh, 'D', 0

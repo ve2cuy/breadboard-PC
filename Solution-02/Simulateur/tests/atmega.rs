@@ -169,7 +169,7 @@ fn atmega_ident_etat_lire_ecrire() {
     secs(&mut s, 0.02);
     let id = s.peek(0x600, 5);
     println!("IDENT : {:02X?}", id);
-    assert_eq!(id, vec![0xA5, b'S', b'2', 2, 0], "IDENT");
+    assert_eq!(id, vec![0xA5, b'S', b'2', 3, 3], "IDENT");
     s.uart_send(b"hello");
     secs(&mut s, 0.03);
     let etat = s.peek(0x610, 6);
@@ -184,7 +184,7 @@ fn atmega_ident_etat_lire_ecrire() {
     let tx = s.uart_take();
     println!("terminal : {:?} ; ATmega : {}", String::from_utf8_lossy(&tx), s.atmega_state());
     assert_eq!(fin, 0xAA, "programme termine");
-    assert_eq!(s.peek(0x641, 1)[0], 255, "ECRIRE : place annoncee");
+    assert_eq!(s.peek(0x641, 1)[0], 64, "ECRIRE : place annoncee (64 octets en version 3)");
     assert_eq!(tx, b"WORLD", "emission vers le terminal");
     assert!(s.atmega_state().contains("\"trop_tot\":0"), "le 8088 laisse assez de temps a l'ATmega");
 }
@@ -202,7 +202,7 @@ fn atmega_sans_pause() {
     s.uart_send(b"hello");
     secs(&mut s, 0.05);
     println!("sans pause : IDENT {:02X?}, LIRE {:02X?}, {}", s.peek(0x600, 5), s.peek(0x620, 7), s.atmega_state());
-    assert_eq!(s.peek(0x600, 5), vec![0xA5, b'S', b'2', 2, 0]);
+    assert_eq!(s.peek(0x600, 5), vec![0xA5, b'S', b'2', 3, 3]);
     assert_eq!(&s.peek(0x622, 5)[..], b"hello");
     assert!(s.atmega_state().contains("\"trop_tot\":0"));
 }
@@ -220,13 +220,13 @@ fn atmega_irq4_et_rts() {
     s.uart_send(b"x");
     secs(&mut s, 0.005);
     assert_ne!(s.irq_state()[4] & 0x10, 0, "IR4 : un octet attend");
-    // 8088 arrete : le tampon se remplit, RTS retire a 768, le terminal attend (rien de perdu)
+    // 8088 arrete : le tampon se remplit, RTS retire a 384, le terminal attend (rien de perdu)
     let gros = vec![b'z'; 1100];
     s.uart_send(&gros);
     secs(&mut s, 1.5);
     let st = s.atmega_state();
     println!("apres 1101 octets envoyes : {} ; en attente au terminal : {}", st, s.uart_pending());
-    assert!(st.contains("\"rx_nb\":768") || st.contains("\"rx_nb\":769"), "RTS retire vers 768 : {}", st);
+    assert!(st.contains("\"rx_nb\":384") || st.contains("\"rx_nb\":385"), "RTS retire vers 384 : {}", st);
     assert!(st.contains("\"rts\":false"));
     assert!(s.uart_pending() > 300, "le terminal garde le reste");
     // variante sans ATmega : l'UART logiciel revient (IR4 = RX inverse)

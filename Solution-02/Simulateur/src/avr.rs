@@ -1,16 +1,18 @@
-//! ATmega328P (U17, schema du 2026-11-21) : UART du montage (J5) et esclave SPI du 8088 sur le
-//! bus de la carte SD (SCK = U12 PC5, MOSI = U12 PC6, MISO -> U12 PB4, SS <- U12 PC0), IRQ
-//! (PD2) -> IR4 du 8259, RTS/CTS sur J8.
+//! ATmega328P (U17, schema du 2026-11-23) : deux UART pour le 8088 et esclave SPI sur le bus
+//! de la carte SD (SCK = U12 PC5, MOSI = U12 PC6, MISO -> U12 PB4, SS <- U12 PC0), IRQ (PD2) ->
+//! IR4 du 8259. Canal 1 = terminal (J5, UART logiciel PB0/PB1, RTS/CTS sur J8) ; canal 2 = module
+//! Grove - UART WiFi V2 (J13, USART materiel, 115200 bauds, micrologiciel AT).
 //!
-//! `Proto` reprend a l'identique arduino/atmega_uart/src/protocole.c (memes essais, plus bas).
-//! `Avr` ajoute ce que fait main.c : esclave SPI au niveau des broches (mode 0, poids fort en
-//! premier ; l'octet suivant est charge dans SPDR par l'interruption, ~3 us apres la fin d'un
-//! octet : un 8088 trop rapide recoit le registre a decalage, compte dans `trop_tot`), USART
-//! (decodeur de la ligne du terminal, generateur des trames emises), CTS et vitesse.
+//! `Proto` reprend a l'identique arduino/atmega_uart/src/protocole.c (protocole version 3, memes
+//! essais, plus bas). `Avr` ajoute ce que fait main.c : esclave SPI au niveau des broches (mode 0,
+//! poids fort en premier ; l'octet suivant est charge dans SPDR par l'interruption, ~3 us apres
+//! la fin d'un octet : un 8088 trop rapide recoit le registre a decalage, compte dans
+//! `trop_tot`), UART du terminal (decodeur de la ligne, generateur des trames emises), CTS et
+//! vitesse ; et `Wifi`, un module AT simplifie au bout du canal 2.
 
 use crate::serial::{bit_t, UartRx};
 
-pub const VERSION: u8 = 2;
+pub const VERSION: u8 = 3;
 pub const SIGNATURE: u8 = 0xA5;
 
 pub const IDENT: u8 = 0x00;
@@ -19,6 +21,8 @@ pub const LIRE: u8 = 0x02;
 pub const ECRIRE: u8 = 0x03;
 pub const VITESSE: u8 = 0x04;
 pub const VIDER: u8 = 0x05;
+/// + ETAT ... VIDER : canal 2 (Wi-Fi).
+pub const CANAL2: u8 = 0x10;
 
 pub const ETAT_RX_PLEIN: u8 = 0x01;
 pub const ETAT_UART_ERR: u8 = 0x02;
@@ -28,13 +32,18 @@ pub const ETAT_RTS: u8 = 0x80;
 
 pub const V_NB: u8 = 7;
 pub const V_AUCUNE: u8 = 0xFF;
-/// Vitesses de VITESSE (0 = 9600 au demarrage).
+/// Vitesses de VITESSE.
 pub const VITESSES: [u64; 7] = [9600, 19200, 38400, 57600, 115200, 4800, 2400];
+/// Vitesses a la mise sous tension : terminal 57600, module Wi-Fi 115200.
+pub const V1_DEFAUT: u8 = 3;
+pub const V2_DEFAUT: u8 = 4;
 
-pub const RX_TAILLE: usize = 1024;
-pub const TX_TAILLE: usize = 512;
-pub const RX_HAUT: usize = 768;
-pub const RX_BAS: usize = 256;
+pub const RX_TAILLE: usize = 512;
+pub const TX_TAILLE: usize = 64;
+pub const RX_HAUT: usize = 384;
+pub const RX_BAS: usize = 128;
+pub const RX2_TAILLE: usize = 1024;
+pub const TX2_TAILLE: usize = 128;
 
 /// Latence de l'interruption SPI de l'ATmega (entree + prologue + ecriture de SPDR) : ~3 us.
 pub const LATENCE_SPI: u64 = 16;
@@ -52,15 +61,9 @@ enum E {
     Ignore,
 }
 
-/// Protocole et tampons (protocole.c).
+/// Tampons d'un canal.
 #[derive(Clone)]
-pub struct Proto {
-    pub irq: bool,
-    pub rts: bool,
-    pub cts: bool,
-    pub vitesse: u8,
-    /// Vitesse en service (code de VITESSES), rendue par IDENT depuis la version 2.
-    pub vit_courante: u8,
+struct Canal {
     rx: Vec<u8>,
     tx: Vec<u8>,
     rx_tete: usize,
@@ -68,6 +71,66 @@ pub struct Proto {
     tx_tete: usize,
     tx_nb: usize,
     drapeaux: u8,
+}
+
+impl Canal {
+    fn new(rx: usize, tx: usize) -> Self {
+        Canal { rx: vec![0; rx], tx: vec![0; tx], rx_tete: 0, rx_nb: 0, tx_tete: 0, tx_nb: 0, drapeaux: 0 }
+    }
+    fn vider(&mut self) {
+        self.rx_tete = 0;
+        self.rx_nb = 0;
+        self.tx_tete = 0;
+        self.tx_nb = 0;
+        self.drapeaux = 0;
+    }
+    fn recu(&mut self, octet: u8, erreur: bool) {
+        if erreur {
+            self.drapeaux |= ETAT_UART_ERR;
+        }
+        let n = self.rx.len();
+        if self.rx_nb < n {
+            self.rx[(self.rx_tete + self.rx_nb) & (n - 1)] = octet;
+            self.rx_nb += 1;
+        } else {
+            self.drapeaux |= ETAT_RX_PLEIN;
+        }
+    }
+    #[cfg(test)]
+    fn a_emettre_rx(&mut self) -> Option<u8> {
+        if self.rx_nb == 0 {
+            return None;
+        }
+        let b = self.rx[self.rx_tete];
+        self.rx_tete = (self.rx_tete + 1) & (self.rx.len() - 1);
+        self.rx_nb -= 1;
+        Some(b)
+    }
+    fn a_emettre(&mut self) -> Option<u8> {
+        if self.tx_nb == 0 {
+            return None;
+        }
+        let b = self.tx[self.tx_tete];
+        self.tx_tete = (self.tx_tete + 1) & (self.tx.len() - 1);
+        self.tx_nb -= 1;
+        Some(b)
+    }
+}
+
+/// Protocole et tampons (protocole.c).
+#[derive(Clone)]
+pub struct Proto {
+    pub irq: bool,
+    pub rts: bool,
+    pub cts: bool,
+    /// Canal 1 : vitesse demandee (V_AUCUNE sinon) et vitesse en service.
+    pub vitesse: u8,
+    pub vit_courante: u8,
+    /// Canal 2 : idem.
+    pub vitesse2: u8,
+    pub vit_courante2: u8,
+    c: [Canal; 2],
+    can: usize,
     etat: E,
     k: u8,
     n_lire: u8,
@@ -90,14 +153,11 @@ impl Proto {
             rts: true,
             cts: true,
             vitesse: V_AUCUNE,
-            vit_courante: 0,
-            rx: vec![0; RX_TAILLE],
-            tx: vec![0; TX_TAILLE],
-            rx_tete: 0,
-            rx_nb: 0,
-            tx_tete: 0,
-            tx_nb: 0,
-            drapeaux: 0,
+            vit_courante: V1_DEFAUT,
+            vitesse2: V_AUCUNE,
+            vit_courante2: V2_DEFAUT,
+            c: [Canal::new(RX_TAILLE, TX_TAILLE), Canal::new(RX2_TAILLE, TX2_TAILLE)],
+            can: 0,
             etat: E::Cmd,
             k: 0,
             n_lire: 0,
@@ -106,29 +166,34 @@ impl Proto {
             en_transaction: false,
             instantane: [0; 5],
         };
-        p.vider();
+        p.vider(0);
+        p.vider(1);
         p
     }
 
     fn maj_irq(&mut self) {
-        self.irq = self.rx_nb != 0 && !self.en_transaction;
+        self.irq = self.c[0].rx_nb != 0 && !self.en_transaction;
     }
 
-    fn vider(&mut self) {
-        self.rx_tete = 0;
-        self.rx_nb = 0;
-        self.tx_tete = 0;
-        self.tx_nb = 0;
-        self.drapeaux = 0;
-        self.rts = true;
+    fn vider(&mut self, can: usize) {
+        self.c[can].vider();
+        if can == 0 {
+            self.rts = true;
+        }
         self.maj_irq();
     }
 
     pub fn rx_nb(&self) -> usize {
-        self.rx_nb
+        self.c[0].rx_nb
     }
     pub fn tx_nb(&self) -> usize {
-        self.tx_nb
+        self.c[0].tx_nb
+    }
+    pub fn rx2_nb(&self) -> usize {
+        self.c[1].rx_nb
+    }
+    pub fn tx2_nb(&self) -> usize {
+        self.c[1].tx_nb
     }
 
     pub fn ss_debut(&mut self) {
@@ -147,10 +212,11 @@ impl Proto {
     }
 
     fn charger_donnee(&mut self) -> u8 {
-        if self.lus < self.n_lire && self.rx_nb != 0 {
+        let c = &self.c[self.can];
+        if self.lus < self.n_lire && c.rx_nb != 0 {
             self.lus += 1;
             self.donnee_chargee = true;
-            return self.rx[self.rx_tete];
+            return c.rx[c.rx_tete];
         }
         0
     }
@@ -158,55 +224,66 @@ impl Proto {
     pub fn spi(&mut self, recu: u8) -> u8 {
         if self.donnee_chargee {
             self.donnee_chargee = false;
-            self.rx_tete = (self.rx_tete + 1) & (RX_TAILLE - 1);
-            self.rx_nb -= 1;
-            if self.rx_nb <= RX_BAS {
-                self.rts = true;
+            let c = &mut self.c[self.can];
+            c.rx_tete = (c.rx_tete + 1) & (c.rx.len() - 1);
+            c.rx_nb -= 1;
+            if self.can == 0 {
+                if self.c[0].rx_nb <= RX_BAS {
+                    self.rts = true;
+                }
+                self.maj_irq();
             }
         }
         match self.etat {
             E::Cmd => {
                 self.k = 0;
-                match recu {
-                    IDENT => {
-                        self.etat = E::Ident;
-                        b'S'
-                    }
+                if recu == IDENT {
+                    self.etat = E::Ident;
+                    return b'S';
+                }
+                let op = recu & !CANAL2;
+                if !(ETAT..=VIDER).contains(&op) {
+                    self.etat = E::Ignore;
+                    return 0;
+                }
+                self.can = if recu & CANAL2 != 0 { 1 } else { 0 };
+                match op {
                     ETAT => {
-                        let libre = TX_TAILLE - self.tx_nb;
+                        let c = &self.c[self.can];
+                        let libre = c.tx.len() - c.tx_nb;
+                        let lignes = if self.can == 0 {
+                            (if self.cts { ETAT_CTS } else { 0 }) | if self.rts { ETAT_RTS } else { 0 }
+                        } else {
+                            ETAT_CTS | ETAT_RTS
+                        };
                         self.instantane = [
-                            self.rx_nb as u8,
-                            (self.rx_nb >> 8) as u8,
+                            c.rx_nb as u8,
+                            (c.rx_nb >> 8) as u8,
                             libre as u8,
                             (libre >> 8) as u8,
-                            self.drapeaux
-                                | if self.cts { ETAT_CTS } else { 0 }
-                                | if self.rts { ETAT_RTS } else { 0 },
+                            c.drapeaux | lignes,
                         ];
-                        self.drapeaux = 0;
+                        self.c[self.can].drapeaux = 0;
                         self.etat = E::Etat;
                         self.instantane[0]
                     }
                     LIRE => {
-                        self.n_lire = self.rx_nb.min(255) as u8;
+                        self.n_lire = self.c[self.can].rx_nb.min(255) as u8;
                         self.lus = 0;
                         self.etat = E::Lire;
                         self.n_lire
                     }
                     ECRIRE => {
                         self.etat = E::EcrireF;
-                        (TX_TAILLE - self.tx_nb).min(255) as u8
+                        let c = &self.c[self.can];
+                        (c.tx.len() - c.tx_nb).min(255) as u8
                     }
                     VITESSE => {
                         self.etat = E::Vitesse;
                         0
                     }
-                    VIDER => {
-                        self.etat = E::Vider;
-                        0
-                    }
                     _ => {
-                        self.etat = E::Ignore;
+                        self.etat = E::Vider;
                         0
                     }
                 }
@@ -217,6 +294,7 @@ impl Proto {
                     1 => b'2',
                     2 => VERSION,
                     3 => self.vit_courante,
+                    4 => self.vit_courante2,
                     _ => 0,
                 }
             }
@@ -234,24 +312,30 @@ impl Proto {
                 0
             }
             E::Ecrire => {
-                if self.tx_nb < TX_TAILLE {
-                    self.tx[(self.tx_tete + self.tx_nb) & (TX_TAILLE - 1)] = recu;
-                    self.tx_nb += 1;
+                let c = &mut self.c[self.can];
+                let n = c.tx.len();
+                if c.tx_nb < n {
+                    c.tx[(c.tx_tete + c.tx_nb) & (n - 1)] = recu;
+                    c.tx_nb += 1;
                 } else {
-                    self.drapeaux |= ETAT_TX_PLEIN;
+                    c.drapeaux |= ETAT_TX_PLEIN;
                 }
                 0
             }
             E::Vitesse => {
                 if recu < V_NB {
-                    self.vitesse = recu;
+                    if self.can == 0 {
+                        self.vitesse = recu;
+                    } else {
+                        self.vitesse2 = recu;
+                    }
                 }
                 self.etat = E::Ignore;
                 0
             }
             E::Vider => {
                 if recu == SIGNATURE {
-                    self.vider();
+                    self.vider(self.can);
                 }
                 self.etat = E::Ignore;
                 0
@@ -260,30 +344,105 @@ impl Proto {
         }
     }
 
+    /// Canal 1 (terminal).
     pub fn uart_recu(&mut self, octet: u8, erreur: bool) {
-        if erreur {
-            self.drapeaux |= ETAT_UART_ERR;
-        }
-        if self.rx_nb < RX_TAILLE {
-            self.rx[(self.rx_tete + self.rx_nb) & (RX_TAILLE - 1)] = octet;
-            self.rx_nb += 1;
-            if self.rx_nb >= RX_HAUT {
-                self.rts = false;
-            }
-        } else {
-            self.drapeaux |= ETAT_RX_PLEIN;
+        self.c[0].recu(octet, erreur);
+        if self.c[0].rx_nb >= RX_HAUT {
+            self.rts = false;
         }
         self.maj_irq();
     }
 
     pub fn uart_a_emettre(&mut self) -> Option<u8> {
-        if self.tx_nb == 0 {
-            return None;
+        self.c[0].a_emettre()
+    }
+
+    /// Canal 2 (Wi-Fi).
+    pub fn uart2_recu(&mut self, octet: u8, erreur: bool) {
+        self.c[1].recu(octet, erreur);
+    }
+
+    pub fn uart2_a_emettre(&mut self) -> Option<u8> {
+        self.c[1].a_emettre()
+    }
+}
+
+/// Module Grove - UART WiFi V2 (ESP8285, micrologiciel AT) simplifie : echo (ATE1 par defaut),
+/// une ligne par CR LF, quelques commandes. Sans reseau : CWJAP repond comme un point d'acces
+/// trouve, CIPSTART refuse.
+#[derive(Clone)]
+pub struct Wifi {
+    ligne: Vec<u8>,
+    echo: bool,
+    /// Octets a rendre a l'ATmega.
+    pub sortie: std::collections::VecDeque<u8>,
+    /// Lignes recues (mise au point, essais).
+    pub journal: Vec<String>,
+}
+
+impl Default for Wifi {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Wifi {
+    pub fn new() -> Self {
+        let mut w = Wifi { ligne: Vec::new(), echo: true, sortie: Default::default(), journal: Vec::new() };
+        w.dire("\r\nready\r\n");
+        w
+    }
+
+    fn dire(&mut self, s: &str) {
+        self.sortie.extend(s.bytes());
+    }
+
+    /// Octet recu du ATmega (canal 2).
+    pub fn recu(&mut self, b: u8) {
+        if self.echo {
+            self.sortie.push_back(b);
         }
-        let b = self.tx[self.tx_tete];
-        self.tx_tete = (self.tx_tete + 1) & (TX_TAILLE - 1);
-        self.tx_nb -= 1;
-        Some(b)
+        if b == b'\n' {
+            let l = String::from_utf8_lossy(&self.ligne).trim_end_matches('\r').to_string();
+            self.ligne.clear();
+            self.commande(&l);
+        } else if self.ligne.len() < 256 {
+            self.ligne.push(b);
+        }
+    }
+
+    fn commande(&mut self, l: &str) {
+        if self.journal.len() < 256 {
+            self.journal.push(l.to_string());
+        }
+        let u = l.to_ascii_uppercase();
+        if u.is_empty() {
+            return;
+        }
+        let r: String = if u == "AT" {
+            "\r\nOK\r\n".into()
+        } else if u == "ATE0" {
+            self.echo = false;
+            "\r\nOK\r\n".into()
+        } else if u == "ATE1" {
+            self.echo = true;
+            "\r\nOK\r\n".into()
+        } else if u == "AT+RST" {
+            "\r\nOK\r\n\r\nready\r\n".into()
+        } else if u == "AT+GMR" {
+            "AT version:0.40.0.0(simulateur)\r\nSDK version:1.1.0\r\n\r\nOK\r\n".into()
+        } else if u.starts_with("AT+CWMODE") {
+            "\r\nOK\r\n".into()
+        } else if u.starts_with("AT+CWJAP") && u.contains('=') {
+            "WIFI CONNECTED\r\nWIFI GOT IP\r\n\r\nOK\r\n".into()
+        } else if u == "AT+CIFSR" {
+            "+CIFSR:STAIP,\"192.168.1.50\"\r\n+CIFSR:STAMAC,\"18:fe:34:00:00:02\"\r\n\r\nOK\r\n".into()
+        } else if u.starts_with("AT+CIPSTART") {
+            "\r\nERROR\r\nCLOSED\r\n".into()
+        } else {
+            "\r\nERROR\r\n".into()
+        };
+        self.dire(&r);
     }
 }
 
@@ -312,6 +471,16 @@ pub struct Avr {
     /// Journal de mise au point : (instant, commande, octets de la transaction).
     pub journal: Vec<(u64, u8, u32)>,
     octet_tr: u32,
+    /// Canal 2 : USART materiel -> module Wi-Fi (115200 bauds au demarrage).
+    pub baud2: u64,
+    pub wifi: Wifi,
+    /// Octets en route vers le module : (fin de la trame, octet, vitesse de l'ATmega).
+    vers_wifi: std::collections::VecDeque<(u64, u8, u64)>,
+    fin_tx2: u64,
+    /// Fin de la prochaine trame du module vers l'ATmega.
+    proch_rx2: u64,
+    pub emis2: u64,
+    pub recus2: u64,
 }
 
 impl Default for Avr {
@@ -330,8 +499,12 @@ impl Avr {
             inp: 0,
             cur: SIGNATURE,
             pend: Some((0, SIGNATURE)),
-            baud: 9600,
-            gen: UartRx::new(),
+            baud: VITESSES[V1_DEFAUT as usize],
+            gen: {
+                let mut g = UartRx::new();
+                g.baud = VITESSES[V1_DEFAUT as usize];
+                g
+            },
             vers_terminal: std::collections::VecDeque::new(),
             fin_tx: 0,
             octets_spi: 0,
@@ -340,6 +513,51 @@ impl Avr {
             emis: 0,
             journal: Vec::new(),
             octet_tr: 0,
+            baud2: VITESSES[V2_DEFAUT as usize],
+            wifi: Wifi::new(),
+            vers_wifi: std::collections::VecDeque::new(),
+            fin_tx2: 0,
+            proch_rx2: 0,
+            emis2: 0,
+            recus2: 0,
+        }
+    }
+
+    /// Canal 2 jusqu'a l'instant t : USART <-> module (115200 bauds, sans controle de flux).
+    /// A une autre vitesse que 115200, le module recoit et rend des octets faux.
+    fn service2(&mut self, t: u64) {
+        const MODULE: u64 = 115200;
+        if self.p.vitesse2 != V_AUCUNE && self.p.tx2_nb() == 0 && self.fin_tx2 <= t {
+            self.baud2 = VITESSES[self.p.vitesse2 as usize];
+            self.p.vit_courante2 = self.p.vitesse2;
+            self.p.vitesse2 = V_AUCUNE;
+        }
+        while self.fin_tx2 <= t {
+            let Some(b) = self.p.uart2_a_emettre() else { break };
+            self.fin_tx2 = self.fin_tx2.max(t) + bit_t(10, self.baud2);
+            self.vers_wifi.push_back((self.fin_tx2, b, self.baud2));
+            self.emis2 += 1;
+        }
+        while let Some(&(f, b, baud)) = self.vers_wifi.front() {
+            if f > t {
+                break;
+            }
+            self.vers_wifi.pop_front();
+            self.wifi.recu(if baud == MODULE { b } else { b ^ 0x5A });
+        }
+        if self.wifi.sortie.is_empty() {
+            self.proch_rx2 = self.proch_rx2.max(t);
+        } else {
+            if self.proch_rx2 == 0 {
+                self.proch_rx2 = t + bit_t(10, MODULE);
+            }
+            while self.proch_rx2 <= t {
+                let Some(b) = self.wifi.sortie.pop_front() else { break };
+                let faux = self.baud2 != MODULE;
+                self.p.uart2_recu(if faux { b ^ 0x5A } else { b }, faux);
+                self.recus2 += 1;
+                self.proch_rx2 += bit_t(10, MODULE);
+            }
         }
     }
 
@@ -433,6 +651,7 @@ impl Avr {
 
     /// Ce que font la boucle principale et les interruptions de l'USART jusqu'a l'instant t.
     pub fn service(&mut self, t: u64) {
+        self.service2(t);
         // emission : un octet a la fois, seulement si le terminal accepte (CTS)
         self.gen.line(t);
         if self.gen.pending() == 0 {
@@ -480,6 +699,16 @@ impl Avr {
         }
         if let Some(&(f, _, _)) = self.vers_terminal.front() {
             n = n.min(f.max(t + 1));
+        }
+        // canal 2 : prochaine trame vers le module, ou du module
+        if let Some(&(f, _, _)) = self.vers_wifi.front() {
+            n = n.min(f.max(t + 1));
+        }
+        if self.p.tx2_nb() != 0 {
+            n = n.min(self.fin_tx2.max(t + 1));
+        }
+        if !self.wifi.sortie.is_empty() {
+            n = n.min(self.proch_rx2.max(t + 1));
         }
         n
     }
@@ -543,9 +772,14 @@ mod essais {
     #[test]
     fn ident() {
         let mut m = Maitre::new();
-        assert_eq!(m.transaction(&[IDENT, 0, 0, 0, 0, 0]), vec![0xA5, b'S', b'2', VERSION, 0, 0]);
+        assert_eq!(
+            m.transaction(&[IDENT, 0, 0, 0, 0, 0, 0]),
+            vec![0xA5, b'S', b'2', VERSION, V1_DEFAUT, V2_DEFAUT, 0]
+        );
         m.p.vit_courante = 4;
-        assert_eq!(m.transaction(&[IDENT, 0, 0, 0, 0])[4], 4, "IDENT : vitesse courante");
+        m.p.vit_courante2 = 0;
+        let r = m.transaction(&[IDENT, 0, 0, 0, 0, 0]);
+        assert_eq!((r[4], r[5]), (4, 0), "IDENT : vitesses courantes");
     }
 
     #[test]
@@ -585,7 +819,7 @@ mod essais {
     #[test]
     fn ecrire_et_plein() {
         let mut m = Maitre::new();
-        assert_eq!(m.ecrire(b"hello"), 255);
+        assert_eq!(m.ecrire(b"hello") as usize, TX_TAILLE.min(255));
         let e: Vec<u8> = std::iter::from_fn(|| m.p.uart_a_emettre()).collect();
         assert_eq!(e, b"hello");
         let gros = vec![b'z'; TX_TAILLE + 10];
@@ -663,6 +897,74 @@ mod essais {
         assert_eq!(m.transaction(&[0x7E, 1, 2, 3]), vec![0xA5, 0, 0, 0]);
         m.p.uart_recu(b'e', true);
         assert!(m.etat().2 & ETAT_UART_ERR != 0);
+    }
+
+    /// Canal 2 (Wi-Fi) : independant du canal 1 (pas d'IRQ, pas de RTS), commandes 11h-15h.
+    #[test]
+    fn canal2() {
+        let mut m = Maitre::new();
+        m.p.uart2_recu(b'O', false);
+        m.p.uart2_recu(b'K', false);
+        assert!(!m.p.irq && m.p.rx_nb() == 0 && m.p.rx2_nb() == 2);
+        let r = m.transaction(&[CANAL2 | ETAT, 0, 0, 0, 0, 0]);
+        assert_eq!(&r[1..], &[2, 0, TX2_TAILLE as u8, 0, ETAT_CTS | ETAT_RTS]);
+        m.recevoir(b"t");
+        assert_eq!(m.transaction(&[CANAL2 | LIRE, 0, 0, 0, 0]), vec![0xA5, 2, b'O', b'K', 0]);
+        assert!(m.p.rx2_nb() == 0 && m.p.rx_nb() == 1 && m.p.irq);
+        m.transaction(&[CANAL2 | ECRIRE, 0, b'A', b'T', 13, 10]);
+        assert_eq!(m.p.tx2_nb(), 4);
+        assert_eq!(m.p.tx_nb(), 0);
+        let e: Vec<u8> = std::iter::from_fn(|| m.p.uart2_a_emettre()).collect();
+        assert_eq!(e, b"AT\r\n");
+        m.transaction(&[CANAL2 | VITESSE, 0]);
+        assert_eq!((m.p.vitesse2, m.p.vitesse), (0, V_AUCUNE));
+        for i in 0..RX2_TAILLE + 2 {
+            m.p.uart2_recu(i as u8, false);
+        }
+        assert!(m.p.rx2_nb() == RX2_TAILLE && m.p.rts);
+        assert!(m.transaction(&[CANAL2 | ETAT, 0, 0, 0, 0, 0])[5] & ETAT_RX_PLEIN != 0);
+        m.transaction(&[CANAL2 | VIDER, SIGNATURE]);
+        assert!(m.p.rx2_nb() == 0 && m.p.rx_nb() == 1);
+        assert_eq!(m.transaction(&[0x16, 0]), vec![0xA5, 0]);
+    }
+
+    /// Module AT : echo, OK, ATE0, ERROR.
+    #[test]
+    fn module_wifi() {
+        let mut w = Wifi::new();
+        w.sortie.clear();
+        for &b in b"AT\r\n" {
+            w.recu(b);
+        }
+        let r: Vec<u8> = w.sortie.drain(..).collect();
+        assert_eq!(r, b"AT\r\n\r\nOK\r\n");
+        for &b in b"ATE0\r\nAT+XYZ\r\n" {
+            w.recu(b);
+        }
+        let r: Vec<u8> = w.sortie.drain(..).collect();
+        assert_eq!(String::from_utf8_lossy(&r), "ATE0\r\n\r\nOK\r\n\r\nERROR\r\n");
+    }
+
+    /// AT au bout du canal 2, a travers l'Avr : 115200 bauds, octets remis au rythme du module.
+    #[test]
+    fn avr_vers_module() {
+        let mut a = Avr::new();
+        a.wifi.sortie.clear();          // ("ready" du module)
+        let mut m = Maitre { p: std::mem::take(&mut a.p), prepare: SIGNATURE };
+        m.p.c[1].vider();
+        m.transaction(&[CANAL2 | ECRIRE, 0, b'A', b'T', 13, 10]);
+        a.p = m.p;
+        let mut t = 2_000_000u64;
+        for _ in 0..200 {
+            t += 100;
+            a.service(t);
+        }
+        assert_eq!(a.wifi.journal, vec!["AT".to_string()]);
+        let mut v = Vec::new();
+        while let Some(b) = a.p.c[1].a_emettre_rx() {
+            v.push(b);
+        }
+        assert_eq!(String::from_utf8_lossy(&v), "AT\r\n\r\nOK\r\n");
     }
 
     /// Esclave SPI au niveau des broches : 8088 qui laisse assez de temps entre les octets,

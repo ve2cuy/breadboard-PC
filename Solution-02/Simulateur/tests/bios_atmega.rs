@@ -1,4 +1,4 @@
-//! BIOS 2.8 sur la carte avec l'ATmega328P U17 (schema du 2026-11-21) : terminal par
+//! BIOS 2.9 sur la carte avec l'ATmega328P U17 (schema du 2026-11-23) : terminal par
 //! l'ATmega (esclave SPI du 8088), carte SD sur le meme bus.
 //! cargo test --release --test bios_atmega -- --nocapture
 
@@ -80,14 +80,14 @@ fn menu_et_info_par_le_terminal() {
     show(&s, "menu");
     let tx = texte_uart(&mut s);
     println!("UART ({} octets) : {}", tx.len(), &tx[..tx.len().min(300)]);
-    assert!(tx.contains("Solution-02 BIOS 2.8"), "banniere du BIOS 2.8 absente du terminal");
+    assert!(tx.contains("Solution-02 BIOS 2.9"), "banniere du BIOS 2.9 absente du terminal");
     assert!(tx.contains("6) BASIC"), "menu absent du terminal");
     s.uart_send(b"4");
     secs(&mut s, 1.0);
     show(&s, "Info (touche 4 au terminal)");
     let l = s.lcd_lines();
-    assert!(l[0].contains("BIOS 2.8"), "Info : version");
-    assert_eq!(l[2], "AVR02 L0200 P00 FC0 ", "Info : diagnostic de l'ATmega");
+    assert!(l[0].contains("BIOS 2.9"), "Info : version");
+    assert_eq!(l[2], "AVR03 L0040 P00 FC0 ", "Info : diagnostic de l'ATmega (version 3, 64 octets libres)");
     println!("ATmega : {}", s.atmega_state());
     assert!(s.atmega_state().contains("\"trop_tot\":0"));
 }
@@ -221,27 +221,27 @@ fn elks_sans_perte() {
     assert_eq!(fautes, 0, "caracteres perdus ou faux sous ELKS");
 }
 
-/// Menu 8) : sous-menu des vitesses de l'UART. Echap : rien ne change ; 2) 19200 au terminal
-/// (annonce a l'ancienne vitesse, le terminal suit), Info lisible a 19200 ; RESET : la vitesse
-/// est gardee (IDENT v2) ; 5) 115200 bauds.
+/// Menu 8) : sous-menu des vitesses de l'UART (57600 a la mise sous tension). Echap : rien ne
+/// change ; 2) 19200 au terminal (annonce a l'ancienne vitesse, le terminal suit), Info lisible a
+/// 19200 ; RESET : la vitesse est gardee (IDENT) ; 5) 115200 bauds.
 #[test]
 fn vitesse_uart_menu_8() {
     let mut s = carte_avec_atmega();
     secs(&mut s, 6.0);
     texte_uart(&mut s);
-    assert_eq!(s.lcd_lines()[1], "2) Test RAM 8)9600  ");
+    assert_eq!(s.lcd_lines()[1], "2)RAM 8)57600 9)WiFi");
     s.uart_send(b"8");
     secs(&mut s, 1.0);
     show(&s, "sous-menu des vitesses");
     let l = s.lcd_lines();
-    assert_eq!(l[0], "Vitesse UART: 9600  ");
+    assert_eq!(l[0], "Vitesse UART: 57600 ");
     assert_eq!(l[1], "1) 9600     2) 19200");
     assert_eq!(l[3], "5) 115200 Echap=menu");
     assert!(net(&texte_uart(&mut s)).contains("3) 38400    4) 57600"), "sous-menu au terminal");
     s.uart_send(b"\x1b"); // Echap : retour, vitesse inchangee
     secs(&mut s, 1.0);
-    assert_eq!(s.lcd_lines()[1], "2) Test RAM 8)9600  ");
-    assert!(s.atmega_state().contains("\"baud\":9600"));
+    assert_eq!(s.lcd_lines()[1], "2)RAM 8)57600 9)WiFi");
+    assert!(s.atmega_state().contains("\"baud\":57600"));
     texte_uart(&mut s);
     s.uart_send(b"8");
     secs(&mut s, 1.0);
@@ -250,12 +250,12 @@ fn vitesse_uart_menu_8() {
     let t = texte_uart(&mut s);
     println!("touche 8 : {:?}", net(&t));
     assert!(t.contains("UART : 19200 bauds"), "annonce de la vitesse");
-    assert_eq!(s.lcd_lines()[1], "2) Test RAM 8)19200 ");
+    assert_eq!(s.lcd_lines()[1], "2)RAM 8)19200 9)WiFi");
     assert!(s.atmega_state().contains("\"baud\":19200"));
     s.uart_send(b"4");
     secs(&mut s, 1.0);
     let t = net(&texte_uart(&mut s));
-    assert!(t.contains("SOLUTION-02 BIOS 2.8"), "Info lisible a 19200 bauds : {:?}", t);
+    assert!(t.contains("SOLUTION-02 BIOS 2.9"), "Info lisible a 19200 bauds : {:?}", t);
     s.uart_send(b"x");
     secs(&mut s, 0.5);
     // RESET : l'ATmega garde sa vitesse, le BIOS la relit (IDENT, version 2)
@@ -266,28 +266,28 @@ fn vitesse_uart_menu_8() {
     secs(&mut s, 6.0);
     let t = texte_uart(&mut s);
     show(&s, "apres RESET");
-    assert!(t.contains("Solution-02 BIOS 2.8"), "banniere a 19200 apres RESET");
-    assert_eq!(s.lcd_lines()[1], "2) Test RAM 8)19200 ");
+    assert!(t.contains("Solution-02 BIOS 2.9"), "banniere a 19200 apres RESET");
+    assert_eq!(s.lcd_lines()[1], "2)RAM 8)19200 9)WiFi");
     s.uart_send(b"8");
     secs(&mut s, 1.0);
     assert_eq!(s.lcd_lines()[0], "Vitesse UART: 19200 ");
     s.uart_send(b"5");
     secs(&mut s, 1.0);
     show(&s, "115200");
-    assert_eq!(s.lcd_lines()[1], "2) Test RAM 8)115200");
+    assert_eq!(s.lcd_lines()[1], "2)RAM 8)115k2 9)WiFi");
     texte_uart(&mut s);
     s.uart_send(b"4");
     secs(&mut s, 1.0);
     let t = net(&texte_uart(&mut s));
     println!("ATmega : {}", s.atmega_state());
     println!("a 115200 : {:?} ; LCD {:?} ; journal {}", t, s.lcd_lines(), s.take_log());
-    assert!(t.contains("SOLUTION-02 BIOS 2.8"), "Info lisible a 115200 bauds : {:?}", t);
+    assert!(t.contains("SOLUTION-02 BIOS 2.9"), "Info lisible a 115200 bauds : {:?}", t);
     assert!(s.atmega_state().contains("\"baud\":115200"));
 }
 
 /// ELKS (image sans Ethernet : ses sondes en 300h/330h/240h tombaient sur le LCD, U12 et la
 /// 8253) : les sequences ANSI envoyees au terminal (clear, edition de ligne) sont interpretees par
-/// le BIOS 2.8 au lieu d'apparaitre au LCD ; aucune commande parasite au LCD.
+/// le BIOS 2.9 au lieu d'apparaitre au LCD ; aucune commande parasite au LCD.
 #[test]
 fn elks_lcd_sans_sequences() {
     let Some(img) = image("ELKS-0.9.2/fd360-minix-s02.img") else {
@@ -359,4 +359,39 @@ fn ansi_au_lcd_depuis_le_basic() {
     for x in &l {
         assert!(!x.contains('[') && !x.contains('\x1b'), "sequence au LCD : {:?}", x);
     }
+}
+
+/// Menu 9) : le terminal parle au module Wi-Fi (canal 2 de l'ATmega, commandes AT a 115200
+/// bauds) : "AT" Entree -> le module recoit "AT", sa reponse (echo et OK) revient au terminal et
+/// au LCD ; Echap ramene au menu. Puis INT 14h DX = 1 depuis le BASIC n'est pas accessible :
+/// on verifie seulement l'etat de l'ATmega (115200 bauds au canal 2).
+#[test]
+fn wifi_menu_9() {
+    let mut s = carte_avec_atmega();
+    secs(&mut s, 6.0);
+    texte_uart(&mut s);
+    s.uart_send(b"9");
+    secs(&mut s, 1.0);
+    show(&s, "menu 9");
+    assert_eq!(s.lcd_lines()[0], "WIFI AT  Echap=menu ");
+    let t = texte_uart(&mut s);
+    assert!(t.contains("module AT (115200 bauds)"), "annonce au terminal : {:?}", t);
+    s.uart_send(b"AT\r");
+    secs(&mut s, 1.0);
+    let t = texte_uart(&mut s);
+    show(&s, "apres AT");
+    println!("terminal : {:?} ; module : {:?}", t, s.wifi_journal());
+    assert!(s.wifi_journal().lines().any(|l| l == "AT"), "le module a recu AT");
+    assert!(t.contains("AT\r\n\r\nOK\r\n"), "reponse du module au terminal : {:?}", t);
+    let l = s.lcd_lines();
+    assert!(l[1].starts_with("AT") && l[2].starts_with("OK"), "LCD : {:?}", l);
+    s.uart_send(b"AT+GMR\r");
+    secs(&mut s, 1.0);
+    let t = texte_uart(&mut s);
+    assert!(t.contains("AT version:"), "AT+GMR : {:?}", t);
+    s.uart_send(b"\x1b");
+    secs(&mut s, 1.5);
+    show(&s, "retour au menu");
+    assert_eq!(s.lcd_lines()[1], "2)RAM 8)57600 9)WiFi");
+    assert!(s.atmega_state().contains("\"baud2\":115200"));
 }
