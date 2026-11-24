@@ -27,11 +27,14 @@ pub struct Ps2Kbd {
     pub frames: u64,
     pub lost: u64,
     pub sent: VecDeque<u8>,
+    /// Demi-periode de l'horloge (cycles du 8088) : PS2_HALF (10 kHz) par defaut ; les claviers
+    /// vont jusqu'a 16,7 kHz (Sim::kbd_khz).
+    pub half: u64,
 }
 
 impl Ps2Kbd {
     pub fn new() -> Self {
-        Ps2Kbd { queue: VecDeque::new(), frame: None, ready_at: 0, frames: 0, lost: 0, sent: VecDeque::new() }
+        Ps2Kbd { queue: VecDeque::new(), frame: None, ready_at: 0, frames: 0, lost: 0, sent: VecDeque::new(), half: PS2_HALF }
     }
 
     pub fn push(&mut self, bytes: &[u8], now: u64) {
@@ -53,7 +56,7 @@ impl Ps2Kbd {
     fn advance(&mut self, now: u64) {
         loop {
             if let Some(f) = &self.frame {
-                let end = f.start + 22 * PS2_HALF;
+                let end = f.start + 22 * self.half;
                 if now < end {
                     return;
                 }
@@ -91,9 +94,9 @@ impl Ps2Kbd {
             None => (true, true),
             Some(f) => {
                 let e = now - f.start;
-                let i = (e / (2 * PS2_HALF)) as usize;
-                let ph = e % (2 * PS2_HALF);
-                (ph < PS2_HALF, f.bits[i.min(10)] != 0)
+                let i = (e / (2 * self.half)) as usize;
+                let ph = e % (2 * self.half);
+                (ph < self.half, f.bits[i.min(10)] != 0)
             }
         }
     }
@@ -110,7 +113,7 @@ impl Ps2Kbd {
         match &self.frame {
             Some(f) => {
                 let e = now.saturating_sub(f.start);
-                f.start + (e / PS2_HALF + 1) * PS2_HALF
+                f.start + (e / self.half + 1) * self.half
             }
             None => {
                 if self.queue.is_empty() {

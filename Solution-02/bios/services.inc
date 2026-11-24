@@ -38,9 +38,10 @@ R_DS    equ     16
 R_FL    equ     22                      ; indicateurs empiles par INT (IP 18, CS 20)
 
 %macro BIOS_ENTREE 0
-        push    ds
-        push    es
-        push    bp
+        sti                             ; IRQ1/IRQ4 servies tout de suite (BIOS 3.4 : le STI
+        push    ds                      ; apres les 9 PUSH masquait ~30 us a chaque INT 16h :
+        push    es                      ; avec un clavier a 15 kHz, l'IRQ1 arrivait apres le
+        push    bp                      ; bit 0, touche perdue)
         push    di
         push    si
         push    dx
@@ -48,7 +49,6 @@ R_FL    equ     22                      ; indicateurs empiles par INT (IP 18, CS
         push    bx
         push    ax
         mov     bp, sp
-        sti                             ; IRQ1/IRQ4 servies pendant les services
         cld
         mov     ax, cs
         mov     ds, ax
@@ -509,14 +509,15 @@ tache_cede:
 ; =============================================================================
 irq_clavier:
         push    ax
+        push    bx
+        call    ps2_trame_it            ; tout de suite (ports seulement : avant DS, ES)
         push    ds
         push    es
-        mov     ax, cs
-        mov     ds, ax
-        mov     ax, DSEG
-        mov     es, ax
+        mov     bx, cs                  ; (MOV et INC ne changent pas CF)
+        mov     ds, bx
+        mov     bx, DSEG
+        mov     es, bx
         inc     byte [es:V_KBD_N]       ; (ecran_uart attend le calme)
-        call    ps2_trame_it
         jnc     .trame_ok
         and     byte [es:V_CLAVIER], ~(CLV_RELACHE | CLV_ETENDU) ; trame illisible : F0/E0
                                         ; en attente oublies (sinon la touche suivante serait
@@ -557,6 +558,7 @@ irq_clavier:
         out     PIC_CMD, al
         pop     es
         pop     ds
+        pop     bx
         pop     ax
         iret
 

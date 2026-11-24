@@ -27,11 +27,17 @@ pub struct Ps2Kbd {
     pub frames: u64,
     pub lost: u64,
     pub sent: VecDeque<u8>,
+    /// Demi-periode de l'horloge (cycles du 8088) : PS2_HALF (10 kHz) par defaut ; les claviers
+    /// vont jusqu'a 16,7 kHz (Sim::kbd_khz).
+    pub half: u64,
+    /// Retard de la premiere lecture du BIOS dans chaque trame (cycles depuis le bit de depart).
+    pub retards: Vec<u64>,
+    pub trace: Vec<(u8, u64)>,
 }
 
 impl Ps2Kbd {
     pub fn new() -> Self {
-        Ps2Kbd { queue: VecDeque::new(), frame: None, ready_at: 0, frames: 0, lost: 0, sent: VecDeque::new() }
+        Ps2Kbd { queue: VecDeque::new(), frame: None, ready_at: 0, frames: 0, lost: 0, sent: VecDeque::new(), half: PS2_HALF, retards: Vec::new(), trace: Vec::new() }
     }
 
     pub fn push(&mut self, bytes: &[u8], now: u64) {
@@ -53,7 +59,7 @@ impl Ps2Kbd {
     fn advance(&mut self, now: u64) {
         loop {
             if let Some(f) = &self.frame {
-                let end = f.start + 22 * PS2_HALF;
+                let end = f.start + 22 * self.half;
                 if now < end {
                     return;
                 }
@@ -91,14 +97,33 @@ impl Ps2Kbd {
             None => (true, true),
             Some(f) => {
                 let e = now - f.start;
-                let i = (e / (2 * PS2_HALF)) as usize;
-                let ph = e % (2 * PS2_HALF);
-                (ph < PS2_HALF, f.bits[i.min(10)] != 0)
+                let i = (e / (2 * self.half)) as usize;
+                let ph = e % (2 * self.half);
+                (ph < self.half, f.bits[i.min(10)] != 0)
             }
         }
     }
 
     /// Le BIOS lit PB pendant une trame : elle n'est pas perdue.
+    pub fn mark_read_at(&mut self, now: u64) {
+        if let Some(f) = &mut self.frame {
+            if !f.read && self.retards.len() < 100_000 {
+                self.retards.push(now.saturating_sub(f.start));
+                let mut b = 0u8;
+                for i in 0..8 {
+                    b |= f.bits[1 + i] << i;
+                }
+                self.trace.push((b, now.saturating_sub(f.start)));
+            }
+            f.read = true;
+        }
+    }
+
+    /// Age de la trame en cours (cycles), ou None.
+    pub fn age(&self, now: u64) -> Option<u64> {
+        self.frame.as_ref().map(|f| now.saturating_sub(f.start))
+    }
+
     pub fn mark_read(&mut self) {
         if let Some(f) = &mut self.frame {
             f.read = true;
@@ -110,7 +135,7 @@ impl Ps2Kbd {
         match &self.frame {
             Some(f) => {
                 let e = now.saturating_sub(f.start);
-                f.start + (e / PS2_HALF + 1) * PS2_HALF
+                f.start + (e / self.half + 1) * self.half
             }
             None => {
                 if self.queue.is_empty() {

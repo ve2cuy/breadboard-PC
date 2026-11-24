@@ -29,6 +29,7 @@ RT_TA           equ     0EC2h           ; lignes d'adresse : 0 = OK
 RT_OCTETS       equ     0EC4h           ; (dw) octets defectueux
 RT_BLOCS        equ     0EC6h           ; (dw) blocs defectueux
 RT_Z            equ     0EC8h           ; drapeau de defaut de la zone (rt_zone)
+RT_PASSE        equ     0ECAh           ; (dw) 3) Loop : numero de la passe (0 = pas en boucle)
 RT_ZONE         equ     DSEG            ; zone reservee : 4 Ko
 RT_TA_HI        equ     0003h           ; lignes d'adresse : base 35555h
 RT_TA_LO        equ     5555h
@@ -36,6 +37,7 @@ RT_TA_N         equ     20
 
 ; ---- sous-menu ------------------------------------------------------------------------
 ram_menu:
+        mov     word [ss:RT_PASSE], 0
         mov     si, txt_rt_menu_lcd
         call    lcd_ecran
         mov     si, txt_rt_menu
@@ -244,6 +246,8 @@ rt_test:
         mov     [ss:RT_BLOCS], ax
         mov     si, txt_rt_lcd1         ; LCD : titre, "En cours..."
         call    lcd_ecran
+        mov     si, txt_rt_lcd_cours    ; 3) Loop : "Passe N en cours"
+        call    rt_lcd_passe
         mov     si, txt_rt_ban1
         call    rt_us
         mov     si, txt_rt_ban2
@@ -301,6 +305,8 @@ rt_test:
         call    rt_ligne
         mov     si, txt_rt_lcd_fin
         call    rt_ls
+        mov     si, txt_rt_lcd_finie    ; 3) Loop : "Passe N terminee"
+        call    rt_lcd_passe
 .l2:
         or      bh, bh
         jnz     .defaut
@@ -516,6 +522,56 @@ rt_bloc:
 .fin:   xor     bp, bp
         pop     es
         pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; rt_lcd_passe : en boucle seulement (RT_PASSE <> 0), LCD ligne 2 : "Passe N" + texte DS:SI.
+rt_lcd_passe:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        mov     ax, [ss:RT_PASSE]
+        or      ax, ax
+        jz      .f
+        push    si
+        mov     al, LIGNE2
+        call    rt_ligne
+        mov     si, txt_rt_lcd_passe
+        call    rt_ls
+        mov     ax, [ss:RT_PASSE]
+        mov     bx, 10
+        xor     cx, cx
+.d:     xor     dx, dx
+        div     bx
+        push    dx
+        inc     cx
+        or      ax, ax
+        jnz     .d
+        mov     bx, cx                  ; BX = caracteres ecrits
+        add     bx, txt_rt_lcd_passe_n
+.e:     pop     ax
+        add     al, '0'
+        call    rt_lc
+        loop    .e
+        pop     si
+.t:     lodsb                           ; texte (compte)
+        or      al, al
+        jz      .blanc
+        call    rt_lc
+        inc     bx
+        jmp     .t
+.blanc: cmp     bx, 20                  ; reste de la ligne : blancs
+        jae     .f
+        mov     al, ' '
+        call    rt_lc
+        inc     bx
+        jmp     .blanc
+.f:     pop     si
         pop     dx
         pop     cx
         pop     bx
@@ -964,6 +1020,7 @@ rt_boucle:
         call    rt_udec
         mov     si, txt_rt_passe_fin
         call    rt_us
+        mov     [ss:RT_PASSE], cx       ; LCD ligne 2 : "Passe N"
         mov     al, 1
         call    rt_test
         cmp     byte [ss:RT_DERNIERE], 0
@@ -978,6 +1035,7 @@ rt_boucle:
         mov     si, txt_rt_arret
         call    rt_us
         call    .bilan
+        mov     word [ss:RT_PASSE], 0
         ret
 .bilan: mov     si, txt_rt_bilan
         call    rt_us
@@ -1018,6 +1076,10 @@ txt_rt_lcd1:
 txt_rt_lcd_ok:  db      'RAM OK  (key)       ', 0
 txt_rt_lcd_err: db      'RAM FAULTY          ', 0
 txt_rt_lcd_fin: db      'Test finished       ', 0
+txt_rt_lcd_passe: db    'Pass ', 0
+txt_rt_lcd_passe_n equ  5
+txt_rt_lcd_cours: db    ' running', 0
+txt_rt_lcd_finie: db    ' done', 0
 txt_rt_lcd_adr_err: db  'Address: ERR (UART) '
 txt_rt_ban1:    db      13, 10, 27, '[0m', '=== RAM test 512K (Solution-02, UART report 9600 8N1) ===', 27, '[0m', 13, 10, 0
 txt_rt_ban2:    db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocks) + seg 7000h (70000h-7EFFFh, 60 blocks),', 13, 10
@@ -1093,6 +1155,10 @@ txt_rt_lcd1:
 txt_rt_lcd_ok:  db      'RAM OK  (touche)    ', 0
 txt_rt_lcd_err: db      'RAM DEFECTUEUSE     ', 0
 txt_rt_lcd_fin: db      'Test termine        ', 0
+txt_rt_lcd_passe: db    'Passe ', 0
+txt_rt_lcd_passe_n equ  6
+txt_rt_lcd_cours: db    ' en cours', 0
+txt_rt_lcd_finie: db    ' terminee', 0
 txt_rt_lcd_adr_err: db  'Adresses: ERR (UART)'
 txt_rt_ban1:    db      13, 10, 27, '[0m', '=== Test RAM 512K (Solution-02, rapport UART 9600 8N1) ===', 27, '[0m', 13, 10, 0
 txt_rt_ban2:    db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocs) + seg 7000h (70000h-7EFFFh, 60 blocs),', 13, 10

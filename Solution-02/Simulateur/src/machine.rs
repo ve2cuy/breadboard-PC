@@ -857,6 +857,7 @@ impl Machine {
         let faults = self.b.faults.clone();
         let sd = std::mem::take(&mut self.b.sd);
         let term = self.b.term_connected;
+        let demi_ps2 = self.b.kbd.half;
         let avr = self.b.avr.is_some();
         let rtscts = self.b.term_rtscts;
         let audio = self.b.audio_on;
@@ -873,6 +874,7 @@ impl Machine {
             self.b.sd.insert(d);
         }
         self.b.term_connected = term;
+        self.b.kbd.half = demi_ps2;
         self.b.avr = if avr { Some(Avr::new()) } else { None };
         self.b.term_rtscts = rtscts;
         self.b.audio_on = audio;

@@ -209,11 +209,28 @@ export class Sim {
         wasm.sim_kbd(this.__wbg_ptr, ptr0, len0);
     }
     /**
+     * Frequence de l'horloge du clavier PS/2 (10 a 16,7 kHz selon les claviers).
+     * @param {number} khz
+     */
+    kbd_khz(khz) {
+        wasm.sim_kbd_khz(this.__wbg_ptr, khz);
+    }
+    /**
      * @returns {number}
      */
     kbd_pending() {
         const ret = wasm.sim_kbd_pending(this.__wbg_ptr);
         return ret >>> 0;
+    }
+    /**
+     * Trames PS/2 envoyees et perdues (jamais lues par le BIOS).
+     * @returns {Float64Array}
+     */
+    kbd_stats() {
+        const ret = wasm.sim_kbd_stats(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
     }
     /**
      * 80 codes visibles, 64 octets de CGRAM, puis : allume, curseur, clignotement,
@@ -383,9 +400,10 @@ export class Sim {
         return v1;
     }
     /**
-     * Variante de la carte : ATmega328P U17 (schema du 2026-11-21, UART materiel et esclave
-     * SPI du 8088) ou UART logiciel (schema d'avant, BIOS 2.6). Garde au fil des mises sous
-     * tension ; l'ATmega repart a neuf a chaque changement.
+     * Variante de la carte : ATmega328P U17 (schema du 2026-11-23 : terminal sur l'UART
+     * logiciel de l'ATmega, module Wi-Fi sur son USART, esclave SPI du 8088) ou UART logiciel du
+     * 8088 (schema d'avant, BIOS 2.6). Garde au fil des mises sous tension ; l'ATmega repart a
+     * neuf a chaque changement, et le terminal prend sa vitesse de mise sous tension (57600).
      * @param {boolean} on
      */
     set_atmega(on) {
@@ -574,6 +592,37 @@ export class Sim {
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
+    }
+    /**
+     * Lignes de commande recues par le module Wi-Fi (canal 2 de l'ATmega), une par ligne.
+     * @returns {string}
+     */
+    wifi_journal() {
+        let deferred1_0;
+        let deferred1_1;
+        try {
+            const ret = wasm.sim_wifi_journal(this.__wbg_ptr);
+            deferred1_0 = ret[0];
+            deferred1_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred1_0, deferred1_1, 1);
+        }
+    }
+    /**
+     * Paquets IP recus par le module en SLIP.
+     * @returns {number}
+     */
+    wifi_paquets() {
+        const ret = wasm.sim_wifi_paquets(this.__wbg_ptr);
+        return ret >>> 0;
+    }
+    /**
+     * Module Wi-Fi : micrologiciel esp_slip_router (SLIP, repond aux pings) ou commandes AT.
+     * @param {boolean} on
+     */
+    wifi_slip(on) {
+        wasm.sim_wifi_slip(this.__wbg_ptr, on);
     }
 }
 if (Symbol.dispose) Sim.prototype[Symbol.dispose] = Sim.prototype.free;

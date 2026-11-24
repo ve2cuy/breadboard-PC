@@ -202,6 +202,14 @@ impl Sim {
         self.m.b.kbd.push(bytes, now);
         self.m.b.next_ev = 0;
     }
+    /// Frequence de l'horloge du clavier PS/2 (10 a 16,7 kHz selon les claviers).
+    pub fn kbd_khz(&mut self, khz: f64) {
+        self.m.b.kbd.half = (CLK_HZ / (2.0 * khz.clamp(5.0, 20.0) * 1000.0)) as u64;
+    }
+    /// Trames PS/2 envoyees et perdues (jamais lues par le BIOS).
+    pub fn kbd_stats(&self) -> Vec<f64> {
+        vec![self.m.b.kbd.frames as f64, self.m.b.kbd.lost as f64]
+    }
     pub fn kbd_pending(&self) -> u32 {
         self.m.b.kbd.pending() as u32
     }

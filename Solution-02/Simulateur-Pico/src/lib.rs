@@ -219,6 +219,22 @@ impl Sim {
         self.m.b.kbd.push(bytes, now);
         self.m.b.next_ev = 0;
     }
+    /// Frequence de l'horloge du clavier PS/2 (10 a 16,7 kHz selon les claviers).
+    pub fn kbd_khz(&mut self, khz: f64) {
+        self.m.b.kbd.half = (CLK_HZ / (2.0 * khz.clamp(5.0, 20.0) * 1000.0)) as u64;
+    }
+    /// Trames PS/2 envoyees et perdues (jamais lues par le BIOS).
+    pub fn kbd_stats(&self) -> Vec<f64> {
+        vec![self.m.b.kbd.frames as f64, self.m.b.kbd.lost as f64]
+    }
+    /// Retards (us) de la premiere lecture du BIOS dans chaque trame PS/2 (mise au point).
+    pub fn kbd_retards(&mut self) -> Vec<f64> {
+        std::mem::take(&mut self.m.b.kbd.retards).iter().map(|&c| c as f64 * 1e6 / CLK_HZ).collect()
+    }
+    /// Age (us) de la trame PS/2 en cours (-1 : aucune).
+    pub fn kbd_age(&self) -> f64 {
+        self.m.b.kbd.age(self.m.cpu.cycles).map(|c| c as f64 * 1e6 / CLK_HZ).unwrap_or(-1.0)
+    }
     pub fn kbd_pending(&self) -> u32 {
         self.m.b.kbd.pending() as u32
     }
@@ -857,6 +873,10 @@ impl Board {
 impl Sim {
     pub fn machine(&mut self) -> &mut Machine {
         &mut self.m
+    }
+    /// Octets PS/2 et retard (us) de leur premiere lecture par le BIOS (mise au point).
+    pub fn kbd_trace(&mut self) -> Vec<(u8, f64)> {
+        std::mem::take(&mut self.m.b.kbd.trace).iter().map(|&(b, c)| (b, c as f64 * 1e6 / CLK_HZ)).collect()
     }
     pub fn lcd_lines(&self) -> Vec<String> {
         let v = self.m.b.lcd.visible();

@@ -201,6 +201,14 @@ export class Sim {
         return ret !== 0;
     }
     /**
+     * Age (us) de la trame PS/2 en cours (-1 : aucune).
+     * @returns {number}
+     */
+    kbd_age() {
+        const ret = wasm.sim_kbd_age(this.__wbg_ptr);
+        return ret;
+    }
+    /**
      * @param {Uint8Array | number[]} bytes
      */
     kbd(bytes) {
@@ -209,11 +217,38 @@ export class Sim {
         wasm.sim_kbd(this.__wbg_ptr, ptr0, len0);
     }
     /**
+     * Frequence de l'horloge du clavier PS/2 (10 a 16,7 kHz selon les claviers).
+     * @param {number} khz
+     */
+    kbd_khz(khz) {
+        wasm.sim_kbd_khz(this.__wbg_ptr, khz);
+    }
+    /**
      * @returns {number}
      */
     kbd_pending() {
         const ret = wasm.sim_kbd_pending(this.__wbg_ptr);
         return ret >>> 0;
+    }
+    /**
+     * Retards (us) de la premiere lecture du BIOS dans chaque trame PS/2 (mise au point).
+     * @returns {Float64Array}
+     */
+    kbd_retards() {
+        const ret = wasm.sim_kbd_retards(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
+    }
+    /**
+     * Trames PS/2 envoyees et perdues (jamais lues par le BIOS).
+     * @returns {Float64Array}
+     */
+    kbd_stats() {
+        const ret = wasm.sim_kbd_stats(this.__wbg_ptr);
+        var v1 = getArrayF64FromWasm0(ret[0], ret[1]).slice();
+        wasm.__wbindgen_free(ret[0], ret[1] * 8, 8);
+        return v1;
     }
     /**
      * 80 codes visibles, 64 octets de CGRAM, puis : allume, curseur, clignotement,

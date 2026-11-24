@@ -242,6 +242,7 @@ KBD_LIBRE       equ     01h             ; BSR : PC0 = 1
 UART_N          equ     29
 %endif
 PS2_DELAI       equ     150             ; attentes PS/2 : ~1 ms (boucle de ~36 cycles)
+PS2_DELAI_FIN   equ     22              ; 11e phase basse attendue au plus ~150 us (ps2_trame_it)
 
 CLV_RELACHE     equ     01h             ; F0 recu
 CLV_ETENDU      equ     02h             ; E0 recu
@@ -1699,17 +1700,47 @@ uart_rx:
 ; =============================================================================
 ; ps2_trame : CLK vient d'etre vu bas. Sortie : AL = octet, CF = 1 si trame
 ; invalide (et la ligne est resynchronisee). Preserve les autres registres.
-; ps2_trame_it : idem depuis IRQ1 (1er front descendant de CLK). Le bit de depart vaut
-; toujours 0 : il n'est pas lu, et l'horloge peut deja etre remontee (latence de
-; l'interruption jusqu'a ~1 periode, ~80 us) ; la lecture reprend au bit 0.
+; ps2_trame_it : idem depuis IRQ1 (front descendant du bit de depart), quelle que soit la
+; latence de l'interruption jusqu'a la fin du bit 0 (90 us apres le front a 16,7 kHz, 150 us a
+; 10 kHz). Les phases basses de CLK sont comptees a partir de maintenant, celle en cours
+; comprise : 11 (depart, 8 donnees, parite, arret) ou 10 (le depart etait deja passe). Apres
+; la 10e, une 11e n'est attendue que ~150 us (plus d'une periode a 10 kHz, moins que l'ecart
+; avant l'octet suivant d'une touche). BIOS 3.4 : avant, la lecture supposait l'entree dans le
+; bit de depart ; avec un clavier a 15-16,7 kHz, une entree tardive decalait la trame d'un bit
+; (touche perdue des ~3 caracteres par seconde).
 ps2_trame_it:
         push    bx
         push    cx
         push    dx
-        xor     dx, dx                  ; CF = 0
-        rcr     dx, 1                   ; depart = 0
-        mov     bl, 10
-        jmp     ps2_trame.attend_h
+        xor     dx, dx
+        xor     bl, bl                  ; phases basses vues
+        in      al, PPI2_PB
+        test    al, KBD_CLK
+        jz      .bas                    ; deja dans une phase basse : comptee
+.attend:
+        mov     cx, PS2_DELAI           ; attend CLK bas
+        cmp     bl, 10
+        jne     .a
+        mov     cx, PS2_DELAI_FIN
+.a:     in      al, PPI2_PB
+        test    al, KBD_CLK
+        jz      .bas
+        loop    .a
+        cmp     bl, 10                  ; 10 phases : le depart etait deja passe
+        je      ps2_trame.fin
+        jmp     ps2_trame.err
+.bas:   shr     al, 1
+        shr     al, 1                   ; CF = DATA (lu avec CLK bas)
+        rcr     dx, 1
+        inc     bl
+        cmp     bl, 11
+        je      ps2_trame.fin           ; DX : arret en 15 ... depart (ou bit 0) en 5 (6)
+        mov     cx, PS2_DELAI           ; attend CLK haut
+.h:     in      al, PPI2_PB
+        test    al, KBD_CLK
+        jnz     .attend
+        loop    .h
+        jmp     ps2_trame.err
 ps2_trame:
         push    bx
         push    cx
