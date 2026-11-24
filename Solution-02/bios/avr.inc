@@ -521,30 +521,7 @@ avr_diag:
 
 txt_avr_diag:   db      'AVR L P F '
 
-; menu_vit : ligne 2 du menu avec l'ATmega : "2)RAM 8)57600 9)WiFi" (sans ATmega : rien, la
-; ligne de txt_menu reste). DS = CS, ES = DSEG. Detruit AX, BX, CX, SI.
-menu_vit:
-        cmp     byte [es:V_AVR], 0
-        je      .r
-        mov     al, 80h | LIGNE2
-        call    lcd_cmd
-        mov     si, txt_menu2_vit
-        mov     bx, 8
-        call    lcd_texte               ; "2)RAM 8)"
-        call    vit_si
-        cmp     byte [es:V_AVR_VIT], 4  ; 115200 : 6 chiffres, "115k2 "
-        jne     .v
-        mov     si, txt_115k2
-.v:     mov     bx, 6
-        call    lcd_texte
-        mov     si, txt_menu2_wifi
-        mov     bx, 6
-        call    lcd_texte               ; "9)WiFi"
-.r:     ret
-
 txt_115k2:      db      '115k2 '
-txt_menu2_vit:  db      '2)RAM 8)'
-txt_menu2_wifi: db      '9)WiFi'
 
 
 ; vit_si : SI = texte de la vitesse V_AVR_VIT (6 caracteres). Detruit AX.

@@ -84,6 +84,7 @@ par le bus.
 python outils\relais.py       # relais TCP pour la page
 node outils\essai_reseau.mjs [--relais ws://127.0.0.1:8765]   # chemin réseau de la page, de bout en bout, avec Node
 node outils\essai_page.mjs [--relais ws://127.0.0.1:8765]     # la vraie page dans Edge sans fenêtre (serveur sur le port 8099)
+node outils\essai_ipad.mjs [--url http://localhost:8099/]     # la page sur un iPad émulé : elle doit défiler jusqu'au bas
 .\publier.ps1                 # publie les deux simulateurs (gh-pages : / et /pico/)
 ```
 

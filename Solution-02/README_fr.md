@@ -452,7 +452,7 @@ Le BIOS 2.4 existe en **français** (`make` : `build/solution-02-bios.bin`) et e
   tâche des animations ne reçoit plus la main de l'IRQ0 (`V_LED_OFF`, DSEG 7B8h) : les
   DEL restent éteintes au menu et sous DOS. L'écran du menu 3) les anime toujours
   (`V_LED_ECRAN`, 7B9h). Le réglage revient à ON au démarrage.
-- **Menu en français** dans le BIOS français : `1) DOS`, `2) Test memoire`. Le BIOS anglais
+- **Menu en français** dans le BIOS français : `1) Lancer le DOS`, `2) Test memoire`. Le BIOS anglais
   garde `1) Load DOS` et `2) Test memory`. Tous les textes du LCD et de l'UART sont
   traduits, y compris l'accueil ANSI (`accueil_en.inc`, généré par `tests/gen_accueil.py`)
   et le rapport du test de la RAM.
@@ -501,16 +501,25 @@ type IBM PC). Déroulement :
      par INT 10h) donne un bip de 880 Hz, ~0,25 s. Durées comptées en IRQ0 :
      sans 8259 ou sans 8253, pas de son.
 
+Depuis le BIOS 3.4, le menu montre **un choix par ligne**, comme Solution-01. Le LCD en montre 4
+par page, avec le numéro de page en haut à droite. Le BIOS français affiche :
+
 ```
-1) Load DOS 6) BASIC
-2) Test memory
-3) LED Show
-4) Info  5) UART:ON
+1) Lancer le DOS 1/3      5) Console: ON   2/3      9) Wi-Fi         3/3
+2) Test memoire           6) BASIC
+3) Anim. des DEL          7) DEL auto: ON
+4) Info systeme           8) UART 57600
 ```
 
+**Espace** (ou la flèche droite / bas) montre la page suivante, et la flèche gauche / haut la
+précédente. Les touches **1** à **9** marchent sur toutes les pages. 8) et 9) n'apparaissent
+qu'avec l'ATmega U17 : sans lui, il y a 2 pages. Après 5) ou 7), le LCD montre la page de ce
+choix, pour qu'on voie son nouvel état. Le terminal reçoit la **liste complète** d'un coup, un
+choix par ligne.
+
 La **console sur l'UART** est à **ON au démarrage** (et après Ctrl + Alt +
-Suppr ou le test de la RAM) ; la touche **5** la bascule (`UART:ON` ↔
-`UART:OFF`). Elle vaut **dans tous les modes** :
+Suppr ou le test de la RAM) ; la touche **5** la bascule (`Console: ON` ↔
+`Console: OFF`). Elle vaut **dans tous les modes** :
 
 - au premier menu après le démarrage (et à chaque passage à ON), un **écran d'accueil en couleur** (séquences ANSI : écran
   effacé, titre en blanc, adresses du dépôt en rouge, logo « 88 // PC » en vert,
@@ -534,15 +543,18 @@ Suppr ou le test de la RAM) ; la touche **5** la bascule (`UART:ON` ↔
 racine** (16 au plus). S'il en trouve, il propose le choix :
 
 ```
-Demarrer : Entree
->ROM PC-DOS 2.1
- PCDOS21.IMG  180K
- DOS33.IMG    720K
+Touche ou Entree
+0>ROM PC-DOS 2.1
+1 PCDOS21.IMG 180K
+2 DOS33.IMG   720K
 ```
 
-**↑ / ↓** déplacent le choix (la liste défile), **Entrée** démarre, **Échap**
-revient au menu ; recopié sur le terminal quand la console UART est à ON
-(flèches ANSI). Sans carte, ou sans image, A: est la disquette en ROM, comme
+Chaque ligne commence par sa **touche** (`0`-`9`, puis `A`-`Z`) : l'appuyer démarre cette image
+tout de suite. Cela marche sans flèches, par exemple au clavier virtuel d'une tablette
+(BIOS 3.4). **↑ / ↓** déplacent toujours le choix (la liste défile), **Entrée** le démarre,
+**Espace** sur une ligne C: fait de ce disque le C:, et **Échap** revient au menu. Le terminal
+reçoit la **liste complète** avec les touches. Le menu de changement de A: (Ctrl + Alt + Inser,
+Ctrl + \, F12) fonctionne de la même façon. Sans carte, ou sans image, A: est la disquette en ROM, comme
 avant. L'image choisie devient **A:** pour INT 13h, en **lecture et écriture**
 (les écritures du DOS vont directement dans le fichier de la carte, comme un
 Gotek) :

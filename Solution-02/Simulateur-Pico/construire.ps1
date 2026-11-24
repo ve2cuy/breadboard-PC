@@ -9,8 +9,8 @@ Set-Location $PSScriptRoot
 # 1. ROM du BIOS (copie de ../bios/build) et index des ROM
 New-Item -ItemType Directory -Force www\roms | Out-Null
 $roms = @(
-  @{ file = 'solution-02-bios.bin'; name = 'BIOS 3.3 français (Pico W)'; name_en = 'BIOS 3.3 French (Pico W)'; lang = 'fr' },
-  @{ file = 'solution-02-bios-en.bin'; name = 'BIOS 3.3 anglais (Pico W)'; name_en = 'BIOS 3.3 English (Pico W)'; lang = 'en' },
+  @{ file = 'solution-02-bios.bin'; name = 'BIOS 3.4 français (Pico W)'; name_en = 'BIOS 3.4 French (Pico W)'; lang = 'fr' },
+  @{ file = 'solution-02-bios-en.bin'; name = 'BIOS 3.4 anglais (Pico W)'; name_en = 'BIOS 3.4 English (Pico W)'; lang = 'en' },
   @{ file = 'solution-02-diag-sd.bin'; name = 'Diagnostic de la carte SD'; name_en = 'SD card diagnostic' },
   @{ file = 'solution-02-diag-u12.bin'; name = 'Diagnostic du 8255 U12'; name_en = 'U12 8255 diagnostic' },
   @{ file = 'solution-02-diag-8255.bin'; name = 'Diagnostic du 8255 U7'; name_en = 'U7 8255 diagnostic' }

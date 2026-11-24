@@ -149,6 +149,7 @@ V_ANSI_N        equ     8F5h            ;   parametre en cours (0 ou 1)
 V_ANSI_P        equ     8F6h            ;   (2 octets) parametres P1, P2 (0 = par defaut)
 V_HD_MINIX      equ     8F8h            ; 1 = la 1re partition de C: est MINIX (80h/81h : ELKS)
 V_SANS_B        equ     8F9h            ; 1 = demarrage d'ELKS depuis C: : pas de B:, 507 Ko
+V_MENU_PAGE     equ     8ACh            ; page du menu principal au LCD (0-2)
 V_TDEC          equ     7F8h            ; console UART : le terminal est V_TDEC colonnes a droite de V_CUR (AH=09h)
 V_OMBRE         equ     800h            ; copie des 4 lignes du LCD (80 octets) pour l'UART
 TACHE_PILE      equ     0B00h           ; pile de la tache des animations : 900h-AFFh
@@ -787,11 +788,8 @@ menu:
         out     PPI_PA, al
         out     PPI_PB, al
         out     PPI_PC, al
-        mov     si, txt_menu
-        call    lcd_ecran
-        call    menu_uart
-        call    menu_led
-        call    menu_vit                ; ATmega : "2) Test RAM 8)9600"
+        mov     byte [es:V_MENU_PAGE], 0
+        call    menu_lcd                ; page 1 du menu : un choix par ligne (BIOS 3.4)
         cmp     byte [es:V_MELODIE], 0  ; 1er menu apres le demarrage : ecran d'accueil sur le
         jne     .pas_premier            ; terminal (console a ON par defaut) et melodie
         cmp     byte [es:V_UCON], 0
@@ -800,15 +798,47 @@ menu:
         mov     si, txt_accueil
         call    uart_texte
 .sans_accueil:
-        call    ecran_uart
+        call    menu_liste_uart
         mov     byte [es:V_MELODIE], 1
         mov     si, melodie
         call    son_melodie
         jmp     .touche
 .pas_premier:
-        call    ecran_uart              ; console UART : le menu aussi sur le terminal
+        call    menu_liste_uart         ; console UART : la liste complete sur le terminal
 .touche:
         call    kbd_attend
+        cmp     al, ' '                 ; Espace, fleche droite ou bas : page suivante du LCD
+        je      .page_suiv              ; (le clavier du iPad n'a pas de fleches)
+        or      al, al
+        jnz     .chiffre
+        cmp     ah, 4Dh
+        je      .page_suiv
+        cmp     ah, 50h
+        je      .page_suiv
+        cmp     ah, 4Bh                 ; fleche gauche ou haut : page precedente
+        je      .page_prec
+        cmp     ah, 48h
+        je      .page_prec
+        jmp     .touche
+.page_suiv:
+        call    menu_pages
+        mov     al, [es:V_MENU_PAGE]
+        inc     al
+        cmp     al, ah
+        jb      .page
+        xor     al, al
+        jmp     .page
+.page_prec:
+        call    menu_pages
+        mov     al, [es:V_MENU_PAGE]
+        or      al, al
+        jnz     .p1
+        mov     al, ah
+.p1:    dec     al
+.page:  mov     [es:V_MENU_PAGE], al
+        call    menu_lcd
+        jmp     .touche
+.chiffre:
         cmp     al, '1'
         je      .dos
         cmp     al, '2'
@@ -828,13 +858,14 @@ menu:
         cmp     al, '5'
         jne     .touche
         xor     byte [es:V_UCON], 1     ; console du DOS sur l'UART : ON <-> OFF
-        call    menu_uart
+        mov     byte [es:V_MENU_PAGE], 1 ; la page de ce choix : on voit le changement
+        call    menu_lcd
         cmp     byte [es:V_UCON], 0     ; ON : ecran d'accueil (ANSI) puis le menu sur le
         je      .touche                 ; terminal, apres le relachement de la touche (l'envoi
         call    uart_calme              ; masque les interruptions)
         mov     si, txt_accueil
         call    uart_texte
-        call    ecran_uart
+        call    menu_liste_uart
         jmp     .touche
 .basic: jmp     basic_lance
 .vitesse:
@@ -843,7 +874,8 @@ menu:
 .wifi:  call    wifi_menu               ; 9) terminal <-> module Wi-Fi (ATmega U17, canal 2)
         jmp     menu
 .led:   xor     byte [es:V_LED_OFF], 1  ; 7) animations des DEL en arriere-plan : ON <-> OFF
-        call    menu_led
+        mov     byte [es:V_MENU_PAGE], 1 ; la page de ce choix : on voit le changement
+        call    menu_lcd
         cmp     byte [es:V_LED_OFF], 0
         je      .led_uart
         xor     al, al                  ; OFF : DEL eteintes (la tache est suspendue)
@@ -851,7 +883,7 @@ menu:
         out     PPI_PB, al
         out     PPI_PC, al
 .led_uart:
-        call    ecran_uart              ; console UART : le menu mis a jour
+        call    menu_liste_uart         ; console UART : le menu mis a jour
         jmp     .touche
 .dos:   call    sd_choisir              ; carte SD : choix de l'image (ou la ROM)
         jnc     .charge
@@ -873,25 +905,182 @@ basic_lance:
         call    BASIC_ORG
         jmp     menu                    ; (le menu refait la pile en DSEG)
 
-; menu_uart : ligne 4 du menu selon V_UCON. Detruit AX, BX, CX, SI.
-menu_uart:
-        mov     al, 80h | LIGNE4
-        call    lcd_cmd
-        mov     si, txt_menu4_off
-        cmp     byte [es:V_UCON], 0
-        je      .t
-        mov     si, txt_menu4_on
-.t:     jmp     lcd_texte20
+; ---- menu principal (BIOS 3.4) : un choix par ligne. Le LCD (4 lignes) en montre 4 par page,
+; "p/n" en haut a droite ; Espace (ou fleche droite / bas) : page suivante, fleche gauche / haut :
+; precedente. Les touches 1-9 marchent sur toutes les pages. Le terminal recoit la liste complete.
+; 1-7 toujours ; 8) vitesse de l'UART et 9) Wi-Fi seulement avec l'ATmega U17.
 
-; menu_led : ligne 3 du menu selon V_LED_OFF. Detruit AX, BX, CX, SI.
-menu_led:
-        mov     al, 80h | LIGNE3
-        call    lcd_cmd
-        mov     si, txt_menu3_on
+; menu_nb : AL = nombre de choix (7, ou 9 avec l'ATmega).
+menu_nb:
+        mov     al, 7
+        cmp     byte [es:V_AVR], 0
+        je      .r
+        mov     al, 9
+.r:     ret
+
+; menu_pages : AH = nombre de pages du LCD. Detruit AL.
+menu_pages:
+        call    menu_nb
+        add     al, 3
+        shr     al, 1
+        shr     al, 1
+        mov     ah, al
+        ret
+
+; menu_item : V_LIGNE = le choix AL (1-9). DS = CS, ES = DSEG. Detruit AX, BX, CX, SI, DI.
+menu_item:
+        push    ax
+        call    tx_init
+        pop     ax
+        mov     bl, al
+        xor     bh, bh
+        dec     bx
+        shl     bx, 1
+        mov     si, [cs:bx + menu_textes]
+        push    ax
+        call    tx_chaine
+        pop     ax
+        cmp     al, 5
+        jne     .p7
+        mov     si, txt_m_off           ; 5) console UART : ON / OFF
+        cmp     byte [es:V_UCON], 0
+        je      .suffixe
+        mov     si, txt_m_on
+        jmp     .suffixe
+.p7:    cmp     al, 7
+        jne     .p8
+        mov     si, txt_m_on            ; 7) animations des DEL en arriere-plan : ON / OFF
         cmp     byte [es:V_LED_OFF], 0
-        je      .t
-        mov     si, txt_menu3_off
-.t:     jmp     lcd_texte20
+        je      .suffixe
+        mov     si, txt_m_off
+.suffixe:
+        jmp     tx_chaine
+.p8:    cmp     al, 8
+        jne     .r
+        call    vit_si                  ; 8) vitesse en service, sans les espaces
+        cmp     byte [es:V_AVR_VIT], 4
+        jne     .v
+        mov     si, txt_115k2
+.v:     mov     cx, 6
+.c:     lodsb
+        cmp     al, ' '
+        je      .s
+        call    tx_car
+.s:     loop    .c
+.r:     ret
+
+; menu_lcd : la page V_MENU_PAGE du menu au LCD. DS = CS, ES = DSEG. Detruit AX, BX, CX, DX, SI, DI.
+menu_lcd:
+        xor     dl, dl                  ; ligne 0-3
+.l:     call    menu_nb
+        mov     dh, al
+        mov     al, [es:V_MENU_PAGE]
+        shl     al, 1
+        shl     al, 1
+        add     al, dl
+        inc     al                      ; choix = page x 4 + ligne + 1
+        cmp     al, dh
+        jbe     .item
+        call    tx_init                 ; ligne vide
+        jmp     .ind
+.item:  push    dx
+        call    menu_item
+        pop     dx
+.ind:   or      dl, dl                  ; ligne 1 : "p/n" en colonnes 17-19
+        jnz     .sortie
+        call    menu_pages
+        cmp     ah, 1
+        jbe     .sortie
+        mov     al, [es:V_MENU_PAGE]
+        add     al, '1'
+        mov     [es:V_LIGNE + 17], al
+        mov     byte [es:V_LIGNE + 18], '/'
+        add     ah, '0'
+        mov     [es:V_LIGNE + 19], ah
+.sortie:
+        mov     bl, dl
+        xor     bh, bh
+        mov     al, [cs:bx + menu_lignes]
+        push    dx
+        call    tx_sortie_lcd
+        pop     dx
+        inc     dl
+        cmp     dl, 4
+        jb      .l
+        ret
+
+menu_lignes:    db  LIGNE1, LIGNE2, LIGNE3, LIGNE4
+
+; menu_liste_uart : la liste complete au terminal (console a ON). Detruit AX, BX, CX, DX, SI, DI.
+menu_liste_uart:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        call    uart_calme
+        mov     si, txt_m_titre
+        call    uart_texte
+        mov     dl, 1
+.l:     call    menu_nb
+        cmp     dl, al
+        ja      .fin
+        mov     al, dl
+        push    dx
+        call    menu_item
+        call    ligne_uart
+        pop     dx
+        inc     dl
+        jmp     .l
+.fin:   mov     si, txt_m_aide
+        call    uart_texte
+.r:     ret
+
+; ligne_uart : V_LIGNE au terminal (sans les espaces de fin), puis CR LF. Detruit AX, BX, SI.
+ligne_uart:
+        mov     bx, LCD_COLS
+.l:     cmp     byte [es:V_LIGNE + bx - 1], ' '
+        jne     .t
+        dec     bx
+        jnz     .l
+.t:     mov     si, V_LIGNE
+.c:     or      bx, bx
+        jz      .cr
+        mov     al, [es:si]
+        inc     si
+        call    uart_tx
+        dec     bx
+        jmp     .c
+.cr:    mov     al, 13
+        call    uart_tx
+        mov     al, 10
+        jmp     uart_tx
+
+menu_textes:    dw  txt_m1, txt_m2, txt_m3, txt_m4, txt_m5, txt_m6, txt_m7, txt_m8, txt_m9
+%ifdef LANG_EN
+txt_m1:     db  '1) Load DOS', 0
+txt_m2:     db  '2) Test memory', 0
+txt_m3:     db  '3) LED Show', 0
+txt_m4:     db  '4) System info', 0
+txt_m5:     db  '5) Console: ', 0
+txt_m6:     db  '6) BASIC', 0
+txt_m7:     db  '7) LED auto: ', 0
+txt_m8:     db  '8) UART ', 0
+txt_m9:     db  '9) Wi-Fi', 0
+txt_m_titre:db  13, 10, 'SOLUTION-02 BIOS 3.4 - menu (PS/2 keyboard or terminal):', 13, 10, 0
+txt_m_aide: db  '(LCD: Space = next page)', 13, 10, 0
+%else
+txt_m1:     db  '1) Lancer le DOS', 0
+txt_m2:     db  '2) Test memoire', 0
+txt_m3:     db  '3) Anim. des DEL', 0
+txt_m4:     db  '4) Info systeme', 0
+txt_m5:     db  '5) Console: ', 0
+txt_m6:     db  '6) BASIC', 0
+txt_m7:     db  '7) DEL auto: ', 0
+txt_m8:     db  '8) UART ', 0
+txt_m9:     db  '9) Wi-Fi', 0
+txt_m_titre:db  13, 10, 'SOLUTION-02 BIOS 3.4 - menu (clavier PS/2 ou terminal) :', 13, 10, 0
+txt_m_aide: db  '(LCD : Espace = page suivante)', 13, 10, 0
+%endif
+txt_m_on:   db  'ON', 0
+txt_m_off:  db  'OFF', 0
 
 ; lcd_ecran : efface le LCD et affiche 4 lignes de 20 caracteres (DS:SI). Detruit AX, BX, CX, SI.
 lcd_ecran:
@@ -2165,7 +2354,7 @@ anim_vumetre:
 ;                12345678901234567890
 %ifdef LANG_EN
 ;                12345678901234567890      (BIOS anglais : make LANG=en)
-txt_ouv1:   db  'SOLUTION-02 BIOS 3.3'
+txt_ouv1:   db  'SOLUTION-02 BIOS 3.4'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 KB  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2178,21 +2367,11 @@ txt_ram_ok: db  'MEMORY 512 KB : OK  '
 txt_echec:  db  'RAM FAULT   CNT 0000'
 txt_pile_ok:db  'STACK OK  Key=menu  '
 txt_pile_err:db 'STACK ERR           '
-txt_menu:   db  '1) Load DOS 6) BASIC'
-            db  '2) Test memory      '
-txt_menu3_on:
-            db  '3) LED Show  7) ON  '
-txt_menu4_off:
-            db  '4) Info  5) UART:OFF'
-txt_menu4_on:
-            db  '4) Info  5) UART:ON '
-txt_menu3_off:
-            db  '3) LED Show  7) OFF '
 txt_led:    db  'LED SHOW   Esc=menu '
             db  '                    '
             db  'PS/2 keyboard >     '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 3.3'
+txt_sys:    db  'SOLUTION-02 BIOS 3.4'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512KB  ROM 256KB'
             db  '8259 absent         '
@@ -2205,10 +2384,8 @@ txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 3.3 - VE2CUY 2026', 13, 10
-            db  'Menu (PS/2 keyboard): 1) Load DOS  2) Test memory  3) LED Show  4) Info'
-            db  '  5) UART:ON/OFF (console)  6) BASIC  7) LED Show ON/OFF'
-            db  '  8) UART speed (ATmega)  9) Wi-Fi (AT)', 13, 10, 0
+            db  13, 10, 'Solution-02 BIOS 3.4 - VE2CUY 2026', 13, 10
+            db  0
 txt_wifi_ecran:
             db  'WIFI AT    Esc=menu '
             db  '                    '
@@ -2251,7 +2428,7 @@ txt_vit_msg2:
             db  ' baud (set the terminal)', 13, 10, 0
 %else
 ;                12345678901234567890      (BIOS francais, par defaut)
-txt_ouv1:   db  'SOLUTION-02 BIOS 3.3'
+txt_ouv1:   db  'SOLUTION-02 BIOS 3.4'
 txt_ouv2:   db  'CPU 8088/V20 5.33MHz'
 txt_ouv3:   db  'RAM 512 Ko  LCD 20x4'
 txt_ouv4:   db  'VE2CUY - 2026       '
@@ -2264,21 +2441,11 @@ txt_ram_ok: db  'MEMOIRE 512 Ko : OK '
 txt_echec:  db  'RAM DEFAUT  CPT 0000'
 txt_pile_ok:db  'PILE OK  Touche=menu'
 txt_pile_err:db 'PILE ERR            '
-txt_menu:   db  '1) DOS      6) BASIC'
-            db  '2) Test memoire     '
-txt_menu3_on:
-            db  '3) Anim. DEL 7) ON  '
-txt_menu4_off:
-            db  '4) Info  5) UART:OFF'
-txt_menu4_on:
-            db  '4) Info  5) UART:ON '
-txt_menu3_off:
-            db  '3) Anim. DEL 7) OFF '
 txt_led:    db  'LED SHOW  Echap=menu'
             db  '                    '
             db  'Clavier PS/2 >      '
             db  'UART 9600 8N1 >     '
-txt_sys:    db  'SOLUTION-02 BIOS 3.3'
+txt_sys:    db  'SOLUTION-02 BIOS 3.4'
             db  'CPU 8088    5.33 MHz'
             db  'RAM 512Ko  ROM 256Ko'
             db  '8259 absent         '
@@ -2291,10 +2458,8 @@ txt_cpu_8088:db 'CPU 8088    5.33 MHz'
 txt_cpu_v20:db  'CPU NEC V20 5.33 MHz'
 txt_ram_avr:db  'RAM 512K  ATmega v'
 txt_uart_banniere:
-            db  13, 10, 'Solution-02 BIOS 3.3 - VE2CUY 2026', 13, 10
-            db  'Menu (clavier PS/2) : 1) DOS  2) Test memoire  3) Anim. DEL  4) Info'
-            db  '  5) UART:ON/OFF (console)  6) BASIC  7) Anim. DEL ON/OFF'
-            db  '  8) Vitesse UART (ATmega)  9) Wi-Fi (AT)', 13, 10, 0
+            db  13, 10, 'Solution-02 BIOS 3.4 - VE2CUY 2026', 13, 10
+            db  0
 txt_wifi_ecran:
             db  'WIFI AT  Echap=menu '
             db  '                    '

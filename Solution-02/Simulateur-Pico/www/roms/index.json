@@ -1,15 +1,15 @@
 [
     {
         "lang":  "fr",
-        "name":  "BIOS 3.3 français (Pico W)",
+        "name":  "BIOS 3.4 français (Pico W)",
         "file":  "solution-02-bios.bin",
-        "name_en":  "BIOS 3.3 French (Pico W)"
+        "name_en":  "BIOS 3.4 French (Pico W)"
     },
     {
         "lang":  "en",
-        "name":  "BIOS 3.3 anglais (Pico W)",
+        "name":  "BIOS 3.4 anglais (Pico W)",
         "file":  "solution-02-bios-en.bin",
-        "name_en":  "BIOS 3.3 English (Pico W)"
+        "name_en":  "BIOS 3.4 English (Pico W)"
     },
     {
         "name":  "Diagnostic de la carte SD",

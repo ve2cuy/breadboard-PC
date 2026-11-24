@@ -1220,7 +1220,8 @@ sd_choisir:
         mov     byte [es:V_IMG_HAUT], 0
 .dessine:
         call    img_ecran
-        call    ecran_uart
+        mov     si, txt_img_titre
+        call    img_liste_uart          ; terminal : toute la liste, une touche par ligne
 .touche:
         call    kbd_attend
         cmp     al, 27
@@ -1230,7 +1231,14 @@ sd_choisir:
         cmp     al, ' '
         je      .espace
         or      al, al
-        jnz     .touche
+        jz      .fleches
+        mov     bl, [es:V_IMG_NB]       ; 0-9, A-Z : la ligne de cette touche, tout de suite
+        add     bl, [es:V_HD_NB]        ; (le clavier du iPad n'a pas de fleches)
+        call    img_cle_index
+        jc      .touche
+        mov     [es:V_IMG_CHOIX], al
+        jmp     .entree
+.fleches:
         mov     bl, [es:V_IMG_CHOIX]
         cmp     ah, 48h                 ; haut
         jne     .bas
@@ -1257,7 +1265,9 @@ sd_choisir:
         mov     al, bl
         sub     al, 2
 .b2:    mov     [es:V_IMG_HAUT], al
-        jmp     .dessine
+        call    img_ecran
+        call    img_choix_uart          ; terminal : la ligne choisie
+        jmp     .touche
 .espace:                                ; Espace sur une ligne C: : ce disque sera C:
         mov     al, [es:V_IMG_CHOIX]
         sub     al, [es:V_IMG_NB]
@@ -1364,6 +1374,69 @@ img_ecran:
 
 lignes_234: db  LIGNE2, LIGNE3, LIGNE4
 
+; img_cle : AL = touche de la ligne AL de la liste (0-9, puis A-Z).
+img_cle:
+        cmp     al, 10
+        jb      .c
+        add     al, 'A' - 10 - '0'
+.c:     add     al, '0'
+        ret
+
+; img_cle_index : touche AL (0-9, A-Z, a-z) -> ligne AL ; CF = 1 si ce n'est pas une ligne de la
+; liste (BL = derniere ligne). Preserve BX.
+img_cle_index:
+        cmp     al, '0'
+        jb      .non
+        cmp     al, '9'
+        jbe     .chiffre
+        and     al, 0DFh                ; minuscule -> majuscule
+        cmp     al, 'A'
+        jb      .non
+        cmp     al, 'Z'
+        ja      .non
+        sub     al, 'A' - 10
+        jmp     .borne
+.chiffre:
+        sub     al, '0'
+.borne: cmp     al, bl
+        ja      .non
+        clc
+        ret
+.non:   stc
+        ret
+
+; img_liste_uart : au terminal (console a ON) le titre CS:SI (20 car.), l'aide, puis toute la
+; liste, la touche devant chaque ligne. Detruit AX, BX, CX, DX, SI, DI.
+img_liste_uart:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        call    msg_uart                ; CR LF + titre
+        mov     si, txt_img_uart
+        call    uart_texte
+        xor     dl, dl
+.l:     mov     al, [es:V_IMG_NB]
+        add     al, [es:V_HD_NB]
+        cmp     dl, al
+        ja      .r
+        mov     al, dl
+        push    dx
+        call    img_ligne
+        call    ligne_uart
+        pop     dx
+        inc     dl
+        jmp     .l
+.r:     ret
+
+; img_choix_uart : la ligne choisie (fleches) au terminal. Detruit AX, BX, CX, DX, SI, DI.
+img_choix_uart:
+        cmp     byte [es:V_UCON], 0
+        je      .r
+        call    uart_calme
+        mov     al, [es:V_IMG_CHOIX]
+        call    img_ligne
+        jmp     ligne_uart
+.r:     ret
+
 ; img_ligne : V_LIGNE = ligne n AL de la liste (0 = ROM). Detruit AX, BX, CX, DX, SI, DI.
 img_ligne:
         push    ax
@@ -1384,6 +1457,10 @@ img_ligne:
         jne     .marque
         mov     ah, '*'
 .marque:
+        push    ax
+        call    img_cle                 ; touche de la ligne (0-9, A-Z)
+        call    tx_car
+        pop     ax
         push    ax
         mov     al, ah
         call    tx_car
@@ -1572,12 +1649,9 @@ chg_a:
         mov     byte [es:V_IMG_CHOIX], 0
         mov     byte [es:V_IMG_HAUT], 0
 .dessine:
-        call    img_ecran
-        mov     al, 80h | LIGNE1
-        call    lcd_cmd
+        call    .ecran
         mov     si, txt_chg_titre
-        call    lcd_texte20
-        call    ecran_uart
+        call    img_liste_uart          ; terminal : toute la liste, une touche par ligne
 .touche:
         call    kbd_attend
         cmp     al, 27
@@ -1585,7 +1659,18 @@ chg_a:
         cmp     al, 13
         je      .entree
         or      al, al
-        jnz     .touche
+        jz      .fleches
+        mov     bl, [es:V_IMG_NB]       ; 0-9, A-Z : la ligne de cette touche
+        call    img_cle_index
+        jc      .touche
+        mov     [es:V_IMG_CHOIX], al
+        jmp     .entree
+.ecran: call    img_ecran
+        mov     al, 80h | LIGNE1
+        call    lcd_cmd
+        mov     si, txt_chg_titre
+        jmp     lcd_texte20
+.fleches:
         mov     bl, [es:V_IMG_CHOIX]
         cmp     ah, 48h                 ; haut
         jne     .bas
@@ -1610,7 +1695,9 @@ chg_a:
         mov     al, bl
         sub     al, 2
 .b2:    mov     [es:V_IMG_HAUT], al
-        jmp     .dessine
+        call    .ecran
+        call    img_choix_uart          ; terminal : la ligne choisie
+        jmp     .touche
 .entree:
         mov     al, [es:V_IMG_CHOIX]
         or      al, al
@@ -1845,7 +1932,7 @@ nom83_es:
         ret
 
 %ifdef LANG_EN
-txt_chg_titre:  db  'Floppy A: Enter     '
+txt_chg_titre:  db  'Floppy A: key/Enter '
 txt_chg_sans:   db  'No SD card!         '
 txt_chg_fin:    db  'A: changed (Esc: no change).', 13, 10, 0
 
@@ -1853,7 +1940,8 @@ txt_sd_lecture: db  'SD card...          '
                 db  '                    '
                 db  '                    '
                 db  '                    '
-txt_img_titre:  db  'Boot: Enter         '
+txt_img_titre:  db  'Boot: key or Enter  '
+txt_img_uart:   db  13, 10, 'Press the key of the image (Enter = >, Space = this C: for *, Esc = back):', 13, 10, 0
 txt_img_rom:    db  'ROM PC-DOS 2.1', 0
 txt_img_c:      db  'C:', 0
 txt_img_err:    dw  txt_img_e1, txt_img_e2, txt_img_e3, txt_img_e4
@@ -1863,7 +1951,7 @@ txt_img_e3:     db  'Read error!         '
 txt_img_e4:     db  'C: image rejected!  '
 txt_hd_verif:   db  'Checking C:...      '
 %else
-txt_chg_titre:  db  'Disquette A: Entree '
+txt_chg_titre:  db  'Disquette A: touche '
 txt_chg_sans:   db  'Pas de carte SD !   '
 txt_chg_fin:    db  'A: change (Echap : rien).', 13, 10, 0
 
@@ -1871,7 +1959,8 @@ txt_sd_lecture: db  'Carte SD...         '
                 db  '                    '
                 db  '                    '
                 db  '                    '
-txt_img_titre:  db  'Demarrer : Entree   '
+txt_img_titre:  db  'Touche ou Entree    '
+txt_img_uart:   db  13, 10, "Touche de l'image (Entree = >, Espace = ce C: pour *, Echap = retour) :", 13, 10, 0
 txt_img_rom:    db  'ROM PC-DOS 2.1', 0
 txt_img_c:      db  'C:', 0
 txt_img_err:    dw  txt_img_e1, txt_img_e2, txt_img_e3, txt_img_e4

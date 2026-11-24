@@ -1,4 +1,4 @@
-//! Pico W (A1) sur les ports 50h-57h, derriere U18/U19, avec le BIOS 3.3 :
+//! Pico W (A1) sur les ports 50h-57h, derriere U18/U19, avec le BIOS 3.4 :
 //! - detection (IDENT) et infos systeme ;
 //! - carte SD du Pico (J14) : demarrage du DOS depuis C:, vitesse des secteurs ;
 //! - reseau : S02PKT et mTCP (PING, DNS, HTGET) puis ELKS (ktcp, ping, urlget) par le Pico,
@@ -103,7 +103,7 @@ fn bios_detecte_le_pico() {
     s.set_pico(true);
     secs(&mut s, 3.0);
     let v = s.peek(0x7F000 + 0x8A4, 4);
-    assert_eq!(v[0], 1, "V_PICO : BIOS 3.3 sans Pico detecte");
+    assert_eq!(v[0], 1, "V_PICO : BIOS 3.4 sans Pico detecte");
     assert_eq!(v[2], s02pico_coeur::VERSION, "V_PICO_VER");
     // sans Pico : rien de change
     let mut s = Sim::new(&rom());

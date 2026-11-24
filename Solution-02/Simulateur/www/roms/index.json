@@ -1,15 +1,15 @@
 [
     {
         "lang":  "fr",
-        "name":  "BIOS 3.2 français",
+        "name":  "BIOS 3.4 français",
         "file":  "solution-02-bios.bin",
-        "name_en":  "BIOS 3.2 French"
+        "name_en":  "BIOS 3.4 French"
     },
     {
         "lang":  "en",
-        "name":  "BIOS 3.2 anglais",
+        "name":  "BIOS 3.4 anglais",
         "file":  "solution-02-bios-en.bin",
-        "name_en":  "BIOS 3.2 English"
+        "name_en":  "BIOS 3.4 English"
     },
     {
         "name":  "Diagnostic de la carte SD",

@@ -46,7 +46,7 @@ fn demarrage_et_menu() {
     let log = s.take_log();
     println!("journal : {}", log);
     let lignes = s.lcd_lines().join("\n");
-    assert!(lignes.contains("6) BASIC"), "menu absent du LCD");
+    assert!(lignes.contains("1) Lancer le DOS"), "menu absent du LCD");
     assert!(tx.contains("6) BASIC"), "menu absent de l'UART");
 }
 

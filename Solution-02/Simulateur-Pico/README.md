@@ -83,6 +83,7 @@ The download is limited by polling at 18.2 Hz in S02PKT (16 blocks of 255 bytes 
 python outils\relais.py       # TCP relay for the page
 node outils\essai_reseau.mjs [--relais ws://127.0.0.1:8765]   # the page's network path, end to end, with Node
 node outils\essai_page.mjs [--relais ws://127.0.0.1:8765]     # the real page in Edge without a window (server on port 8099)
+node outils\essai_ipad.mjs [--url http://localhost:8099/]     # the page on an emulated iPad: it must scroll to the bottom
 .\publier.ps1                 # publishes both simulators (gh-pages: / and /pico/)
 ```
 
