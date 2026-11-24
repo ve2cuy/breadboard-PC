@@ -155,7 +155,10 @@ sd_cmd0a:
 ; Detruit AX, BX, CX, DX, SI, DI.
 ; -----------------------------------------------------------------------------
 sd_init:
-        mov     byte [es:V_SD_TYPE], 0
+        call    pico_sd_init            ; carte de J14 par le Pico, s'il est la (pico.inc)
+        jc      .spi
+        ret
+.spi:   mov     byte [es:V_SD_TYPE], 0
         mov     word [es:V_SD_R0], 0FFFFh
         mov     byte [es:V_SD_R41], 0FFh
         mov     cx, 80                  ; >= 74 impulsions, CS = 1
@@ -301,6 +304,13 @@ sd_lire:
         push    ds
         mov     bx, DSEG
         mov     ds, bx
+        cmp     byte [V_PICO_SD], 1
+        pop     ds
+        jne     .spi
+        jmp     pico_sd_lire
+.spi:   push    ds
+        mov     bx, DSEG
+        mov     ds, bx
         cmp     byte [V_SD_TYPE], 3
         pop     ds
         je      .bloc
@@ -336,7 +346,10 @@ sd_tampon:
 
 ; sd_capacite : lit le CSD (CMD9). DX:AX = capacite en Mo. CF = 1 si erreur.
 sd_capacite:
-        mov     al, 9                   ; CMD9 : SEND_CSD
+        cmp     byte [es:V_PICO_SD], 1
+        jne     .spi
+        jmp     pico_capacite
+.spi:   mov     al, 9                   ; CMD9 : SEND_CSD
         call    sd_cmd0a
         or      al, al
         jnz     .err
@@ -630,6 +643,13 @@ tx_sortie:
 ; -----------------------------------------------------------------------------
 sd_ecrire:
         push    ds
+        mov     bx, DSEG
+        mov     ds, bx
+        cmp     byte [V_PICO_SD], 1
+        pop     ds
+        jne     .spi
+        jmp     pico_sd_ecrire
+.spi:   push    ds
         mov     bx, DSEG
         mov     ds, bx
         cmp     byte [V_SD_TYPE], 3

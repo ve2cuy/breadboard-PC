@@ -26,6 +26,15 @@ oscilloscope, analyseur logique 32 voies avec décodeurs, débogueur, pannes à 
   Plus de détails dans le <a href="Solution-02/Simulateur/README_fr.md">README du simulateur</a>.</em>
 </p>
 
+**Nouveau : [le simulateur avec le Pico W](https://ve2cuy.github.io/breadboard-PC/pico/)** — la carte actuelle (2026-11-23) :
+- le terminal de l'ATmega328P ;
+- un Raspberry Pi Pico W sur les ports 50h-57h derrière deux SN74LVC245, avec états d'attente par READY ;
+- le BIOS 3.3, qui lit la carte SD par le Pico ;
+- **TCP/IP et l'Internet** depuis le DOS (mTCP) et ELKS, par le cœur du vrai micrologiciel du Pico : DNS-over-HTTPS,
+  HTTP, et vrai TCP avec un petit relais local.
+
+Détails dans le [README de Simulateur-Pico](Solution-02/Simulateur-Pico/README_fr.md) et le [README du Pico](Solution-02/pico/README_fr.md).
+
 ## En bref
 
 | | |

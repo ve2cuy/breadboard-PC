@@ -1,6 +1,8 @@
 # Étude : Raspberry Pi Pico W sur le bus du 8088 (Solution-02)
 
-Statut : **étude, rien de câblé** (2026-11-23). But : remplacer à terme le SPI logiciel
+Statut : **voie B retenue, au schéma** (2026-11-23 : Pico W A1, SN74LVC245AN U18/U19 commandés, READY câblé ; montage pas encore fait).
+Réalisation : protocole, micrologiciel et BIOS 3.3 dans [README_fr.md](README_fr.md) ; simulateur dans
+[../Simulateur-Pico](../Simulateur-Pico/README_fr.md). But : remplacer à terme le SPI logiciel
 (≈ 110 µs par octet) par un périphérique d'E/S rapide (≈ 1 µs par octet), qui donne au 8088 la
 carte SD, le réseau Wi-Fi et des UART, sans microcontrôleur 5 V intermédiaire.
 
@@ -80,7 +82,7 @@ le Pico.
 - **Registres dont la valeur dépend de l'adresse** (état, paramètres) : l'automate lit A0–A2 et
   saute vers la bonne source (`jmp` sur une table : ≈ 10 instructions, < 100 ns). Faisable sans
   attente.
-- **READY (option de sûreté)** : aujourd'hui la sortie READY du 82C84 n'est pas reliée (RDY1/RDY2 à
+- **READY (option de sûreté, câblée au schéma)** : avant, la sortie READY du 82C84 n'était pas reliée (RDY1/RDY2 à
   la masse). Pour insérer des états d'attente : READY du 82C84 → broche 22 du 8088, **RDY1** ← une
   sortie du Pico (1 = prêt), AEN1# à la masse. Le Pico ne retient alors le 8088 que s'il n'a pas
   l'octet. À prévoir au schéma, même si la première version s'en passe.
@@ -91,8 +93,8 @@ le Pico.
 |---|---|---|
 | D0–D7 (bus) | GP0–GP7 (consécutives : obligatoire pour `in pins`/`out pins` des PIO) | 8 |
 | A0–A2, SEL#, RD#, WR# | GP8–GP13 (consécutives) | 6 |
-| Validation du tampon vers le bus (OE du 74HCT541, voie C) | GP14 | 1 |
-| RESET (lu : réinitialisation des FIFO) | GP15 | 1 |
+| RESET (lu : réinitialisation des FIFO), par U19 | GP14 | 1 |
+| Libre (voie B ; OE du 74HCT541 en voie C) | GP15 | 1 |
 | Carte SD (SPI0 matériel : RX GP16, CS GP17, SCK GP18, TX GP19) | GP16–GP19 | 4 |
 | UART1 matériel (terminal) | GP20 (TX), GP21 (RX) | 2 |
 | Interruption vers le 8259 (J12) | GP22 | 1 |
@@ -130,3 +132,20 @@ automate PIO (il en reste plusieurs de libres).
 - Voie A (Pico 2 W), B (74LVC245) ou C (74HC4050 + 74HCT541) selon les pièces disponibles.
 - Câbler READY dès la première version (recommandé : quelques fils, et une sûreté).
 - Fente microSD : sur le Pico (recommandé : la carte SD actuelle de U12 resterait pour la transition).
+
+## 10. Au schéma (2026-11-23, voie B)
+
+| Repère | Rôle | Liaisons |
+|---|---|---|
+| A1 | Pico W sur support | VSYS ← +5 V par D4 (1N5817) ; 3V3 → U18, U19, C26, C27 |
+| U18 | SN74LVC245AN, données | A = D0–D7 ; B → RN4 (8 × 100 Ω) → GP0–GP7 ; DIR = ~RD (lecture : Pico → bus) ; ~OE = ~CS_PICO |
+| U19 | SN74LVC245AN, adresses et commandes | A0, A1, A2, ~CS_PICO, ~RD, ~WR, RESET → GP8–GP14 ; DIR = 3,3 V, ~OE = masse |
+| U8 broche 10 | O5 = ~CS_PICO | ports 50h–5Fh |
+| Q1, R23, R24 | READY | GP26 = 1 → Q1 conduit → RDY1 = 0 → états d'attente ; R24 10 k tire RDY1 au +5 V ; READY du 82C84 → broche 22 du 8088 |
+| J14 | 2ᵉ module microSD | GP17 CS, GP18 SCK, GP19 MOSI, GP16 MISO, +5 V, masse (comme J9) |
+| J15 | UART1 du Pico (3,3 V) | GP20 TX, GP21 RX, masse |
+| J16 | cavalier | GP22 → IRQ3 |
+
+Sur le montage actuel, READY demande deux modifications : couper la broche 22 du 8088 du +5 V et
+RDY1 du 82C84 de la masse, puis relier READY (82C84 broche 5) à la broche 22 et ajouter R24. Sans
+Pico, READY reste à 1 : rien ne change.

@@ -2110,9 +2110,18 @@ int12h:
 ; en attente. Sans 8259 : rien n'est recu.
 int14h:
         sti
-        cmp     dx, 1                   ; COM2 = module Wi-Fi (ATmega U17, canal 2)
-        jne     .com1
-        jmp     int14_wifi
+        cmp     dx, 1                   ; COM2 = reseau : Pico W (pico.inc) ou module Wi-Fi
+        jne     .com1                   ; (ATmega U17, canal 2)
+        push    ds
+        push    ax
+        mov     ax, DSEG
+        mov     ds, ax
+        cmp     byte [V_PICO], 1
+        pop     ax
+        pop     ds
+        jne     .wifi
+        jmp     int14_pico
+.wifi:  jmp     int14_wifi
 .com1:  cmp     ah, 01h
         jne     .pas_tx
         call    uart_tx

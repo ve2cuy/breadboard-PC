@@ -1,0 +1,18 @@
+[package]
+name = "s02pico-coeur"
+version = "1.0.0"
+edition = "2021"
+description = "Coeur du micrologiciel du Pico W de Solution-02 : registres 50h-57h, carte SD, SLIP et relais TCP/IP. Le meme code tourne dans le Pico et dans le simulateur."
+license = "MIT"
+
+[dependencies]
+smoltcp = { version = "0.13", default-features = false, features = ["alloc", "medium-ip", "proto-ipv4", "socket-tcp"] }
+pio = { version = "0.3", optional = true }
+
+[features]
+# programme PIO du bus (micrologiciel, essai au cycle pres)
+pio = ["dep:pio"]
+
+[[test]]
+name = "pio_bus"
+required-features = ["pio"]

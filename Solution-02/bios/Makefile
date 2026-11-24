@@ -19,7 +19,7 @@ $(BASIC_BIN): $(BASIC_SRC)
 ../../PC-DOS/pcdos2_1_rom.img: tests/gen_dos_rom.py ../../PC-DOS/pcdos2_1.img
 	python tests/gen_dos_rom.py
 
-SRC_BIOS = bios.asm clavier_us.inc accueil.inc accueil_en.inc services.inc sd.inc ramtest.inc avr.inc $(BASIC_BIN) ../../PC-DOS/pcdos2_1_rom.img
+SRC_BIOS = bios.asm clavier_us.inc accueil.inc accueil_en.inc services.inc sd.inc ramtest.inc avr.inc pico.inc $(BASIC_BIN) ../../PC-DOS/pcdos2_1_rom.img
 
 # ecrans d'accueil ANSI de la console UART (francais et anglais)
 accueil.inc accueil_en.inc: tests/gen_accueil.py

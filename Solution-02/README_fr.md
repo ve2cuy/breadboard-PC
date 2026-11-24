@@ -1218,7 +1218,9 @@ supports tulipe ou à profil bas sous l'écran). La carte n'a pas encore été f
 
 ## Simulateur
 
-En ligne : <https://ve2cuy.github.io/breadboard-PC/> (publié par `Simulateur/publier.ps1`).
+En ligne : <https://ve2cuy.github.io/breadboard-PC/>, et la carte actuelle avec le **Pico W** (BIOS 3.3,
+TCP/IP et l'Internet) : <https://ve2cuy.github.io/breadboard-PC/pico/> ([Simulateur-Pico](Simulateur-Pico/README_fr.md)).
+Les deux sont publiés par `Simulateur-Pico/publier.ps1`.
 
 ![Démonstration du simulateur](Simulateur/docs/simulateur_fr.svg)
 
@@ -1244,6 +1246,15 @@ Le processeur passe les 2 004 000 cas de la suite SingleStepTests du 8088 (218 f
 
 ## État
 
+- 2026-11-23 : **Raspberry Pi Pico W** sur les ports 50h-57h ([pico/](pico/README_fr.md)).
+  - Schéma : A1, deux SN74LVC245 (U18, U19), RN4, READY câblé par Q1, microSD J14, UART1 J15, J16 → IRQ3.
+  - Cœur commun en Rust : registres, SD, SLIP, relais TCP/IP à la manière de slirp.
+  - Micrologiciel embassy : programme PIO du bus vérifié au cycle près face au 8088, `.uf2` construit.
+  - **BIOS 3.3** : carte SD par le Pico (démarrage du DOS 37 s → 20 s), INT 14h DX=1 par le Pico.
+  - S02PKT lit 16 blocs par tic avec le Pico.
+  - FDNET_C.IMG : FreeDOS + mTCP.
+  - **Nouveau simulateur** [Simulateur-Pico](Simulateur-Pico/README_fr.md) avec l'Internet : DNS-over-HTTPS, fetch,
+    relais TCP local.
 - 2026-11-23 : **ELKS en réseau** : pilote `ttyS1` (module Wi-Fi par INT 14h, blocs du BIOS
   3.1), `ktcp` en SLIP (MTU 512), ping d'Internet et session telnet depuis le PC à travers le
   NAT du module ; image `buf=24` sans `ftpd` pour garder de la mémoire. Module regravé en

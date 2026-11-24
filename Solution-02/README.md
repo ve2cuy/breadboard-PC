@@ -1127,7 +1127,9 @@ standoffs: machined or low-profile sockets under the screen). The board has not 
 
 ## Simulator
 
-Online: <https://ve2cuy.github.io/breadboard-PC/> (published by `Simulateur/publier.ps1`).
+Online: <https://ve2cuy.github.io/breadboard-PC/>, and the current board with the **Pico W** (BIOS 3.3,
+TCP/IP and the Internet): <https://ve2cuy.github.io/breadboard-PC/pico/> ([Simulateur-Pico](Simulateur-Pico/README.md)).
+Both are published by `Simulateur-Pico/publier.ps1`.
 
 ![Simulator demo](Simulateur/docs/simulateur.svg)
 
@@ -1154,6 +1156,15 @@ files).
 
 ## Status
 
+- 2026-11-23: **Raspberry Pi Pico W** on ports 50h-57h ([pico/](pico/README.md)).
+  - Schematic: A1, two SN74LVC245 (U18, U19), RN4, READY wired through Q1, J14 microSD, J15 UART1, J16 → IRQ3.
+  - Shared core in Rust: registers, SD, SLIP, slirp-style TCP/IP relay.
+  - Firmware with embassy: PIO bus program checked cycle by cycle against the 8088, `.uf2` built.
+  - **BIOS 3.3**: SD card through the Pico (DOS boot 37 s → 20 s), INT 14h DX=1 through the Pico.
+  - S02PKT reads 16 blocks per tick with the Pico.
+  - FDNET_C.IMG: FreeDOS + mTCP.
+  - **New simulator** [Simulateur-Pico](Simulateur-Pico/README.md) with the Internet: DNS-over-HTTPS, fetch, local TCP
+    relay.
 - 2026-11-23: **ELKS networking**: `ttyS1` driver (Wi-Fi module through INT 14h, BIOS 3.1
   blocks), `ktcp` over SLIP (MTU 512), Internet ping and telnet session from the PC through the
   module's NAT; image with `buf=24` and no `ftpd` to keep memory. Module reflashed as a SLIP

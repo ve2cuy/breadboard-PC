@@ -20,6 +20,9 @@ DOS qui passent par un pilote de paquets, en particulier **mTCP** (`PING`, `TELN
   (écriture d'un bloc). Le BIOS partage le bus SPI avec la carte SD.
 - Pas d'interruption pour le canal 2 : le module est **scruté à chaque INT 1Ch** (18,2 Hz),
   255 octets au plus par tic (~4,6 Ko/s), sur une pile privée.
+- **Avec le Pico W** (BIOS 3.3, ports 50h-57h, [../pico](../pico/README_fr.md)), les mêmes appels passent
+  par le Pico. `INT 14h DX=1 AH=0Ah` rend AL = 50h : S02PKT lit alors jusqu'à **16 blocs par tic**, car un
+  bloc ne prend que ≈ 1 ms par le Pico.
 - Fonctions de la spécification : `driver_info`, `access_type` (4 abonnés), `release_type`,
   `send_pkt`, `get_address`, `reset_interface`, `get_statistics`. `terminate` est refusé : le
   pilote reste en mémoire (≈ 2,7 Ko).

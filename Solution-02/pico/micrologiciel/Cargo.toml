@@ -1,0 +1,33 @@
+[package]
+name = "s02pico-micrologiciel"
+version = "1.0.0"
+edition = "2021"
+description = "Micrologiciel du Raspberry Pi Pico W de Solution-02 (ports 50h-57h du 8088 : carte SD, Wi-Fi, TCP/IP)"
+license = "MIT"
+
+[dependencies]
+s02pico-coeur = { path = "../coeur", features = ["pio"] }
+embassy-rp = { version = "0.10", features = ["rp2040", "time-driver", "critical-section-impl", "boot2-w25q080"] }
+embassy-executor = { version = "0.10", features = ["platform-cortex-m", "executor-thread", "executor-interrupt"] }
+embassy-time = "0.5"
+embassy-sync = "0.8"
+embassy-futures = "0.1"
+embassy-net = { version = "0.9", features = ["tcp", "udp", "icmp", "dhcpv4", "proto-ipv4", "medium-ethernet"] }
+cyw43 = "0.7"
+cyw43-pio = "0.10"
+cyw43-setup = "1.0"
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+cortex-m-rt = "0.7"
+critical-section = "1.1"
+embedded-alloc = "0.6"
+static_cell = "2"
+portable-atomic = { version = "1", features = ["critical-section"] }
+panic-halt = "1"
+heapless = "0.8"
+embedded-io-async = "0.7"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+debug = 2

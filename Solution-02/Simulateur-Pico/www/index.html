@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solution-02 + Pico W — Simulateur 8088</title>
+<meta name="description" content="Simulateur de Solution-02, ordinateur 8088 sur platine d'essai : LCD, DEL, clavier PS/2, UART, carte SD, oscilloscope et débogueur.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='6' y='4' width='20' height='24' rx='2' fill='%23222'/%3E%3Cg fill='%23c9b26b'%3E%3Crect x='2' y='7' width='4' height='2'/%3E%3Crect x='2' y='12' width='4' height='2'/%3E%3Crect x='2' y='17' width='4' height='2'/%3E%3Crect x='2' y='22' width='4' height='2'/%3E%3Crect x='26' y='7' width='4' height='2'/%3E%3Crect x='26' y='12' width='4' height='2'/%3E%3Crect x='26' y='17' width='4' height='2'/%3E%3Crect x='26' y='22' width='4' height='2'/%3E%3C/g%3E%3Ctext x='16' y='20' font-size='8' text-anchor='middle' fill='%2339ff88' font-family='monospace'%3E88%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/instruments.css">
+</head>
+<body>
+<div id="app">
+  <!-- ======================================================= barre d'outils -->
+  <header class="toolbar">
+    <div class="brand">
+      <div class="brand-chip"><span>88</span></div>
+      <div class="brand-txt"><b>SOLUTION-02</b><small>Simulateur 8088 · Pico W</small></div>
+    </div>
+    <div class="seg small lang" id="langSel" title="Langue de l'interface"><button data-l="fr">FR</button><button data-l="en">EN</button></div>
+
+    <div class="tgroup">
+      <button id="btnPower" class="rocker" title="Alimentation +5 V (Ctrl+Maj+P)"><span class="rocker-led"></span><span class="lbl">ALIM</span></button>
+      <button id="btnReset" class="pushbtn red" title="RESET (SW1) — maintenir pour tenir le 8088 en reset"><span class="cap"></span><span class="lbl">RESET</span></button>
+    </div>
+
+    <div class="tgroup">
+      <button id="btnRun" class="tbtn" title="Exécuter / Pause (F9)"><svg viewBox="0 0 16 16"><path class="ic-run" d="M4 2l10 6-10 6z"/><path class="ic-pause" d="M3 2h4v12H3zM9 2h4v12H9z"/></svg><span id="runLbl">Pause</span></button>
+      <button id="btnStep" class="tbtn" title="Pas à pas : une instruction (F10)"><svg viewBox="0 0 16 16"><path d="M2 8h8M7 4l4 4-4 4" stroke="currentColor" stroke-width="2" fill="none"/><path d="M13 2v12" stroke="currentColor" stroke-width="2"/></svg>Pas</button>
+      <label class="tsel" title="Vitesse de simulation">
+        <span>Vitesse</span>
+        <select id="selSpeed">
+          <option value="0.001">1/1000</option>
+          <option value="0.01">1/100</option>
+          <option value="0.1">1/10</option>
+          <option value="0.5">1/2</option>
+          <option value="1" selected>Réelle</option>
+          <option value="2">×2</option>
+          <option value="5">×5</option>
+          <option value="20">×20</option>
+          <option value="1000">Max</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="tgroup">
+      <div class="seg" id="kbdMode" title="Où vont les touches du clavier de l'ordinateur (Ctrl+Maj+K pour basculer)">
+        <button data-mode="ps2" class="on"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="2" fill="none" stroke="currentColor"/><path d="M4 5h2M8 5h2M12 5h2M5 9h10" stroke="currentColor"/></svg>PS/2 (J4)</button>
+        <button data-mode="uart"><svg viewBox="0 0 20 14"><rect x="1" y="1" width="18" height="12" rx="1" fill="none" stroke="currentColor"/><path d="M4 5l3 2-3 2M9 10h5" stroke="currentColor" fill="none"/></svg>UART (J5)</button>
+      </div>
+      <div class="menu-wrap">
+        <button class="tbtn" id="btnKeys" title="Combinaisons que le navigateur ne laisse pas passer">Touches ▾</button>
+        <div class="menu" id="menuKeys">
+          <button data-key="cad">Ctrl+Alt+Suppr <small>redémarrage</small></button>
+          <button data-key="cai">Ctrl+Alt+Inser <small>changer A:</small></button>
+          <button data-key="f12">F12 <small>changer A: (UART)</small></button>
+          <button data-key="ctrlbs">Ctrl+\ <small>changer A: (UART)</small></button>
+          <button data-key="ctrlc">Ctrl+C</button>
+          <button data-key="ctrlz">Ctrl+Z</button>
+          <button data-key="esc">Échap</button>
+          <hr>
+          <button data-key="paste">Coller le presse-papiers…</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tgroup">
+      <label class="tsel" title="ROM gravée dans U4 (W29C020C)">
+        <span>ROM U4</span>
+        <select id="selRom"></select>
+      </label>
+      <button class="tbtn" id="btnRomFile" title="Charger une image de ROM (.bin de 256 Ko)">Ouvrir…</button>
+      <input type="file" id="fileRom" accept=".bin,.rom" hidden>
+    </div>
+
+    <div class="tgroup">
+      <button class="tbtn icon" id="btnSound" title="Piézo BZ1 (non câblé sur le montage)"><svg viewBox="0 0 16 16"><path d="M2 6h3l4-3v10l-4-3H2z" fill="currentColor"/><path class="wave" d="M11 5c1.5 1.5 1.5 4.5 0 6M13 3c3 3 3 7 0 10" stroke="currentColor" fill="none"/><path class="mute" d="M11 5l4 6M15 5l-4 6" stroke="currentColor"/></svg></button>
+      <button class="tbtn icon" id="btnSnap" title="Instantané : mémoriser l'état complet"><svg viewBox="0 0 16 16"><rect x="1.5" y="4" width="13" height="9.5" rx="1.5" fill="none" stroke="currentColor"/><circle cx="8" cy="8.7" r="2.6" fill="none" stroke="currentColor"/><path d="M5 4l1.2-2h3.6L11 4" fill="none" stroke="currentColor"/></svg></button>
+      <button class="tbtn icon" id="btnRestore" title="Revenir à l'instantané" disabled><svg viewBox="0 0 16 16"><path d="M3 8a5 5 0 1 0 1.5-3.6" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M2 2v4h4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+      <button class="tbtn icon" id="btnHelp" title="Aide et raccourcis (F1)">?</button>
+    </div>
+
+
+  </header>
+
+  <!-- ======================================================= zone principale -->
+  <main class="main">
+    <section class="bench">
+      <!-- face avant : les sorties visibles du montage -->
+      <div class="frontpanel">
+        <div class="fp-lcd">
+          <div class="fp-title">U10 · LCD 20×4 (HD44780)</div>
+          <div class="lcd-bezel"><canvas id="lcdCanvas" width="560" height="150"></canvas></div>
+          <div class="fp-knob">
+            <label for="rngContrast">RV1 contraste</label>
+            <input type="range" id="rngContrast" min="0" max="100" value="62">
+          </div>
+        </div>
+        <div class="fp-leds">
+          <div class="fp-title" title="BAR1–BAR3 sur U7 (8255) : PC7…PC0 · PA7…PA0 · PB7…PB0">Bargraphes · U7 (8255)</div>
+          <div class="bargraphs" id="bargraphs"></div>
+          <div class="fp-row">
+            <div class="voy"><span class="led green" id="ledD1"></span><label>D1 disquettes</label></div>
+            <div class="voy"><span class="led amber" id="ledD2"></span><label>D2 disque C:</label></div>
+            <div class="voy"><span class="led red" id="ledPwr"></span><label>+5 V</label></div>
+            <div class="voy"><span class="led blue" id="ledSpk"></span><label>BZ1</label></div>
+            <div class="voy kbd"><span class="led green" id="ledKbd"></span><label>J4 clavier</label></div>
+            <div class="voy"><span class="led green" id="ledTx"></span><label>J5 TX</label></div>
+            <div class="voy"><span class="led amber" id="ledRx"></span><label>J5 RX</label></div>
+            <div class="voy"><span class="led blue" id="ledSd"></span><label id="ledSdLbl">J14 SD</label></div>
+            <div class="voy"><span class="led green" id="ledPico"></span><label>Pico 50h</label></div>
+            <div class="voy"><span class="led amber" id="ledNet"></span><label>Wi-Fi</label></div>
+          </div>
+        </div>
+        <div class="fp-instr">
+          <div class="fp-title">Mesures</div>
+          <div class="ro"><label>HORLOGE CLK</label><span id="roClk">5,333 MHz</span></div>
+          <div class="ro"><label>VITESSE</label><span id="roSpeed">—</span></div>
+          <div class="ro"><label>TEMPS SIMULÉ</label><span id="roTime">0,00 s</span></div>
+          <div class="ro"><label>INSTRUCTIONS/S</label><span id="roIps">—</span></div>
+        </div>
+      </div>
+
+      <!-- vue de la carte -->
+      <div class="pcb-wrap" id="pcbWrap" tabindex="0">
+        <canvas id="pcbCanvas"></canvas>
+        <div class="pcb-hud">
+          <button class="hbtn" id="btnPanel" title="Masquer / afficher le panneau du haut (LCD, DEL)">▴</button>
+          <button class="hbtn" id="btnFit" title="Tout voir (double-clic)">⤢</button>
+          <button class="hbtn" id="btnZoomIn" title="Zoom +">+</button>
+          <button class="hbtn" id="btnZoomOut" title="Zoom −">−</button>
+          <label class="hchk" title="Afficher toutes les liaisons du schéma"><input type="checkbox" id="chkAir"> liaisons</label>
+          <label class="hchk" title="Noms des broches"><input type="checkbox" id="chkNames" checked> broches</label>
+        </div>
+        <div class="pcb-legend">
+          <span><i class="lv hi"></i>1</span><span><i class="lv lo"></i>0</span><span><i class="lv act"></i>activité</span><span><i class="lv z"></i>flottant</span>
+          <span class="hint">Survol : broche et net · Clic : sonde · Maj+clic : continuité · Clic droit : menu</span>
+        </div>
+        <div class="tooltip" id="tooltip"></div>
+        <div class="power-off-veil" id="offVeil"><div><b>Hors tension</b><span>Appuyer sur ALIM pour démarrer</span></div></div>
+      </div>
+    </section>
+
+    <div class="splitter" id="splitter" title="Glisser pour redimensionner"></div>
+
+    <!-- ======================================================= instruments -->
+    <aside class="dock" id="dock">
+      <nav class="tabs" id="tabs">
+        <button data-tab="term" class="on">Terminal</button>
+        <button data-tab="scope">Oscilloscope</button>
+        <button data-tab="la">Analyseur logique</button>
+        <button data-tab="dbg">Débogueur</button>
+        <button data-tab="pico">Pico W · Réseau</button>
+        <button data-tab="sd">Carte SD</button>
+        <button data-tab="faults">Pannes</button>
+        <button data-tab="irq">IRQ</button>
+        <button data-tab="log">Journal</button>
+        <span class="grow"></span>
+        <button class="tabmax" id="btnMax" title="Agrandir les instruments (toute la largeur)">⛶</button>
+      </nav>
+
+      <!-- Terminal UART -->
+      <section class="panel on" id="tab-term">
+        <div class="ptool">
+          <span class="badge" id="termBadge">9600 8N1 · UTF-8</span>
+          <label class="hchk"><input type="checkbox" id="chkTermConn" checked> branché sur J5</label>
+          <span class="grow"></span>
+          <button class="sbtn" id="btnTermCopy" title="Copier tout le texte">Copier</button>
+          <button class="sbtn" id="btnTermSave" title="Enregistrer la session">Enregistrer</button>
+          <button class="sbtn" id="btnTermClear">Effacer</button>
+        </div>
+        <div class="term-screen" id="term" tabindex="0"></div>
+        <div class="term-hint" id="termHint">Cliquer dans le terminal pour taper au clavier UART (comme PuTTY).</div>
+      </section>
+
+      <!-- Oscilloscope -->
+      <section class="panel" id="tab-scope">
+        <div class="dso">
+          <div class="dso-head"><span class="dso-brand"><b>S02</b>LAB</span><span class="dso-model">DSO-804</span>
+            <span class="dso-spec">4 CH · DIGITAL OSCILLOSCOPE · 21,3 MSa/s</span><span class="dso-badge">8088</span></div>
+          <div class="dso-body">
+            <div class="dso-screen"><canvas id="scopeCanvas"></canvas></div>
+            <div class="dso-panel">
+              <div class="dso-grp keys">
+                <button class="dkey run" id="scRun" title="Marche / arrêt de l'acquisition">RUN<br>STOP</button>
+                <button class="dkey" id="scSingle" title="Une seule acquisition au prochain déclenchement">SINGLE</button>
+                <button class="dkey" id="scAuto" title="Réglage automatique de la base de temps">AUTO</button>
+                <button class="dkey" id="scClear" title="Retirer toutes les sondes">CLEAR</button>
+              </div>
+              <div class="dso-grp knobs">
+                <span class="kl">Horizontal</span>
+                <div class="knob-w"><div class="knob" id="knTime" title="Base de temps (molette, ou clic à gauche/droite)"><i></i></div><span class="ks">SCALE</span></div>
+                <div class="knob-w"><div class="knob" id="knPos" title="Position du déclenchement"><i></i></div><span class="ks">POS</span></div>
+              </div>
+              <div class="dso-grp trig">
+                <span class="kl">Trigger</span>
+                <div class="srcs" id="scSrc"><button data-s="0">1</button><button data-s="1">2</button><button data-s="2">3</button><button data-s="3">4</button></div>
+                <div class="row2"><button class="dkey sm" id="scSlope" title="Front de déclenchement">Slope ↑</button><button class="dkey sm" id="scMode" title="Mode de déclenchement">Auto</button></div>
+              </div>
+              <div class="dso-grp chans">
+                <span class="kl">Vertical</span>
+                <div class="chs"><button class="chb" data-ch="0">1</button><button class="chb" data-ch="1">2</button><button class="chb" data-ch="2">3</button><button class="chb" data-ch="3">4</button></div>
+                <div class="row2"><button class="dkey sm on" id="scMeasure" title="Mesures automatiques">Measure</button><button class="dkey sm on" id="scCursor" title="Curseurs : glisser sur l'écran, double-clic pour effacer">Cursor</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="dso-front">
+            <div class="dso-pwr"><i></i></div>
+            <div class="dso-la" title="Voir l'analyseur logique">LA ▲</div>
+            <div class="bncs" id="bncs"></div>
+          </div>
+        </div>
+        <div class="scope-meas" id="scopeMeas"></div>
+        <div class="scope-add">
+          <select id="scAddSel"></select>
+          <button class="sbtn" id="scAddBtn">+ Sonde</button>
+          <button class="sbtn" id="scPreset">Préréglages ▾</button>
+          <div class="menu" id="menuPreset">
+            <button data-p="uart">UART : TX, RX</button>
+            <button data-p="ps2">Clavier PS/2 : CLK, DATA, IRQ1, INTR</button>
+            <button data-p="bus">Bus : ALE, RD, WR, IO/M</button>
+            <button data-p="sd">Carte SD : CS, SCK, MOSI, MISO</button>
+            <button data-p="irq">Interruptions : IRQ0, IRQ1, IRQ4, INTR</button>
+            <button data-p="lcd">LCD : E, RS (A0), D0, D1</button>
+            <button data-p="clk">Horloges : CLK, PCLK, OUT0 (IRQ0)</button>
+          </div>
+        </div>
+        <p class="note">Choisir une voie avec les boutons 1-4, puis cliquer sur une broche de la carte. Molette sur l'écran : base de temps.</p>
+      </section>
+
+      <!-- Analyseur logique -->
+      <section class="panel" id="tab-la">
+        <div class="la-bar">
+          <button class="la-go" id="laStart" title="Une capture">▶ Démarrer</button>
+          <button class="sbtn" id="laCont" title="Captures en continu">⟳ Continu</button>
+          <button class="sbtn" id="laStop">■ Arrêter</button>
+          <label class="tsel">Profondeur <select id="laDepth"></select></label>
+          <label class="tsel">Décl. <select id="laTrig"></select><select id="laEdge"><option value="r">↑</option><option value="f">↓</option><option value="a">↕</option></select></label>
+          <label class="tsel">Pré-décl. <input type="range" id="laPos" min="0" max="90" value="10"></label>
+          <span class="grow"></span>
+          <button class="sbtn" id="laPreset">Préréglages ▾</button>
+          <div class="menu" id="menuLaPreset">
+            <button data-p="data">Bus de données : D0-D7, RD, WR, IO/M (décodeur ASCII)</button>
+            <button data-p="bus32">Bus du 8088 : A0-A19, D0-D7, ALE, RD, WR, IO/M (32 voies)</button>
+            <button data-p="io">E/S : U12, clavier, UART, carte SD, IRQ</button>
+            <button data-p="sd">Carte SD : SPI + voyants</button>
+            <button data-p="kbd">Clavier et UART</button>
+            <button data-p="leds">DEL : PA0-PA7, PB0-PB7, PC0-PC7 (U7)</button>
+            <button data-p="lcd">LCD : E, A0 (RS), D0-D7</button>
+          </div>
+          <button class="sbtn" id="laClear">Effacer les voies</button>
+        </div>
+        <div class="la-main">
+          <div class="la-wave"><canvas id="laCanvas"></canvas></div>
+          <aside class="la-side">
+            <div class="cap">Décodeurs</div>
+            <div class="la-decs" id="laDecs"></div>
+            <select id="laDecAdd"></select>
+            <div class="cap">Ajouter une voie</div>
+            <div class="row"><select id="laAddSel"></select><button class="sbtn" id="laAddBtn">+</button></div>
+            <div class="cap">Résultats du décodage <span class="grow"></span><span id="laCount"></span></div>
+            <input class="la-search" id="laSearch" placeholder="Rechercher (ex. : IOW 0010)">
+            <div class="la-results" id="laResults"></div>
+          </aside>
+        </div>
+        <p class="note">Clic sur le numéro d'une voie : déclencher sur cette voie (↑ ↓ ↕ ×) ; clic droit : retirer. Molette : zoom ; glisser : déplacer ; double-clic : toute la capture.</p>
+      </section>
+
+      <!-- Débogueur -->
+      <section class="panel" id="tab-dbg">
+        <div class="ptool">
+          <button class="sbtn" id="dbgPause">Pause</button>
+          <button class="sbtn" id="dbgStep" title="F10">Pas</button>
+          <button class="sbtn" id="dbgOver" title="F11 : par-dessus CALL / INT / LOOP / REP">Par-dessus</button>
+          <button class="sbtn" id="dbgOut" title="Jusqu'au prochain RET / IRET">Jusqu'au retour</button>
+          <span class="grow"></span>
+          <input class="addr" id="dbgBpIn" placeholder="F000:E05B" title="Point d'arrêt (seg:off ou adresse linéaire)">
+          <button class="sbtn" id="dbgBpAdd">+ Arrêt</button>
+        </div>
+        <div class="dbg">
+          <div class="dbg-regs" id="dbgRegs"></div>
+          <div class="dbg-flags" id="dbgFlags"></div>
+          <div class="dbg-dis"><div class="cap">Code (CS:IP) — clic dans la marge : point d'arrêt</div><div id="dbgDis" class="mono"></div></div>
+          <div class="dbg-side">
+            <div class="cap">Points d'arrêt</div><div id="dbgBps" class="mono small"></div>
+            <div class="cap">Pile (SS:SP)</div><div id="dbgStack" class="mono small"></div>
+          </div>
+          <div class="dbg-mem">
+            <div class="cap">Mémoire <input class="addr" id="dbgMemAddr" value="0040:0000"> <button class="sbtn" id="dbgMemGo">Aller</button>
+              <select id="dbgMemQuick"><option value="">Raccourcis…</option><option value="0000:0000">Vecteurs (0000:0000)</option><option value="0040:0000">BDA (0040:0000)</option><option value="7F00:0000">DSEG du BIOS (7F00:0000)</option><option value="0000:7C00">Secteur d'amorce (0000:7C00)</option><option value="F000:FFF0">Vecteur de reset (F000:FFF0)</option><option value="C000:0000">Disquette en ROM (C000:0000)</option><option value="ds:si">DS:SI</option><option value="es:di">ES:DI</option></select>
+            </div>
+            <div id="dbgMem" class="mono small"></div>
+          </div>
+          <div class="dbg-io"><div class="cap">Derniers accès d'E/S</div><div id="dbgIo" class="mono small"></div></div>
+        </div>
+      </section>
+
+      <!-- Pico W et reseau -->
+      <section class="panel" id="tab-pico">
+        <div class="pico-head">
+          <div class="pico-art"><span>Raspberry Pi Pico W</span><b id="picoArtEtat">—</b></div>
+          <div class="pico-regs mono small" id="picoRegs"></div>
+        </div>
+        <div class="cap">Montage</div>
+        <div class="pico-opts">
+          <label class="hchk" title="A1, U18, U19, RN4 sur O5 (ports 50h-5Fh) : le BIOS 3.3 le détecte au démarrage (RESET)"><input type="checkbox" id="picoOn" checked> Pico W (A1) monté</label>
+          <label class="tsel" title="Lecteur où se trouve la carte SD">Carte SD dans <select id="picoSlot"><option value="j14">J14 (Pico, SPI0)</option><option value="j9">J9 (U12, SPI du 8088)</option></select></label>
+          <label class="hchk" title="GP22 vers IRQ3 du 8259"><input type="checkbox" id="picoJ16" checked> cavalier J16 (IRQ3)</label>
+          <label class="tsel" title="États d'attente du 8088 par lecture du Pico (READY : RDY1 tenu à 0 par Q1 pendant que le cœur 1 répond)">READY <select id="picoWait"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>6</option><option>8</option></select> état(s) d'attente</label>
+        </div>
+        <div class="cap">Réseau (Wi-Fi du Pico)</div>
+        <div class="pico-net">
+          <div class="pico-stats mono small" id="picoNet"></div>
+          <div class="pico-opts">
+            <label class="hchk" title="Noms réels résolus par DNS-over-HTTPS (Cloudflare), depuis le navigateur"><input type="checkbox" id="netDoh" checked> DNS réel (DNS-over-HTTPS)</label>
+            <label class="hchk" title="Sans relais : les requêtes HTTP (port 80) passent par fetch() du navigateur (sites qui acceptent les requêtes d'autres origines seulement)"><input type="checkbox" id="netFetch" checked> HTTP par le navigateur</label>
+          </div>
+          <div class="pico-opts">
+            <label class="tsel" title="Relais WebSocket vers TCP : outils/relais.py sur l'ordinateur (vrai TCP/IP pour telnet, ftp, http...)">Relais TCP <input class="addr" id="netRelais" value="ws://127.0.0.1:8765" spellcheck="false"></label>
+            <button class="sbtn" id="netRelaisBtn">Connecter</button>
+            <span class="badge" id="netRelaisEtat">aucun relais</span>
+          </div>
+        </div>
+        <p class="note" id="picoAide" data-no-i18n>Le Pico W répond sur les ports <b>50h-57h</b> (O5 du 74LS138, U18/U19). Le <b>BIOS 3.3</b> le trouve au démarrage : la carte SD de J14 passe par lui (≈ 20 fois plus vite que le SPI du 8088) et INT 14h DX=1 (pilotes <b>S02PKT</b> du DOS et <b>ttyS1</b> d'ELKS) devient un lien SLIP vers le Pico, qui relaie TCP/IP vers le Wi-Fi.<br>
+        Essai : <b>1) Load DOS</b>, choisir <b>FDNET.IMG</b> (FreeDOS + mTCP), puis <code>PING 8.8.8.8</code>, <code>HTGET http://www.s02/</code>, <code>HTGET http://192.168.240.1/</code> (page d'état du Pico) ; sans relais, les sites qui acceptent CORS : <code>HTGET http://api.ipify.org/</code> (adresse publique), <code>HTGET http://wttr.in/Montreal?format=3</code> (météo). Avec le relais (<code>python outils/relais.py</code>), tout l'Internet : <code>HTGET http://example.com/</code>, <code>TELNET</code>, <code>FTP</code>…</p>
+        <div class="cap">Journal du réseau</div>
+        <div class="log mono small" id="picoLog"></div>
+      </section>
+
+      <!-- Carte SD -->
+      <section class="panel" id="tab-sd">
+        <div class="sd-card-art" id="sdArt"><div class="sd-shape"><span>SDHC</span><b id="sdArtLbl">—</b></div></div>
+        <div class="ptool">
+          <span class="badge" id="sdState">Aucune carte</span>
+          <span class="grow"></span>
+          <button class="sbtn" id="sdEject">Éjecter</button>
+        </div>
+        <div class="cap">Fichiers de la carte insérée</div>
+        <table class="tbl" id="sdFiles"><thead><tr><th>Nom</th><th>Taille</th><th>État</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="cap">Préparer une nouvelle carte (FAT32, images d'un seul tenant)</div>
+        <div id="sdAvail" class="sd-avail"></div>
+        <div class="ptool">
+          <button class="sbtn" id="sdAddFiles">Ajouter des .IMG de l'ordinateur…</button>
+          <input type="file" id="sdFileIn" accept=".img,.ima,.IMG" multiple hidden>
+          <span class="grow"></span>
+          <button class="sbtn primary" id="sdInsert">Insérer la carte</button>
+        </div>
+        <div class="ptool">
+          <button class="sbtn" id="sdRaw">Insérer une image de carte brute…</button>
+          <input type="file" id="sdRawIn" hidden>
+        </div>
+        <p class="note">Le BIOS lit la carte au <b>1) Load DOS</b> et au changement de A: (Ctrl+Alt+Inser, Ctrl+\, F12). Les écritures du DOS restent dans la carte simulée : télécharger l'image pour les garder.</p>
+      </section>
+
+      <!-- Pannes -->
+      <section class="panel" id="tab-faults">
+        <p class="note">Pannes et erreurs de montage à reproduire. Les changements prennent effet tout de suite ; certains n'apparaissent qu'au prochain démarrage du BIOS (RESET).</p>
+        <div class="faults" id="faults"></div>
+      </section>
+
+      <!-- IRQ libres (J12) -->
+      <section class="panel" id="tab-irq">
+        <p class="note">J12 donne accès aux entrées libres du 8259 (U13) : IR2, IR3, IR5, IR6 et IR7, tirées à la masse par R13-R17. Le BIOS les masque (IMR = ECh). « Activer » les démasque, comme un programme qui écrirait le port 21h ; « Déclencher » met la broche de J12 à +5 V jusqu'à la reconnaissance (INTA) : le 8088 exécute alors l'INT correspondante.</p>
+        <table class="tbl irq-tbl" id="irqTbl"><thead><tr><th>Entrée</th><th>J12</th><th>INT</th><th>Activer</th><th></th><th>État</th><th>Servies</th></tr></thead><tbody></tbody></table>
+        <label class="irq-eoi"><input type="checkbox" id="irqEoi" checked><span>Fin d'interruption simulée (EOI)</span></label>
+        <p class="note">Le BIOS pointe ces vecteurs sur un IRET seul, sans EOI au 8259 : sans l'EOI simulée, l'entrée reste en service (ISR) et bloque les entrées de priorité plus basse, dont IR4 (UART) après IR2 ou IR3, comme sur la vraie carte.</p>
+        <div class="cap">Messages</div>
+        <div class="log mono small" id="irqLog"></div>
+      </section>
+
+      <!-- Journal -->
+      <section class="panel" id="tab-log">
+        <div class="ptool"><span class="grow"></span><button class="sbtn" id="logClear">Effacer</button></div>
+        <div class="stats" id="stats"></div>
+        <div class="log mono small" id="log"></div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="statusbar">
+    <span id="sbKbd" class="sb-kbd">⌨ PS/2</span>
+    <span id="sbHover" class="sb-hover">Survoler une broche pour voir son net et son niveau.</span>
+    <span class="grow"></span>
+    <span id="sbInfo"></span>
+  </footer>
+</div>
+
+<!-- menu contextuel -->
+<div class="ctxmenu" id="ctxmenu"></div>
+<div class="toasts" id="toasts"></div>
+
+<!-- fenetre de l'inspecteur / PDF / aide -->
+<div class="modal" id="modal"><div class="modal-box"><header><b id="modalTitle"></b><span class="grow"></span><a id="modalExt" target="_blank" rel="noopener" class="sbtn" hidden>Nouvel onglet</a><button class="sbtn" id="modalClose">Fermer</button></header><div class="modal-body" id="modalBody"></div></div></div>
+
+<!-- champ invisible : fait apparaitre le clavier virtuel des tablettes (iPad) -->
+<textarea id="touchKbd" class="touch-kbd" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-hidden="true" tabindex="-1"></textarea>
+
+<div class="drop-hint" id="dropHint">Déposer des images .IMG (carte SD) ou une ROM .bin</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

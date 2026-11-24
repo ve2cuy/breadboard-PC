@@ -26,6 +26,15 @@ software UART, SD card) also runs in the browser, emulated in Rust/WebAssembly w
   More in the <a href="Solution-02/Simulateur/README.md">simulator README</a>.</em>
 </p>
 
+**New: [the simulator with the Pico W](https://ve2cuy.github.io/breadboard-PC/pico/)** — the current board (2026-11-23):
+- the ATmega328P terminal;
+- a Raspberry Pi Pico W on ports 50h-57h behind two SN74LVC245, with READY wait states;
+- BIOS 3.3, which reads the SD card through the Pico;
+- **TCP/IP and the Internet** from DOS (mTCP) and ELKS, through the Pico's real firmware core: DNS-over-HTTPS, HTTP,
+  and real TCP with a small local relay.
+
+Details in the [Simulateur-Pico README](Solution-02/Simulateur-Pico/README.md) and the [Pico README](Solution-02/pico/README.md).
+
 ## At a glance
 
 | | |

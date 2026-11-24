@@ -5,6 +5,10 @@
 # Images de disque publiees : celles deja suivies par git dans PC-DOS/ (disquettes) + FreeDOS (GPL).
 # Les images MS-DOS 6.22 C: (non suivies par git) ne sont pas publiees.
 param([switch]$Essai)
+# Les deux simulateurs (celui-ci a la racine, Simulateur-Pico dans /pico) partagent la branche
+# gh-pages : la publication passe par Simulateur-Pico/publier.ps1, qui les met tous les deux.
+& (Join-Path $PSScriptRoot '..\Simulateur-Pico\publier.ps1') -Essai:$Essai
+return
 $ErrorActionPreference = 'Continue'
 Set-Location $PSScriptRoot
 $depot = (git rev-parse --show-toplevel).Trim()

@@ -21,6 +21,9 @@ packet driver, in particular **mTCP** (`PING`, `TELNET`, `FTP`, `HTGET`, `NC`, `
   The BIOS shares the SPI bus with the SD card.
 - There is no interrupt for channel 2: the module is **polled at every INT 1Ch** (18.2 Hz),
   255 bytes per tick at most (~4.6 KB/s), on a private stack.
+- **With the Pico W** (BIOS 3.3, ports 50h-57h, [../pico](../pico/README.md)), the same calls go through
+  the Pico. `INT 14h DX=1 AH=0Ah` returns AL = 50h, so S02PKT reads up to **16 blocks per tick**: one
+  block takes ≈ 1 ms through the Pico.
 - Specification functions: `driver_info`, `access_type` (4 handles), `release_type`,
   `send_pkt`, `get_address`, `reset_interface`, `get_statistics`. `terminate` is refused: the
   driver stays resident (≈ 2.7 KB).

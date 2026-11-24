@@ -462,6 +462,8 @@ nouveau_1c:
         mov     si, arp_trame
         mov     cx, 42
         call    remet
+        mov     al, [blocs_tic]         ; blocs de 255 octets par tic : 1 (ATmega),
+        mov     [blocs_reste], al       ; 16 (Pico W : ~1 ms le bloc)
 .lit:   mov     bx, rx_bloc             ; octets recus du module (255 au plus)
         mov     cx, 255
         mov     dx, 1
@@ -471,9 +473,15 @@ nouveau_1c:
         jne     .fin
         mov     si, rx_bloc
         jcxz    .fin
+        push    cx
 .o:     lodsb
         call    rx_octet
         loop    .o
+        pop     cx
+        cmp     cx, 255                 ; bloc plein : il en reste peut-etre
+        jne     .fin
+        dec     byte [blocs_reste]
+        jnz     .lit
 .fin:   pop     es
         pop     ds
         pop     bp
@@ -626,6 +634,8 @@ remet:
         pop     es
         ret
 
+blocs_tic:      db      1
+blocs_reste:    db      0
 recep_off:      dw      0
 recep_seg:      dw      0
 
@@ -649,6 +659,17 @@ installe:
         mov     dx, txt_bios
         jmp     .erreur
 .bios_ok:
+        ; BIOS 3.3 avec le Pico W : INT 14h DX=1 AH=0Ah rend AL = 50h (sinon 30h : etat)
+        mov     dx, 1
+        mov     ah, 0Ah
+        int     14h
+        cmp     al, 50h
+        jne     .lien_ok
+        mov     byte [blocs_tic], 16
+        mov     dx, txt_pico
+        mov     ah, 09h
+        int     21h
+.lien_ok:
         ; INT 60h deja pris par un pilote de paquets ?
         mov     ax, 3500h + VECTEUR
         int     21h                     ; ES:BX
@@ -686,6 +707,7 @@ installe:
         int     21h
 
 txt_titre:  db  'S02PKT - pilote de paquets SLIP (module Wi-Fi de Solution-02)', 13, 10, '$'
+txt_pico:   db  'Lien : Pico W (BIOS 3.3, ports 50h-57h), 16 blocs par tic', 13, 10, '$'
 txt_bios:   db  'Module absent : BIOS 3.1 et ATmega v3 ou plus requis.', 13, 10, '$'
 txt_deja:   db  'Un pilote de paquets occupe deja INT 60h.', 13, 10, '$'
 txt_ok:     db  'Installe sur INT 60h (classe Ethernet), MAC 02:53:30:32:00:02.', 13, 10
