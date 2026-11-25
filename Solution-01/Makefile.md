@@ -30,7 +30,7 @@ Bilinguisme (voir `README.md`, section « Bilinguisme (FR/EN) »): produisent re
 
 ### `ramtest` / `test-ramtest`
 
-ROM de test de la RAM de 128 Ko **sans RAM** (`ramtest-128k.asm` → `solution-01-ramtest-128k.bin`, copiée vers `Z:`) : aucune pile ni variable, diagnostic du bus de données, des lignes A0-A16 et des 16 blocs de 8 Ko sur le LCD, en boucle (voir `README.md`). `test-ramtest` lance son banc d'essai `tests/ramtest_sim.py` (7 modèles de RAM, dont absente).
+ROM de test de la RAM de 128 Ko, du 8255 et du 8259 **sans RAM** (`ramtest-128k.asm` → `solution-01-ramtest-128k.bin`, copiée vers `Z:`) : aucune pile ni variable, diagnostic du bus de données, des lignes A0-A16 et des 16 blocs de 8 Ko sur le LCD, en boucle (voir `README.md`). `test-ramtest` lance son banc d'essai `tests/ramtest_sim.py` (11 cas : RAM bonne, absente, défauts de données, d'adresses, de bloc, intermittent ; 8255 et 8259 fautifs ou absents).
 
 ### `flash`
 

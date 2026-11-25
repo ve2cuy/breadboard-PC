@@ -1873,21 +1873,34 @@ La ROM se grave directement depuis le projet, sans passer par le logiciel Window
   `FLASH_OPTS` (déduits de `FLASH_PUCE`, remplaçables), `MINIPRO_DIR` (`~/minipro`). `0xFFFF` à la lecture
   de l'ID : pas de puce ou mauvais contact ; un autre code : resserrer le support.
 
-### ROM de test de la RAM de 128 Ko sans RAM (`ramtest-128k.asm`, `make ramtest`)
+### ROM de test de la RAM de 128 Ko, du 8255 et du 8259 sans RAM (`ramtest-128k.asm`, `make ramtest`)
 
 Le test RAM du BIOS a besoin d'une RAM qui fonctionne déjà (pile et variables) : une puce morte l'empêche
 d'atteindre le menu. `ramtest-128k.asm` est une **ROM à part**, qui n'utilise **aucune RAM** : ni pile (aucun
 `CALL`/`PUSH`/`INT`, interruptions coupées ; les rares sous-programmes rendent la main par `jmp bp`), ni
 variable (compteur de passes dans DS, carte cumulée des blocs dans SS, bits fautifs cumulés dans SP). Seuls
-servent le 8088, la ROM, le 8255 et le pont (LCD). Pour une HM628128 (JP2 2-3).
+servent le 8088, la ROM, le 8255 et le pont (LCD) ; le 8259 est seulement testé. Pour une HM628128 (JP2 2-3).
 
-En boucle, chaque passe teste : le **bus de données** (un bit à 1 puis à 0, avec une écriture leurre ailleurs
+En boucle, chaque passe teste d'abord les **puces** : le **8255** (port B relu avec 12 motifs, bits INTE1/INTE2
+relus dans le mot d'état du mode 2, sortie INTR qui suit INTE1), le **8259** (programmé en mode niveau, IMR relu,
+ISR nul) et la **liaison INTR du 8255 → IR1 du 8259** (bit 1 de l'IRR). Avant chaque relecture, une lecture
+« leurre » du complement dans la ROM empêche une puce absente (bus flottant) de renvoyer la valeur écrite. Le
+détail s'affiche à la 1re passe (~3 s) :
+
+```
+8255 port B : OK         ou "KO 3C" (bits relus faux)
+8255 INTE OK INTR OK
+8259 IMR OK ISR OK       IMR : OK ou les bits relus faux (hex)
+IR1 8255>8259 : OK
+```
+
+Puis la RAM : le **bus de données** (un bit à 1 puis à 0, avec une écriture leurre ailleurs
 pour ne pas relire un bus flottant), les **lignes d'adresse A0-A16** (collées à 0, à 1, en court-circuit) et
 les **16 blocs de 8 Ko** (55h, AAh, 00h, puis un motif qui dépend de l'adresse sur toute la RAM : détecte un
 bloc qui en recouvre un autre). Affichage sur le LCD 20x4 :
 
 ```
-Test RAM 128K P:0002     numero de la passe
+0002 8255:OK 8259:OK     passe ; puces : OK, KO (cette passe), !! (une passe precedente)
 Donnees : OK             ou "KO 5A" : bits de donnees fautifs (cette passe)
 Adresses: OK             ou "KO 01000" : lignes A16..A0 fautives (ici A12)
 ................ OK      16 blocs de 8 Ko (00000h a gauche) : '.' bon, 'X' fautif a cette passe,
@@ -1896,8 +1909,9 @@ Adresses: OK             ou "KO 01000" : lignes A16..A0 fautives (ici A12)
 
 - Compiler : `make ramtest` → `solution-01-ramtest-128k.bin` (256 Ko, copiée vers `Z:`).
 - Graver : `make flash FLASH_ROM=ramtest PUCE=ok` (ajouter `FLASH_PUCE=pm29` pour une Pm29F002T).
-- Banc d'essai : `make test-ramtest` (`tests/ramtest_sim.py`, Unicorn) : RAM bonne, absente (bus flottant),
-  bit 3 collé, A12 ou A16 coupée, défaut dans un bloc, défaut intermittent ; la ROM est protégée en écriture
+- Banc d'essai : `make test-ramtest` (`tests/ramtest_sim.py`, Unicorn, 8255 et 8259 émulés) : RAM bonne,
+  absente (bus flottant), bit 3 collé, A12 ou A16 coupée, défaut dans un bloc, défaut intermittent ; port B du
+  8255 fautif, INTE2 du 8255 fautif, 8259 absent, liaison IR1 coupée ; la ROM est protégée en écriture
   et seuls les 128 Ko testés sont mappés : toute utilisation de pile ou de variable ferait échouer l'essai.
 
 ### Bilinguisme (FR/EN)
