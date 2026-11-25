@@ -107,16 +107,28 @@ trace-nohd: $(BAS_SRC) solution-01.asm lib/bios.asm
 	cp solution-01-trace-nohd.bin "$(dir $(ROM_OUT))solution-01-trace-nohd.bin"
 	@echo "ROM trace sans disque dur copiee vers $(dir $(ROM_OUT))solution-01-trace-nohd.bin"
 
-# --- GRAVURE de la ROM sur la W29C020C (programmeur TL866CS, minipro compile sous WSL dans ~/minipro,
+# --- GRAVURE de la ROM (programmeur TL866CS, minipro compile sous WSL dans ~/minipro,
 # --- programmeur passe a WSL par usbipd-win - voir README.md, section "Graver la ROM").
-# ---   make flash PUCE=ok              ROM francaise (rom-fr: compilee et copiee vers Z: comme d'habitude)
-# ---   make flash FLASH_LANG=en PUCE=ok ROM anglaise
+# ---   make flash PUCE=ok                    ROM francaise sur une W29C020C (rom-fr: compilee et copiee vers Z:)
+# ---   make flash FLASH_LANG=en PUCE=ok      ROM anglaise
+# ---   make flash FLASH_PUCE=pm29 PUCE=ok    sur une Pm29F002T (meme taille, 256 Ko, DIP32)
 # --- Sans PUCE=ok, rien n'est grave: la cible rappelle d'inserer la puce dans le support ZIF du
-# --- programmeur. minipro efface, ecrit puis VERIFIE toute la puce (echec = code de sortie non nul).
+# --- programmeur. minipro verifie d'abord l'ID de la puce (une autre puce que celle choisie est refusee),
+# --- efface, ecrit puis VERIFIE toute la puce (echec = code de sortie non nul).
 # --- Le programmeur doit etre branche DIRECTEMENT au PC (pas de hub USB: pages non ecrites).
 FLASH_LANG ?= fr
 FLASH_BIN   = solution-01-$(FLASH_LANG).bin
-FLASH_CHIP ?= W29C020C
+# Puce: nom court -> nom minipro + options d'ecriture (validees sur le TL866CS, 2026-11-25).
+#   w29  = Winbond W29C020C (ID DA45h), -u: retire la protection logicielle avant d'ecrire
+#   pm29 = PMC Pm29F002T (ID 9D1Dh), sans -u. Pm29F002T "neuves" a 16 derniers Ko figes: defectueuses
+#          (refusees a la verification), voir Directives.md
+FLASH_PUCE ?= w29
+FLASH_CHIP_w29   = W29C020C
+FLASH_OPTS_w29   = -u
+FLASH_CHIP_pm29  = PM29F002T@DIP32
+FLASH_OPTS_pm29  =
+FLASH_CHIP ?= $(FLASH_CHIP_$(FLASH_PUCE))
+FLASH_OPTS ?= $(FLASH_OPTS_$(FLASH_PUCE))
 USBIPD     ?= C:/Program Files/usbipd-win/usbipd.exe
 USB_BUSID  ?= 1-2
 MINIPRO_DIR ?= ~/minipro
@@ -125,8 +137,11 @@ MINIPRO     = MINIPRO_HOME=$(MINIPRO_DIR) $(MINIPRO_DIR)/minipro
 
 .PHONY: flash
 flash: rom-$(FLASH_LANG)
-ifneq ($(PUCE),ok)
-	@echo "Inserer la puce $(FLASH_CHIP) dans le support ZIF du TL866CS, puis: make flash FLASH_LANG=$(FLASH_LANG) PUCE=ok"
+ifeq ($(FLASH_CHIP),)
+	@echo "FLASH_PUCE=$(FLASH_PUCE) inconnue: w29 (W29C020C, defaut) ou pm29 (Pm29F002T)"
+	@exit 1
+else ifneq ($(PUCE),ok)
+	@echo "Inserer la puce $(FLASH_CHIP) dans le support ZIF du TL866CS, puis: make flash FLASH_LANG=$(FLASH_LANG) FLASH_PUCE=$(FLASH_PUCE) PUCE=ok"
 	@exit 1
 else
 	@# WSL arrete sa machine virtuelle quand il est inactif: usbipd croit alors le programmeur encore
@@ -135,7 +150,7 @@ else
 	-@wsl -e bash -c "lsusb | grep -q 04d8:e11c" || { "$(USBIPD)" detach --busid $(USB_BUSID) >/dev/null 2>&1; \
 	  for i in 1 2 3 4 5 6 7 8 9 10; do "$(USBIPD)" attach --wsl --busid $(USB_BUSID) >/dev/null 2>&1 && break; sleep 1; done; }
 	@wsl -e bash -c "for i in 1 2 3 4 5 6 7 8 9 10; do lsusb | grep -q 04d8:e11c && exit 0; sleep 1; done; echo 'TL866CS absent de WSL (usbipd list / bind --busid $(USB_BUSID))'; exit 1"
-	wsl --cd "$(CURDIR)" -e bash -lc "$(MINIPRO) -p $(FLASH_CHIP) -u -w $(FLASH_BIN)"
+	wsl --cd "$(CURDIR)" -e bash -lc "$(MINIPRO) -p '$(FLASH_CHIP)' $(FLASH_OPTS) -w $(FLASH_BIN)"
 	@echo "ROM $(FLASH_BIN) gravee et verifiee sur la $(FLASH_CHIP)"
 endif
 

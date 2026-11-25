@@ -30,7 +30,7 @@ Bilinguisme (voir `README.md`, section « Bilinguisme (FR/EN) »): produisent re
 
 ### `flash`
 
-Grave la ROM sur la W29C020C avec le programmeur TL866CS (minipro sous WSL, appareil USB passé à WSL par usbipd-win ; voir `README.md`, « Graver la ROM »). Dépend de `rom-$(FLASH_LANG)` (`fr` par défaut, `en`), donc la ROM est aussi copiée vers `Z:`. **Sans `PUCE=ok`, rien n'est gravé** : la cible rappelle d'insérer la puce et s'arrête en erreur. Avec `PUCE=ok` : rattachement du programmeur à WSL si besoin, puis `minipro -p W29C020C -u -w` (effacement, écriture, vérification ; un échec rend un code de sortie non nul). Variables : `FLASH_LANG`, `FLASH_CHIP`, `USB_BUSID` (`1-2`), `USBIPD`, `MINIPRO_DIR`.
+Grave la ROM sur la W29C020C (ou une Pm29F002T) avec le programmeur TL866CS (minipro sous WSL, appareil USB passé à WSL par usbipd-win ; voir `README.md`, « Graver la ROM »). Dépend de `rom-$(FLASH_LANG)` (`fr` par défaut, `en`), donc la ROM est aussi copiée vers `Z:`. **Sans `PUCE=ok`, rien n'est gravé** : la cible rappelle d'insérer la puce et s'arrête en erreur. Avec `PUCE=ok` : rattachement du programmeur à WSL si besoin, puis `minipro -p <puce> <options> -w` (contrôle de l'ID, effacement, écriture, vérification ; un échec rend un code de sortie non nul). Puce : `FLASH_PUCE=w29` (défaut, `W29C020C`, option `-u`) ou `FLASH_PUCE=pm29` (`PM29F002T@DIP32`, sans `-u`) ; un nom inconnu arrête la cible. Variables : `FLASH_LANG`, `FLASH_PUCE`, `FLASH_CHIP` / `FLASH_OPTS` (déduits de `FLASH_PUCE`), `USB_BUSID` (`1-2`), `USBIPD`, `MINIPRO_DIR`.
 
 ### `lib`
 

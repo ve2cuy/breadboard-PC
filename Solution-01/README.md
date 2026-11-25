@@ -1813,7 +1813,7 @@ make rom-fr   # ROM en français (par défaut - identique à "rom"), solution-01
 make rom-en   # ROM en anglais, solution-01-en.bin (voir "Bilinguisme" ci-dessous)
 make rom-128  # ROM pour l'ancienne RAM de 128 Ko (HM628128), solution-01-128k.bin (rom-128-en: anglais)
               # (toutes les autres ROM visent la RAM de 512 Ko: RAM=512 par defaut, voir le Makefile)
-make flash PUCE=ok  # compile rom-fr (copiee vers Z:) puis la GRAVE et la VERIFIE sur la W29C020C (FLASH_LANG=en: anglais)
+make flash PUCE=ok  # compile rom-fr (copiee vers Z:) puis la GRAVE et la VERIFIE sur la W29C020C (FLASH_LANG=en: anglais; FLASH_PUCE=pm29: Pm29F002T)
 make lib      # modules individuels (lib/bin/lcd.bin, lib/bin/uart.bin, lib/utils.bin, lib/bin/lcd_i2c.bin, lib/bin/ps2.bin, lib/bin/tiny_basic.bin, lib/bin/basic.bin)
 make check    # assemble la ROM puis valide sa structure (check_rom.py)
 make check-modules  # verifie que chaque module s'assemble seul, sans erreur
@@ -1861,9 +1861,17 @@ La ROM se grave directement depuis le projet, sans passer par le logiciel Window
 - **Branchement direct au PC obligatoire** : par un hub USB, des pages de 128 octets n'étaient pas écrites (la
   W29C020C exige que les octets d'une page arrivent à moins de 200 µs d'intervalle) et la vérification échouait à
   des adresses variables.
-- Variables : `USB_BUSID` (`1-2` par défaut, le port direct utilisé), `FLASH_CHIP` (`W29C020C`), `MINIPRO_DIR`
-  (`~/minipro`). Identifiant attendu de la puce : `0xDA45` (`0xFFFF` : pas de puce ; un autre code : resserrer
-  le support).
+- **Choix de la puce** : `FLASH_PUCE=w29` (défaut, Winbond W29C020C, ID `0xDA45`, écriture avec `-u`) ou
+  `FLASH_PUCE=pm29` (PMC Pm29F002T, ID `0x9D1D`, profil minipro `PM29F002T@DIP32`, sans `-u`) — même taille
+  (256 Ko, DIP32), par exemple `make flash FLASH_PUCE=pm29 PUCE=ok`. minipro lit d'abord l'ID : une puce qui
+  n'est pas celle choisie est refusée avant tout effacement. Profil Pm29F002T validé sur le TL866CS
+  (effacement, écriture aléatoire et inverse, vérification ≈ 24 s). Sur un lot de 20 Pm29F002T, les 9 puces au
+  marquage d'aspect neuf (probablement remarquées) étaient **défectueuses** : bloc de démarrage
+  (3C000h-3FFFFh, damier FF/00) impossible à effacer, seul le 1er octet s'écrit — la vérification échoue.
+  Une simple lecture les repère : damier dans les 16 derniers Ko seulement, reste à FFh.
+- Variables : `USB_BUSID` (`1-2` par défaut, le port direct utilisé), `FLASH_PUCE` (`w29`), `FLASH_CHIP` et
+  `FLASH_OPTS` (déduits de `FLASH_PUCE`, remplaçables), `MINIPRO_DIR` (`~/minipro`). `0xFFFF` à la lecture
+  de l'ID : pas de puce ou mauvais contact ; un autre code : resserrer le support.
 
 ### Bilinguisme (FR/EN)
 
