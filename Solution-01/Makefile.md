@@ -28,9 +28,13 @@ Le montage a une RAM de 512 Ko (AS6C4008) : `RAM ?= 512` ajoute `-dRAM_512K` à 
 
 Bilinguisme (voir `README.md`, section « Bilinguisme (FR/EN) »): produisent respectivement `solution-01-fr.bin` (français - identique au comportement de `rom`, sans aucun `-d`) et `solution-01-en.bin` (anglais - `nasm -dLANG_EN=1`). `rom-en` ajoute `-w-error=label-redef-late`: la taille légèrement différente des textes anglais retarde la convergence normale de NASM (plusieurs passes) sur certains sauts éloignés du fichier - inoffensif (deux compilations successives produisent un binaire identique), `rom`/`rom-fr` n'en ont jamais eu besoin.
 
+### `ramtest` / `test-ramtest`
+
+ROM de test de la RAM de 128 Ko **sans RAM** (`ramtest-128k.asm` → `solution-01-ramtest-128k.bin`, copiée vers `Z:`) : aucune pile ni variable, diagnostic du bus de données, des lignes A0-A16 et des 16 blocs de 8 Ko sur le LCD, en boucle (voir `README.md`). `test-ramtest` lance son banc d'essai `tests/ramtest_sim.py` (7 modèles de RAM, dont absente).
+
 ### `flash`
 
-Grave la ROM sur la W29C020C (ou une Pm29F002T) avec le programmeur TL866CS (minipro sous WSL, appareil USB passé à WSL par usbipd-win ; voir `README.md`, « Graver la ROM »). Dépend de `rom-$(FLASH_LANG)` (`fr` par défaut, `en`), donc la ROM est aussi copiée vers `Z:`. **Sans `PUCE=ok`, rien n'est gravé** : la cible rappelle d'insérer la puce et s'arrête en erreur. Avec `PUCE=ok` : rattachement du programmeur à WSL si besoin, puis `minipro -p <puce> <options> -w` (contrôle de l'ID, effacement, écriture, vérification ; un échec rend un code de sortie non nul). Puce : `FLASH_PUCE=w29` (défaut, `W29C020C`, option `-u`) ou `FLASH_PUCE=pm29` (`PM29F002T@DIP32`, sans `-u`) ; un nom inconnu arrête la cible. Variables : `FLASH_LANG`, `FLASH_PUCE`, `FLASH_CHIP` / `FLASH_OPTS` (déduits de `FLASH_PUCE`), `USB_BUSID` (`1-2`), `USBIPD`, `MINIPRO_DIR`.
+Grave la ROM sur la W29C020C (ou une Pm29F002T) avec le programmeur TL866CS (minipro sous WSL, appareil USB passé à WSL par usbipd-win ; voir `README.md`, « Graver la ROM »). Dépend de `rom-$(FLASH_LANG)` (`fr` par défaut, `en`), donc la ROM est aussi copiée vers `Z:`. **Sans `PUCE=ok`, rien n'est gravé** : la cible rappelle d'insérer la puce et s'arrête en erreur. Avec `PUCE=ok` : rattachement du programmeur à WSL si besoin, puis `minipro -p <puce> <options> -w` (contrôle de l'ID, effacement, écriture, vérification ; un échec rend un code de sortie non nul). ROM : `FLASH_ROM=bios` (défaut, le BIOS dans la langue `FLASH_LANG`) ou `FLASH_ROM=ramtest` (dépend alors de `ramtest`). Puce : `FLASH_PUCE=w29` (défaut, `W29C020C`, option `-u`) ou `FLASH_PUCE=pm29` (`PM29F002T@DIP32`, sans `-u`) ; un nom inconnu arrête la cible. Variables : `FLASH_ROM`, `FLASH_LANG`, `FLASH_PUCE`, `FLASH_CHIP` / `FLASH_OPTS` (déduits de `FLASH_PUCE`), `USB_BUSID` (`1-2`), `USBIPD`, `MINIPRO_DIR`.
 
 ### `lib`
 

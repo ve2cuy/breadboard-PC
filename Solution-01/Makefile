@@ -44,7 +44,7 @@ BAS_SRC     = lib/basic.asm lib/basic_tokens.inc lib/basic_float.asm lib/basic_f
 # du fichier de sortie. Un dossier local du projet n'a pas ce probleme.
 CHECK_DIR   = build/check
 
-.PHONY: all rom rom-fr rom-en rom-128 rom-128-en rom-pause lib check clean check-modules test test-rom test-rom-complet map trace trace-nohd
+.PHONY: all rom rom-fr rom-en rom-128 rom-128-en rom-pause ramtest test-ramtest lib check clean check-modules test test-rom test-rom-complet map trace trace-nohd
 
 # --- Cible par defaut: la ROM complete + les modules individuels ---
 all: rom lib
@@ -89,6 +89,18 @@ rom-128-en: $(BAS_SRC) solution-01.asm lib/bios.asm
 	cp solution-01-128k-en.bin "$(dir $(ROM_OUT))solution-01-128k-en.bin"
 	@echo "ROM 128 Ko (anglais): solution-01-128k-en.bin, copiee vers $(dir $(ROM_OUT))"
 
+# --- ROM de TEST de la RAM de 128 Ko SANS RAM (ni pile ni variable): ramtest-128k.asm. Diagnostic du bus
+# --- de donnees, des lignes A0-A16 et des 16 blocs de 8 Ko sur le LCD, en boucle. Pour une RAM morte ou
+# --- douteuse (HM628128, JP2 2-3) que le BIOS ne pourrait pas tester. Banc d'essai: make test-ramtest. ---
+RAMTEST_BIN = solution-01-ramtest-128k.bin
+ramtest: ramtest-128k.asm include/hardware.inc
+	$(NASM) -f bin ramtest-128k.asm -o $(RAMTEST_BIN)
+	cp $(RAMTEST_BIN) "$(dir $(ROM_OUT))$(RAMTEST_BIN)"
+	@echo "ROM de test RAM 128 Ko: $(RAMTEST_BIN), copiee vers $(dir $(ROM_OUT))"
+
+test-ramtest: ramtest-128k.asm include/hardware.inc tests/ramtest_sim.py
+	python tests/ramtest_sim.py
+
 # --- ROM d'ESSAI: pause (~5 ms) apres chaque ecriture de secteur (BRIDGE_WRITE_PAUSE, lib/bridge.asm) ---
 rom-pause: $(BAS_SRC) solution-01.asm lib/bios.asm
 	$(NASM) $(NASMFLAGS) -dBRIDGE_WRITE_PAUSE=1400 solution-01.asm -o solution-01-pause.bin
@@ -112,12 +124,21 @@ trace-nohd: $(BAS_SRC) solution-01.asm lib/bios.asm
 # ---   make flash PUCE=ok                    ROM francaise sur une W29C020C (rom-fr: compilee et copiee vers Z:)
 # ---   make flash FLASH_LANG=en PUCE=ok      ROM anglaise
 # ---   make flash FLASH_PUCE=pm29 PUCE=ok    sur une Pm29F002T (meme taille, 256 Ko, DIP32)
+# ---   make flash FLASH_ROM=ramtest PUCE=ok  la ROM de test de la RAM de 128 Ko sans RAM (ramtest-128k.asm)
 # --- Sans PUCE=ok, rien n'est grave: la cible rappelle d'inserer la puce dans le support ZIF du
 # --- programmeur. minipro verifie d'abord l'ID de la puce (une autre puce que celle choisie est refusee),
 # --- efface, ecrit puis VERIFIE toute la puce (echec = code de sortie non nul).
 # --- Le programmeur doit etre branche DIRECTEMENT au PC (pas de hub USB: pages non ecrites).
 FLASH_LANG ?= fr
+# ROM a graver: FLASH_ROM=bios (defaut: le BIOS, langue FLASH_LANG) ou FLASH_ROM=ramtest (test RAM 128 Ko sans RAM)
+FLASH_ROM  ?= bios
+ifeq ($(FLASH_ROM),ramtest)
+FLASH_BIN   = $(RAMTEST_BIN)
+FLASH_DEP   = ramtest
+else
 FLASH_BIN   = solution-01-$(FLASH_LANG).bin
+FLASH_DEP   = rom-$(FLASH_LANG)
+endif
 # Puce: nom court -> nom minipro + options d'ecriture (validees sur le TL866CS, 2026-11-25).
 #   w29  = Winbond W29C020C (ID DA45h), -u: retire la protection logicielle avant d'ecrire
 #   pm29 = PMC Pm29F002T (ID 9D1Dh), sans -u. Pm29F002T "neuves" a 16 derniers Ko figes: defectueuses
@@ -136,12 +157,12 @@ MINIPRO_DIR ?= ~/minipro
 MINIPRO     = MINIPRO_HOME=$(MINIPRO_DIR) $(MINIPRO_DIR)/minipro
 
 .PHONY: flash
-flash: rom-$(FLASH_LANG)
+flash: $(FLASH_DEP)
 ifeq ($(FLASH_CHIP),)
 	@echo "FLASH_PUCE=$(FLASH_PUCE) inconnue: w29 (W29C020C, defaut) ou pm29 (Pm29F002T)"
 	@exit 1
 else ifneq ($(PUCE),ok)
-	@echo "Inserer la puce $(FLASH_CHIP) dans le support ZIF du TL866CS, puis: make flash FLASH_LANG=$(FLASH_LANG) FLASH_PUCE=$(FLASH_PUCE) PUCE=ok"
+	@echo "Inserer la puce $(FLASH_CHIP) dans le support ZIF du TL866CS, puis: make flash FLASH_ROM=$(FLASH_ROM) FLASH_LANG=$(FLASH_LANG) FLASH_PUCE=$(FLASH_PUCE) PUCE=ok"
 	@exit 1
 else
 	@# WSL arrete sa machine virtuelle quand il est inactif: usbipd croit alors le programmeur encore
