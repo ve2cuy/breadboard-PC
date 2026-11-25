@@ -110,7 +110,9 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 7
+#define FW_VERSION_MINOR 8
+#define FW_XSTR(x) #x
+#define FW_STR(x)  FW_XSTR(x)                // FW_STR(FW_VERSION_MINOR) -> "8"
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -801,6 +803,21 @@ static void lcdInit() {
   lcdSend(0x01, 0);                        // clear
 }
 
+// Ecrit s a partir de la DDRAM addr (00h = ligne 1, 40h = ligne 2)
+static void lcdPrintAt(uint8_t addr, const char *s) {
+  lcdSend((uint8_t)(0x80 | addr), 0);      // Set DDRAM Address
+  while (*s) lcdSend((uint8_t)*s++, LCD_RS);
+}
+
+// Message de demarrage du pont: visible tant que le 8088 n'a rien affiche (sans 8088, il reste;
+// avec le 8088, i2c_lcd_init du BIOS l'efface). Lignes 1-2 et 16 caracteres au plus: lisible sur
+// un 16x2 comme sur un 20x4 (le HD44780 ne permet pas de savoir lequel est branche).
+// ~16 ms a 100 kHz, avant la liberation du RESET du 8088.
+static void lcdBanner() {
+  lcdPrintAt(0x00, "Pont STM32 v" FW_STR(FW_VERSION_MAJOR) "." FW_STR(FW_VERSION_MINOR));
+  lcdPrintAt(0x40, "En attente 8088");
+}
+
 // ============================================================================
 // Trace PS/2 (DEBUG_PS2=1): evenements ecrits dans un petit anneau, affiches
 // par loop() sur le terminal, ENTRELACES avec la sortie du 8088:
@@ -1044,6 +1061,7 @@ void setup() {
   Wire.begin();
   Wire.setClock(100000);
   lcdInit();
+  lcdBanner();                             // "Pont STM32 v1.8 / En attente 8088"
 
   pinMode(PIN_PS2_CLK, INPUT_PULLUP);      // + pull-ups externes 4,7-10 kohm vers +5 V conseilles
   pinMode(PIN_PS2_DATA, INPUT_PULLUP);

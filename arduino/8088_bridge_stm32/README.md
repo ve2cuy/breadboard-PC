@@ -231,7 +231,13 @@ platformio run -e blackpill_f411ce -t upload      (secours : port série seul)
 ## Mise en route conseillée
 
 1. **Sans le montage 8088** : téléverser, ouvrir le port USB, vérifier que la LED
-   `PC13` clignote et que le LCD I2C s'initialise.
+   `PC13` clignote et que le LCD I2C affiche le message de démarrage du pont
+   (1.8 et plus) : `Pont STM32 v1.8` / `En attente 8088`. Le message tient sur les
+   lignes 1-2 en 16 caractères au plus (lisible sur un 16x2 comme sur un 20x4 ; le
+   HD44780 ne permet pas de savoir lequel est branché) ; le 8088 l'efface dès que
+   le BIOS initialise le LCD (`i2c_lcd_init`). LCD allumé mais vide : vérifier le
+   contraste ; carrés noirs sur la ligne 1 : LCD non initialisé (adresse
+   `LCD_ADDR`, câblage `SDA`/`SCL`).
 2. **PS/2 seul** : `DEBUG_PS2=1`, appuyer sur des touches : `{76}` etc. doivent
    apparaître sans `{P..}`/`{S..}`/`{G}`.
 3. **Avec le 8088** (ROM du projet) : le menu doit s'afficher sur le terminal et
