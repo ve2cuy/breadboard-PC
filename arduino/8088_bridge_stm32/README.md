@@ -232,13 +232,27 @@ platformio run -e blackpill_f411ce -t upload      (secours : port série seul)
 
 1. **Sans le montage 8088** : téléverser, ouvrir le port USB, vérifier que la LED
    `PC13` clignote et que le LCD I2C affiche le message de démarrage du pont
-   (1.8 et plus) : `Pont STM32 v1.8` / `En attente 8088`. Le message tient sur les
+   (1.8 et plus) : `Pont STM32 v1.9` / `En attente 8088`. Le message tient sur les
    lignes 1-2 en 16 caractères au plus (lisible sur un 16x2 comme sur un 20x4 ; le
    HD44780 ne permet pas de savoir lequel est branché) ; le 8088 l'efface dès que
    le BIOS initialise le LCD (`i2c_lcd_init`). LCD allumé mais vide : vérifier le
    contraste ; carrés noirs sur la ligne 1 : LCD non initialisé (adresse
    `LCD_ADDR`, câblage `SDA`/`SCL`).
-2. **PS/2 seul** : `DEBUG_PS2=1`, appuyer sur des touches : `{76}` etc. doivent
+2. **PS/2 seul** (1.9 et plus, sans recompiler) : tant que le 8088 n'a rien envoyé
+   au LCD (sans 8088, en permanence), le pont affiche chaque octet du clavier sur la
+   ligne 2 du LCD (16 caractères) :
+
+   | Ligne 2 | Signification |
+   |---|---|
+   | `Clavier OK (AA)` | auto-test (BAT) réussi à la mise sous tension du clavier (`Clavier err (FC)` : échec) |
+   | `Appui   1C A` | touche enfoncée : code du jeu 2 et caractère en position US (lettres et chiffres) |
+   | `Relache E0 75` | touche relâchée (`F0`) ; `E0` = touche étendue (flèches, Inser…) |
+   | `Pause (E1)` | touche Pause (séquence de 8 octets) |
+   | `Err parite 1C` / `Err stop 1C` | trame reçue avec une erreur : câblage, tirages, parasites |
+
+   Le test s'arrête au premier octet LCD du 8088 (le BIOS reprend l'écran) et ne
+   revient qu'au redémarrage du pont ; les octets sont transmis au 8088 comme avant.
+   Trace plus détaillée sur le terminal : `DEBUG_PS2=1`, `{76}` etc. doivent
    apparaître sans `{P..}`/`{S..}`/`{G}`.
 3. **Avec le 8088** (ROM du projet) : le menu doit s'afficher sur le terminal et
    le LCD ; un test simple : option `4) BASIC`, `PRINT 2+3`, `HELP`.

@@ -229,9 +229,11 @@ le `README.md` de ce dossier) :
 
 - **8255 → périphériques** : file de 256 entrées ; UART → port série USB,
   LCD → I2C2 (init 4 bits complète au démarrage, attente 2 ms pour
-  Clear/Home ; depuis le pont 1.8, message `Pont STM32 v1.8` /
+  Clear/Home ; depuis le pont 1.8, message `Pont STM32 v1.9` /
   `En attente 8088` sur les lignes 1-2, visible même sans 8088, effacé
-  par `i2c_lcd_init`), canal 3 → interpréteur de commandes (RTC, disque, horloge,
+  par `i2c_lcd_init` ; depuis le pont 1.9, test du clavier : tant que le
+  8088 n'a rien envoyé au LCD, chaque touche s'affiche sur la ligne 2,
+  par exemple `Appui   1C A` ou `Clavier OK (AA)`), canal 3 → interpréteur de commandes (RTC, disque, horloge,
   version). Chaque commande `28h` (Function Set, début de
   `i2c_lcd_init` côté 8088) rejoue l'initialisation « par instruction »
   (`lcdResync`) pour récupérer un LCD déréglé.

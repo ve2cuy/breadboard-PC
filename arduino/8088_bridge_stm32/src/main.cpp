@@ -110,9 +110,9 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 8
+#define FW_VERSION_MINOR 9
 #define FW_XSTR(x) #x
-#define FW_STR(x)  FW_XSTR(x)                // FW_STR(FW_VERSION_MINOR) -> "8"
+#define FW_STR(x)  FW_XSTR(x)                // FW_STR(FW_VERSION_MINOR) -> "9"
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
 // sur STB#/ACK#/bus pendant qu'une trame PS/2 arrive risque de la perturber: on
 // n'agit donc sur le bus 8255 que si CLK est silencieux depuis:
@@ -877,6 +877,18 @@ static inline bool ps2DataHigh() { return (GPIOA->IDR >> PS2_DATA_BIT) & 1; }
 
 static void kbdTrack(uint8_t sc);          // Ctrl-Alt-Suppr (voir RESET du 8088, plus bas)
 
+// Test du clavier sur le LCD (pont 1.9): tant que le 8088 n'a rien envoye au LCD (lcdBridge), le pont y
+// affiche lui-meme chaque octet PS/2 recu (kbdTestPoll, ligne 2). Copie des octets prise dans l'ISR: sans
+// 8088, ps2Buf n'est jamais vide (IBF reste a 1) et finit plein. Bits 8-9: erreur de parite / de stop.
+static volatile bool     lcdBridge = true; // faux des le premier octet LCD du 8088 (jusqu'au reset du pont)
+static volatile uint16_t kbdEvt[16];
+static volatile uint8_t  kbdEvtHead = 0, kbdEvtTail = 0;
+static inline void kbdEvtPush(uint16_t e) {
+  if (!lcdBridge) return;
+  uint8_t nh = (uint8_t)((kbdEvtHead + 1) & 15);
+  if (nh != kbdEvtTail) { kbdEvt[kbdEvtHead] = e; kbdEvtHead = nh; }
+}
+
 static void ps2Isr() {
   uint32_t now = micros();
   ps2Act = now;
@@ -913,8 +925,9 @@ static void ps2Isr() {
       if (nh != ps2Tail) { ps2Buf[ps2Head] = ps2Shift; ps2Head = nh; dbg(ps2Shift); }
       else dbg(0x400);
       kbdTrack(ps2Shift);                  // Ctrl-Alt-Suppr -> reset du 8088 (meme s'il est fige)
-    } else if (!ps2ParOk) dbg(0x100 | ps2Shift);
-    else dbg(0x200 | ps2Shift);
+      kbdEvtPush(ps2Shift);
+    } else if (!ps2ParOk) { dbg(0x100 | ps2Shift); kbdEvtPush(0x100 | ps2Shift); }
+    else { dbg(0x200 | ps2Shift); kbdEvtPush(0x200 | ps2Shift); }
     ps2Bit = 0;
   }
 }
@@ -932,6 +945,52 @@ static bool ps2Pop(uint8_t &v) {
   v = ps2Buf[ps2Tail];
   ps2Tail = (uint8_t)((ps2Tail + 1) & 31);
   return true;
+}
+
+// Caractere (position US) d'un code de jeu 2 sans prefixe, ou 0
+static char kbdChar(uint8_t sc) {
+  static const uint8_t code[] = { 0x1C,0x32,0x21,0x23,0x24,0x2B,0x34,0x33,0x43,0x3B,0x42,0x4B,0x3A,
+                                  0x31,0x44,0x4D,0x15,0x2D,0x1B,0x2C,0x3C,0x2A,0x1D,0x22,0x35,0x1A,
+                                  0x45,0x16,0x1E,0x26,0x25,0x2E,0x36,0x3D,0x3E,0x46 };
+  static const char txt[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  for (uint8_t i = 0; i < sizeof(code); i++) if (code[i] == sc) return txt[i];
+  return 0;
+}
+
+// Un evenement du test du clavier -> ligne 2 du LCD (16 caracteres: 16x2 comme 20x4). Un par tour de
+// boucle (~8 ms d'I2C), seulement tant que le LCD appartient au pont.
+//   "Clavier OK (AA)"   auto-test (BAT) reussi a la mise sous tension du clavier ("Clavier err (FC)")
+//   "Appui   1C A"      touche enfoncee (code de jeu 2, caractere en position US)
+//   "Relache E0 75"     touche relachee (F0), touche etendue (E0)
+//   "Pause (E1)"        Pause: les 7 octets suivants de la sequence sont ignores
+//   "Err parite 1C"     trame recue avec une erreur ("Err stop 1C"): cablage, tirages, parasites
+static void kbdTestPoll() {
+  static uint8_t pre = 0;                  // bit 0: F0 recu, bit 1: E0 recu
+  static uint8_t skip = 0;                 // octets restants de la sequence Pause
+  if (!lcdBridge || kbdEvtHead == kbdEvtTail) return;
+  uint16_t e = kbdEvt[kbdEvtTail];
+  kbdEvtTail = (uint8_t)((kbdEvtTail + 1) & 15);
+  uint8_t sc = (uint8_t)e;
+  char line[17];
+  if (e & 0x300) {
+    snprintf(line, sizeof(line), "Err %s %02X", (e & 0x100) ? "parite" : "stop", sc);
+    pre = 0; skip = 0;
+  } else if (skip) { skip--; return; }
+  else if (sc == 0xE0) { pre |= 2; return; }
+  else if (sc == 0xF0) { pre |= 1; return; }
+  else if (sc == 0xE1) { snprintf(line, sizeof(line), "Pause (E1)"); skip = 7; pre = 0; }
+  else if (pre == 0 && (sc == 0xAA || sc == 0xFC)) {
+    snprintf(line, sizeof(line), sc == 0xAA ? "Clavier OK (AA)" : "Clavier err (FC)");
+  } else {
+    char c = (pre & 2) ? 0 : kbdChar(sc);
+    snprintf(line, sizeof(line), "%s %s%02X %c", (pre & 1) ? "Relache" : "Appui  ",
+             (pre & 2) ? "E0 " : "", sc, c ? c : ' ');
+    pre = 0;
+  }
+  uint8_t n = (uint8_t)strlen(line);
+  while (n < 16) line[n++] = ' ';          // efface la fin de la ligne precedente
+  line[16] = 0;
+  lcdPrintAt(0x40, line);
 }
 
 // ============================================================================
@@ -1061,7 +1120,7 @@ void setup() {
   Wire.begin();
   Wire.setClock(100000);
   lcdInit();
-  lcdBanner();                             // "Pont STM32 v1.8 / En attente 8088"
+  lcdBanner();                             // "Pont STM32 v1.9 / En attente 8088"
 
   pinMode(PIN_PS2_CLK, INPUT_PULLUP);      // + pull-ups externes 4,7-10 kohm vers +5 V conseilles
   pinMode(PIN_PS2_DATA, INPUT_PULLUP);
@@ -1129,6 +1188,8 @@ void loop() {
         qTail++; stallSince = 0;           // personne ne lit le port USB: octet jete
       }
     } else {
+      if (it.chan == CH_LCD_CMD || it.chan == CH_LCD_DATA)
+        lcdBridge = false;                 // le 8088 prend le LCD: fin du test du clavier
       if (it.chan == CH_LCD_CMD) {
         if (it.val == 0x28) lcdResync();   // Function Set = debut de i2c_lcd_init
                                            // (8088): resynchronise un LCD deregle
@@ -1139,6 +1200,7 @@ void loop() {
       qTail++;                             // canal inconnu: octet jete
     }
   }
+  kbdTestPoll();                           // test du clavier sur le LCD (tant que le 8088 ne l'a pas pris)
 
   // 3. reponses / clavier / UART recu -> 8088
   uint8_t v;
