@@ -95,7 +95,12 @@
 // derniere commande, sinon un collage de plusieurs lignes deborde ce tampon.
 #define CMD_HOLD_MS   250UL
 #define TX_STALL_MS 100UL    // port USB sans lecteur: on jette l'octet apres ce delai
-#define HEARTBEAT   1        // 1 = LED (PC13, active a l'etat bas) clignote a 1 Hz
+#define HEARTBEAT   0        // 1 = LED (PC13, active a l'etat bas) clignote a 1 Hz (si DISK_LED 0)
+// Pont 2.0: LED de la carte (PC13) = acces au disque, comme le temoin d'un PC: allumee pendant les
+// lectures et ecritures de A: (image de disquette, 29h/2Ah), de C: (secteurs, 21h-24h), des fichiers
+// du BASIC (11h-19h) et du lecteur USB, puis DISK_LED_MS de plus (visible meme pour un seul secteur).
+#define DISK_LED    1
+#define DISK_LED_MS 40UL
 // Horloge temps reel: 1 = quartz LSE 32,768 kHz de la carte (precis; la carte V3.1 le
 // porte), 0 = oscillateur interne LSI (imprecis). Sans pile sur VBAT l'heure est
 // perdue a la mise hors tension.
@@ -410,6 +415,25 @@ static void clockReport() {
   else
     snprintf(t, sizeof(t), "\r\n[Pont] Horloge 8088: %lu Hz\r\n", f);
   UsbSerial.print(t);
+}
+
+// Temoin d'acces au disque (DISK_LED): diskLed() a chaque acces, diskLedPoll() l'eteint ensuite.
+static volatile uint32_t diskLedUntil = 0;
+static volatile bool diskLedLit = false;
+static inline void diskLed() {
+#if DISK_LED
+  GPIOC->BSRR = (1UL << (13 + 16));       // PC13 a 0: LED allumee
+  diskLedLit = true;
+  diskLedUntil = millis() + DISK_LED_MS;
+#endif
+}
+static inline void diskLedPoll() {
+#if DISK_LED
+  if (diskLedLit && (int32_t)(millis() - diskLedUntil) >= 0) {
+    GPIOC->BSRR = (1UL << 13);            // PC13 a 1: LED eteinte
+    diskLedLit = false;
+  }
+#endif
 }
 
 // ============================================================================
@@ -758,9 +782,11 @@ static void imgExec(const uint8_t *c) {
 #ifdef USE_TINYUSB
 static Adafruit_USBD_MSC usbMsc;
 static int32_t mscRead(uint32_t lba, void *buf, uint32_t size) {
+  diskLed();
   return flash.readBlocks(lba, (uint8_t *)buf, size / 512) ? (int32_t)size : -1;
 }
 static int32_t mscWrite(uint32_t lba, uint8_t *buf, uint32_t size) {
+  diskLed();
   return flash.writeBlocks(lba, buf, size / 512) ? (int32_t)size : -1;
 }
 static void mscFlush() { flash.syncBlocks(); }
@@ -839,6 +865,8 @@ static void cmdByte(uint8_t v) {
   }
   UsbSerial.print("[br] op=0x"); UsbSerial.print(op, HEX); UsbSerial.print(" n="); UsbSerial.print(cmdLen); UsbSerial.print("\r\n");
 #endif
+  if (!usbActive && ((op >= 0x11 && op <= 0x19) || (op >= 0x21 && op <= 0x24) || op == 0x29 || op == 0x2A))
+    diskLed();                             // temoin d'acces: A: (29h/2Ah), C: (21h-24h), fichiers (11h-19h)
   if (op == 0x00) { replyByte(0xB1); replyByte(3); replyByte(USB_CAPS); }        // PING: v3, RTC + disque + secteurs
   else if (op == 0x01) replyTime();
   else if (op == 0x02) applyTime(cmdBuf + 1);
@@ -1224,7 +1252,7 @@ void setup() {
   // UsbSerial.println("\n8088_bridge_stm32: " __DATE__ " " __TIME__);
   initPins();
 
-#if HEARTBEAT
+#if HEARTBEAT || DISK_LED
   pinMode(PC13, OUTPUT);
   digitalWrite(PC13, HIGH);                // LED eteinte (active a l'etat bas)
 #endif
@@ -1330,10 +1358,11 @@ void loop() {
     clockReport();
   }
 
-#if HEARTBEAT
+#if HEARTBEAT && !DISK_LED
   { static uint32_t t = 0;
     if (millis() - t >= 500) { t = millis(); digitalToggle(PC13); } }
 #endif
+  diskLedPoll();                           // temoin d'acces au disque (DISK_LED)
 
   // 1. 8088 -> file
   if (!qFull() && ps2Quiet(BUS_QUIET_US)) {
