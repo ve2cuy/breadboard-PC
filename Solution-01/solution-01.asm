@@ -4094,6 +4094,123 @@ clock_print_digits:
 .out_done:
         ret
 
+; clock_out: AL -> UART (BP bit 0) et/ou LCD I2C (BP bit 1, curseur deja positionne).
+; Preserve tout.
+clock_out:
+        test    bp, 1
+        jz      .lcd
+        call    uart_tx_byte
+.lcd:
+        test    bp, 2
+        jz      .r
+        call    i2c_lcd_data
+.r:
+        ret
+
+; clock_dec_rj: AX = valeur, CL = largeur -> AX en decimal, cadre a droite (espaces de
+; tete), sur la/les cible(s) de BP (clock_out). Preserve tout.
+clock_dec_rj:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        xor     ch, ch
+        mov     bx, 10
+        xor     si, si                   ; SI = nombre de chiffres
+.d:
+        xor     dx, dx
+        div     bx
+        push    dx                       ; chiffres empiles, poids faible d'abord
+        inc     si
+        or      ax, ax
+        jnz     .d
+        sub     cx, si                   ; espaces de tete (aucun si la valeur deborde)
+        jbe     .c
+.sp:
+        mov     al, ' '
+        call    clock_out
+        loop    .sp
+.c:
+        pop     ax
+        add     al, '0'
+        call    clock_out
+        dec     si
+        jnz     .c
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
+; clock_print_hz: DX:AX = frequence en Hz (1 Hz a 10 MHz, pont 2.0), BP = cible (bit0 UART,
+; bit1 LCD I2C, curseur LCD deja positionne). CL = 0: 9 caracteres, unite comprise
+; (" 4.77 MHz", "  500 kHz", "    1 Hz "); CL = 1: 5 caracteres pour le LCD (" 4.77",
+; " 500k", "  1Hz"). Largeur constante: rien de perime a effacer d'une valeur a l'autre.
+; Sous 1 MHz, les kHz sont tronques (999 999 Hz -> 999 kHz). Preserve tout.
+clock_print_hz:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        mov     di, cx                   ; DI bit 0 = CL (format)
+        cmp     dx, 0Fh                  ; 1 000 000 Hz = 000F4240h
+        ja      .mhz
+        jb      .sous
+        cmp     ax, 4240h
+        jae     .mhz
+.sous:
+        or      dx, dx
+        jnz     .khz
+        cmp     ax, 1000
+        jb      .hz
+.khz:
+        mov     bx, 1000
+        div     bx                       ; AX = kHz (1-999 : DX:AX < 1 000 000)
+        mov     si, txt_clock_khz        ; " kHz"
+        mov     cl, 5
+        test    di, 1
+        jz      .val
+        mov     cl, 4
+        call    clock_dec_rj
+        mov     al, 'k'
+        call    clock_out
+        jmp     .fin
+.hz:
+        mov     si, txt_clock_hz         ; " Hz "
+        mov     cl, 5
+        test    di, 1
+        jz      .val
+        mov     cl, 3
+        call    clock_dec_rj
+        mov     al, 'H'
+        call    clock_out
+        mov     al, 'z'
+        call    clock_out
+        jmp     .fin
+.val:
+        call    clock_dec_rj
+        call    clock_print_str          ; unite (CS:SI), meme cible
+        jmp     .fin
+.mhz:
+        call    clock_hz_to_wholefrac    ; DX:AX -> BL/BH
+        call    clock_print_digits       ; " N.NN"
+        test    di, 1
+        jnz     .fin
+        mov     si, txt_clock_freq_suffix        ; " MHz"
+        call    clock_print_str
+.fin:
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+
 ; clock_print_str: CS:SI = texte termine par 0, BP = cible (bit0 UART,
 ; bit1 LCD I2C - meme convention que clock_print_digits) -> affiche chaque
 ; caractere sur la/les cible(s) demandee(s) (le curseur LCD doit deja etre
@@ -4211,16 +4328,16 @@ clock_show:
                                           ; curseur physique ne bougeait jamais reellement -
                                           ; bug trouve et corrige, voir Directives.md
 
-        call    clock_hz_to_wholefrac    ; DX:AX -> BL/BH
-
+        push    ax
+        push    dx
         mov     si, txt_clock_freq_prefix        ; "Current speed: " - UART seul
         call    bios_puts                         ; (pas de place sur le LCD)
+        pop     dx
+        pop     ax
 
-        mov     bp, 3                    ; UART + LCD I2C
-        call    clock_print_digits
-
-        mov     si, txt_clock_freq_suffix        ; " MHz" - UART ET LCD cette fois
-        call    clock_print_str
+        mov     bp, 3                    ; UART + LCD I2C : " 4.77 MHz", "  500 kHz", "    1 Hz "
+        xor     cl, cl
+        call    clock_print_hz
 
         mov     si, txt_crlf
         call    bios_puts
@@ -4282,13 +4399,15 @@ clock_main_speed_print:
         mov     es, cx
         mov     ax, [es:CLOCK_FREQ_HZ_OFF]
         mov     dx, [es:CLOCK_FREQ_HZ_OFF+2]
-        call    clock_hz_to_wholefrac    ; DX:AX -> BL/BH (PAS BP/SI/ES)
-        call    clock_print_digits
+        mov     cl, 1                    ; LCD : 5 caracteres (" 4.77", " 500k", "  1Hz")
+        test    bp, 1
+        jz      .fmt
+        xor     cl, cl                   ; terminal : avec l'unite (" 4.77 MHz", "    1 Hz ")
+.fmt:
+        call    clock_print_hz
 
         test    bp, 1
         jz      .no_uart_suffix
-        mov     si, txt_clock_freq_suffix        ; " MHz"
-        call    bios_puts
         mov     si, txt_crlf
         call    bios_puts
 .no_uart_suffix:
@@ -4679,8 +4798,8 @@ cpu_test_show_result:
 
 ; --- constantes pour clock_datetime_action/information_action, plus bas ---
 BIOS_VERSION_MAJOR equ 1                ; version du BIOS/ROM affichee par
-BIOS_VERSION_MINOR equ 2                ; "4) Information" - correspond a
-                                         ; "Version 1.2" du splash (lcd_txt_splash_l2,
+BIOS_VERSION_MINOR equ 3                ; "4) Information" - correspond a
+                                         ; "Version 1.3" du splash (lcd_txt_splash_l2,
                                          ; plus bas) - A MAINTENIR MANUELLEMENT en
                                          ; phase avec lui si l'un des 2 change
 DISK_TOTAL_KB       equ 8192            ; capacite NOMINALE de la flash SPI du pont
@@ -4977,12 +5096,12 @@ information_action:
         call    i2c_lcd_print
         mov     ax, [es:CLOCK_FREQ_HZ_OFF]
         mov     dx, [es:CLOCK_FREQ_HZ_OFF+2]
-        call    clock_hz_to_wholefrac                ; DX:AX -> BL/BH
-        mov     bp, 3
-        call    clock_print_digits
-        mov     si, txt_clock_freq_suffix            ; " MHz" - UART SEULEMENT (pas la
-        mov     bp, 1                                 ; place sur le LCD - ligne deja pleine)
-        call    clock_print_str
+        mov     bp, 1                                 ; terminal : avec l'unite
+        xor     cl, cl
+        call    clock_print_hz
+        mov     bp, 2                                 ; LCD : 5 caracteres (ligne deja pleine)
+        mov     cl, 1
+        call    clock_print_hz
         mov     si, txt_crlf
         mov     bp, 1
         call    clock_print_str
@@ -6555,6 +6674,9 @@ txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
                         db      '6) 4.77 MHz',13,10
                         db      '7) 8.0 MHz',13,10
                         db      '8) 7.2 MHz',13,10
+                        db      'Ctrl+Alt+PgUp/PgDn (PS/2) or Ctrl-] + / - (terminal):',13,10
+                        db      '  1-2-5 steps from 1 Hz to 10 MHz, handled by the bridge',13,10
+                        db      '  (Ctrl+Alt+Home / Ctrl-] 0: 4.77 MHz)',13,10
                         db      '(Esc: back to Configuration submenu)',13,10,13,10,0
 
 txt_cpu_test_head:        db      27,'[36m','--- Test CPU speed ---',27,'[0m',13,10
@@ -6796,6 +6918,9 @@ txt_menu_clock_opts:    db      '1) Up   : 0.1 MHz',13,10
                         db      '6) 4.77 MHz',13,10
                         db      '7) 8.0 MHz',13,10
                         db      '8) 7.2 MHz',13,10
+                        db      'Ctrl+Alt+PgUp/PgDn (PS/2) ou Ctrl-] + / - (terminal) :',13,10
+                        db      '  suite 1-2-5 de 1 Hz a 10 MHz, traitee par le pont',13,10
+                        db      '  (Ctrl+Alt+Debut / Ctrl-] 0 : 4,77 MHz)',13,10
                         db      '(Echap: retour au sous-menu Configuration)',13,10,13,10,0
 
 ; ---- option "2) Test CPU speed" du sous-menu Configuration
@@ -6934,6 +7059,8 @@ usb_opt1_on:            db      '1) USB: ON', 0
 
 txt_clock_freq_prefix:  db      'Current speed: ', 0
 txt_clock_freq_suffix:  db      ' MHz', 0
+txt_clock_khz:          db      ' kHz', 0
+txt_clock_hz:           db      ' Hz ', 0
 txt_cpu_test_seconds:     db      ' s', 0
 
 ; ---- options "3) Heure et date"/"4) Information" du sous-menu
@@ -6979,7 +7106,7 @@ txt_dump_seg_off_sep:   db      ':0x', 0
 
 ; ---- ecran de demarrage (3 secondes, une seule fois - voir start:) ----
 lcd_text lcd_txt_splash_l1, 'Breadboard 8088', 20
-lcd_text lcd_txt_splash_l2, 'Version 1.2', 20
+lcd_text lcd_txt_splash_l2, 'Version 1.3', 20
 lcd_txt_splash_l3:      times   20 db '-'       ; remplissage '-' (pas ' ') - hors macro
                         db      0
 lcd_text lcd_txt_splash_l4, '(c) VE2CUY 2026', 20

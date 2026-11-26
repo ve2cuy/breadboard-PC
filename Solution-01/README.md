@@ -59,7 +59,7 @@ splash.
   - LCD I2C HD44780 4×20 (expandeur PCF8574, adresse `0x27`, ou `0x3F`
     pour un PCF8574A) sur `PB10`/`PB3` (I2C2) ;
   - RTC (quartz LSE de la carte), disque (flash SPI W25Q64 de 8 Mo,
-    FAT16), horloge du 8088 (PWM, 1-10 MHz) et RESET du 8088.
+    FAT16), horloge du 8088 (PWM, 1 Hz-10 MHz depuis le pont 2.0) et RESET du 8088.
 - **Câblage pont ↔ 8255/8088** (détails, niveaux 3,3 V / 5 V et
   vérifications : `../arduino/8088_bridge_stm32/README.md`) :
 
@@ -1320,7 +1320,8 @@ principal (voir plus bas).
 `1) Clock speed` affiche la **fréquence courante** de l'horloge du 8088 —
 générée par le pont STM32 (`PA3`, PWM matériel `TIM2` canal 4), qui a
 **remplacé l'Arduino UNO R4 séparé** de `projets/Clock-8088/` : plus besoin
-d'une deuxième carte — et permet de la régler entre **1 et 10 MHz** :
+d'une deuxième carte — et permet de la régler entre **1 et 10 MHz**. Le pont 2.0 descend
+jusqu'à **1 Hz** par ses propres raccourcis (voir plus bas) :
 
 ```
 --- Clock speed ---
@@ -1332,6 +1333,9 @@ d'une deuxième carte — et permet de la régler entre **1 et 10 MHz** :
 6) 4.77 MHz
 7) 8.0 MHz
 8) 7.2 MHz
+Ctrl+Alt+PgUp/PgDn (PS/2) ou Ctrl-] + / - (terminal) :
+  suite 1-2-5 de 1 Hz a 10 MHz, traitee par le pont
+  (Ctrl+Alt+Debut / Ctrl-] 0 : 4,77 MHz)
 (Echap: retour au sous-menu Configuration)
 
 Current speed:  4.77 MHz
@@ -1352,6 +1356,27 @@ Les touches ne correspondent plus directement aux codes d'action du pont (comman
 `clock_key_action` les traduit (`5` → 8, `6` → 5, `7` → 6, `8` → 7). LCD : ligne 0 « N.NN MHz » et `ESC=End`
 (colonne 12), lignes 1-3 `1)+0.1 2)-0.1`, `3)+1 4)-1 5)2.35`, `6)4.77 7)8.0 8)7.2`.
 | Échap | Retour au sous-menu Configuration |
+
+**Sous 1 MHz, jusqu'à 1 Hz (ROM 1.3, pont 2.0).** À quelques hertz, le 8088 n'exécute plus que
+quelques instructions par seconde : son menu ne pourrait plus remonter la fréquence. Le **pont** traite
+donc lui-même ces raccourcis, sans passer par le 8088 (comme Ctrl-Alt-Suppr et `Ctrl-\`) :
+
+| Clavier PS/2 | Terminal | Effet |
+|---|---|---|
+| Ctrl+Alt+PgUp | `Ctrl-]` puis `+` | valeur suivante de la suite 1-2-5 : 1, 2, 5, 10, 20, 50 Hz … 1, 2, 5, 10 MHz (4,77 → 5 MHz) |
+| Ctrl+Alt+PgDn | `Ctrl-]` puis `-` | valeur précédente (4,77 → 2 MHz) |
+| Ctrl+Alt+Début | `Ctrl-]` puis `0` | 4,77 MHz |
+| Ctrl+Alt+Fin | `Ctrl-]` puis `1` | 1 Hz |
+| — | `Ctrl-]` puis `?` | afficher la fréquence |
+
+Le pont écrit la fréquence obtenue au terminal (`[Pont] Horloge 8088: 200 Hz`). La nouvelle fréquence
+part à la fin de la période en cours (au plus 1 s à 1 Hz). Le RESET (Ctrl-Alt-Suppr, `Ctrl-\`) dure
+au moins 5 cycles d'horloge : environ 5 s à 1 Hz. Quand le 8088 ne lit plus (horloge très lente), le
+pont garde jusqu'à 64 caractères tapés au terminal pour plus tard. La ROM affiche les fréquences sous
+1 MHz en kHz ou en Hz (`Current speed:   250 kHz`, `    1 Hz` ; LCD du menu principal ` 250k`,
+`  1Hz`). Les touches 1-4 du sous-menu gardent les bornes 1-10 MHz. Un 8088 NMOS d'Intel est spécifié
+à 2 MHz au minimum (registres dynamiques) ; seul un processeur CMOS statique (80C88, V20 µPD70108H)
+garde son état jusqu'à 1 Hz.
 
 Chaque touche envoie **immédiatement** la nouvelle fréquence au pont (pas de
 validation séparée — comme le potentiomètre d'origine) : changer la vitesse

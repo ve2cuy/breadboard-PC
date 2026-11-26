@@ -32,6 +32,11 @@
 //     2Ch + 1 octet (action) = HORLOGE du 8088 (PA3, PWM materiel, voir clockExec ci-dessous):
 //     0 lire, 1 +0,1 MHz, 2 -0,1 MHz, 3 +1 MHz, 4 -1 MHz, 5 -> 4,77 MHz, 6 -> 8 MHz
 //     -> reponse 4 octets = Hz resultant.
+//     Horloge de 1 Hz a 10 MHz (pont 2.0) par raccourcis traites ICI, sans le 8088 (a 1 Hz il
+//     n'executerait plus son menu): Ctrl+Alt+PgUp / PgDn au clavier PS/2, Ctrl-] puis + / - au
+//     terminal = valeur suivante / precedente de la suite 1-2-5 (1, 2, 5, 10 Hz ... 1, 2, 5,
+//     10 MHz); Ctrl+Alt+Debut / Ctrl-] 0 = 4,77 MHz; Ctrl+Alt+Fin / Ctrl-] 1 = 1 Hz; Ctrl-] ? =
+//     afficher. La frequence obtenue est ecrite au terminal ("[Pont] Horloge 8088: ...").
 //
 // CABLAGE (voir le tableau du README.md)
 //   D0-D3 <-> PB12-PB15 et D4-D7 <-> PB6-PB9  <->  8255 PA0-PA7 (bus de donnees)
@@ -109,8 +114,8 @@
 // "4) Information" du sous-menu Configuration, Solution-01/solution-01.asm) et
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
-#define FW_VERSION_MAJOR 1
-#define FW_VERSION_MINOR 9
+#define FW_VERSION_MAJOR 2
+#define FW_VERSION_MINOR 0
 #define FW_XSTR(x) #x
 #define FW_STR(x)  FW_XSTR(x)                // FW_STR(FW_VERSION_MINOR) -> "9"
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
@@ -310,7 +315,8 @@ static void applyTime(const uint8_t *a) {  // annee (2 octets), mois, jour, h, m
 //   4 = -1 MHz, 5 = aller a 4,77 MHz, 6 = aller a 8 MHz, 7 = 7,2 MHz (1.4),
 //   8 = 2,35 MHz (1.7).
 // ============================================================================
-#define CLOCK_MIN_HZ     1000000UL
+#define CLOCK_MIN_HZ           1UL                 // pont 2.0 (etait 1 MHz): raccourcis du clavier et du terminal
+#define CLOCK_MENU_MIN_HZ 1000000UL                 // plancher des actions 1-4 (menu Clock speed du 8088)
 #define CLOCK_MAX_HZ    10000000UL
 #define CLOCK_DEFAULT_HZ 4770000UL
 #define CLOCK_STEP_SMALL  100000UL                 // 0,1 MHz
@@ -339,31 +345,71 @@ static void clockSetup() {
   clockApply();
 }
 
-static void clockExec(uint8_t action) {
+// clockStep125: valeur suivante (up) ou precedente de la suite 1-2-5 (1, 2, 5, 10 Hz ... 5, 10 MHz)
+// a partir de f, bornee a [CLOCK_MIN_HZ, CLOCK_MAX_HZ]. 4,77 MHz -> 5 MHz ou 2 MHz.
+static uint32_t clockStep125(uint32_t f, bool up) {
+  static const uint8_t m[3] = { 1, 2, 5 };
+  uint32_t best = up ? CLOCK_MAX_HZ : CLOCK_MIN_HZ;
+  for (uint32_t d = 1; d <= CLOCK_MAX_HZ; d *= 10)
+    for (uint8_t i = 0; i < 3; i++) {
+      uint32_t v = d * m[i];
+      if (v > CLOCK_MAX_HZ) break;
+      if (up && v > f && v < best) best = v;
+      if (!up && v < f && v > best) best = v;
+    }
+  return best;
+}
+
+// clockChange: applique l'action (codes de la commande 2Ch, plus 9 = suivante et 10 = precedente de
+// la suite 1-2-5, 11 = 1 Hz). Les actions 1-4 (menu Clock speed du 8088) restent bornees a
+// [CLOCK_MENU_MIN_HZ, CLOCK_MAX_HZ], comme avant le pont 2.0.
+static void clockChange(uint8_t action) {
+  uint32_t f = clockHz;
   switch (action) {
-    case 1:                                          // +0,1 MHz
-      clockHz = (clockHz + CLOCK_STEP_SMALL > CLOCK_MAX_HZ) ? CLOCK_MAX_HZ : clockHz + CLOCK_STEP_SMALL;
-      break;
-    case 2:                                          // -0,1 MHz
-      clockHz = (clockHz < CLOCK_MIN_HZ + CLOCK_STEP_SMALL) ? CLOCK_MIN_HZ : clockHz - CLOCK_STEP_SMALL;
-      break;
-    case 3:                                          // +1 MHz
-      clockHz = (clockHz + CLOCK_STEP_BIG > CLOCK_MAX_HZ) ? CLOCK_MAX_HZ : clockHz + CLOCK_STEP_BIG;
-      break;
-    case 4:                                          // -1 MHz
-      clockHz = (clockHz < CLOCK_MIN_HZ + CLOCK_STEP_BIG) ? CLOCK_MIN_HZ : clockHz - CLOCK_STEP_BIG;
-      break;
-    case 5: clockHz = CLOCK_DEFAULT_HZ; break;        // 4,77 MHz
-    case 6: clockHz = 8000000UL; break;               // 8 MHz
-    case 7: clockHz = 7200000UL; break;               // 7,2 MHz demandes (le diviseur entier du timer donne la valeur la plus proche)
-    case 8: clockHz = 2340000UL; break;               // "2,35 MHz" (1.7): 96 MHz / 41 = 2,341 MHz, le plus proche (2 350 000 donnerait 96/40 = 2,40: division tronquee)
-    default: break;                                   // 0 (ou inconnu) = lire seulement
+    case 1: f = clockHz + CLOCK_STEP_SMALL; break;   // +0,1 MHz
+    case 2: f = (clockHz > CLOCK_STEP_SMALL) ? clockHz - CLOCK_STEP_SMALL : 0; break;   // -0,1 MHz
+    case 3: f = clockHz + CLOCK_STEP_BIG; break;     // +1 MHz
+    case 4: f = (clockHz > CLOCK_STEP_BIG) ? clockHz - CLOCK_STEP_BIG : 0; break;       // -1 MHz
+    case 5: f = CLOCK_DEFAULT_HZ; break;              // 4,77 MHz
+    case 6: f = 8000000UL; break;                     // 8 MHz
+    case 7: f = 7200000UL; break;                     // 7,2 MHz demandes (le diviseur entier du timer donne la valeur la plus proche)
+    case 8: f = 2340000UL; break;                     // "2,35 MHz" (1.7): 96 MHz / 41 = 2,341 MHz, le plus proche (2 350 000 donnerait 96/40 = 2,40: division tronquee)
+    case 9: f = clockStep125(clockHz, true); break;   // suite 1-2-5 (pont 2.0)
+    case 10: f = clockStep125(clockHz, false); break;
+    case 11: f = CLOCK_MIN_HZ; break;                 // 1 Hz
+    default: return;                                  // 0 (ou inconnu) = lire seulement
   }
-  if (action >= 1 && action <= 8) clockApply();
+  if (action <= 4) {
+    if (f < CLOCK_MENU_MIN_HZ) f = CLOCK_MENU_MIN_HZ;
+  } else if (f < CLOCK_MIN_HZ) f = CLOCK_MIN_HZ;
+  if (f > CLOCK_MAX_HZ) f = CLOCK_MAX_HZ;
+  clockHz = f;
+  // Le minuteur precharge ARR et PSC (TIM_AUTORELOAD_PRELOAD_ENABLE de HardwareTimer): la nouvelle
+  // frequence part a la fin de la periode en cours (au plus 1 s a 1 Hz), sans impulsion tronquee.
+  clockApply();
+}
+
+static void clockExec(uint8_t action) {
+  if (action >= 1 && action <= 11) clockChange(action);
   // actualClockHz (REELLEMENT genere), PAS clockHz (seulement DEMANDE) - voir la
   // remarque en tete de section
   replyByte((uint8_t)actualClockHz); replyByte((uint8_t)(actualClockHz >> 8));
   replyByte((uint8_t)(actualClockHz >> 16)); replyByte((uint8_t)(actualClockHz >> 24));
+}
+
+// Raccourcis de l'horloge (pont 2.0): demandes du clavier PS/2 (kbdTrack, dans l'interruption) et du
+// terminal (Ctrl-]), executees par loop(). clockReport ecrit la frequence obtenue au terminal.
+static volatile uint8_t clockRequest = 0;  // code d'action de clockChange, 0 = rien
+static void clockReport() {
+  char t[48];
+  unsigned long f = actualClockHz;
+  if (f >= 1000000UL)
+    snprintf(t, sizeof(t), "\r\n[Pont] Horloge 8088: %lu.%03lu MHz\r\n", f / 1000000UL, (f / 1000UL) % 1000UL);
+  else if (f >= 1000UL)
+    snprintf(t, sizeof(t), "\r\n[Pont] Horloge 8088: %lu.%03lu kHz\r\n", f / 1000UL, f % 1000UL);
+  else
+    snprintf(t, sizeof(t), "\r\n[Pont] Horloge 8088: %lu Hz\r\n", f);
+  UsbSerial.print(t);
 }
 
 // ============================================================================
@@ -1030,6 +1076,14 @@ static void kbdTrack(uint8_t sc) {
   uint8_t bit = (sc == 0x14) ? 4 : (sc == 0x11) ? 8 : 0;
   if (bit) { if (brk) kbdMods &= (uint8_t)~bit; else kbdMods |= bit; return; }
   if (!brk && sc == 0x71 && (kbdMods & 12) == 12) resetRequest = true;
+  // Horloge (pont 2.0): Ctrl+Alt+PgUp (7Dh) / PgDn (7Ah) / Debut (6Ch) / Fin (69h), avec ou sans E0
+  // (pave numerique, Verr num eteint). Les touches partent aussi au 8088, comme Ctrl-Alt-Suppr.
+  if (!brk && (kbdMods & 12) == 12) {
+    if (sc == 0x7D) clockRequest = 9;
+    else if (sc == 0x7A) clockRequest = 10;
+    else if (sc == 0x6C) clockRequest = 5;
+    else if (sc == 0x69) clockRequest = 11;
+  }
 }
 
 // Impulsion de reset: l'ancienne session est oubliee (octets en attente dans les deux sens, commande
@@ -1043,7 +1097,12 @@ static void reset8088Pulse() {
   rqHead = rqTail = 0;
   cmdLen = 0;
   uartHoldUntil = 0;
-  delay(RESET8088_PULSE_MS);
+  // Le 8088 exige un RESET d'au moins 4 cycles d'horloge: 10 ms, ou 5 cycles si l'horloge est plus
+  // lente (pont 2.0: 5 s a 1 Hz). L'USB reste servi pendant l'attente.
+  uint32_t ms = RESET8088_PULSE_MS;
+  if (actualClockHz > 0 && 5000UL / actualClockHz + 1 > ms) ms = 5000UL / actualClockHz + 1;
+  uint32_t t0 = millis();
+  while (millis() - t0 < ms) yield();
   reset8088Release();
   resetRequest = false;
 }
@@ -1130,6 +1189,48 @@ void setup() {
   reset8088Release();
 }
 
+// Terminal (port USB) -> 8088, pont 2.0: Ctrl-\ (reset) et Ctrl-] suivi d'une touche (horloge) sont
+// traites ici et ne partent pas au 8088. termTake lit l'octet suivant destine au 8088 (-1: aucun).
+// Quand le 8088 ne lit plus (fige, ou horloge tres lente), loop() vide quand meme le port USB pour y
+// trouver ces raccourcis; les autres octets attendent alors dans termPend (64 octets, puis perdus).
+static uint8_t termPend[64];
+static uint8_t termPendHead = 0, termPendTail = 0;
+static bool termCtlPrefix = false;
+static bool termControl(uint8_t c) {      // vrai si l'octet est un raccourci du pont (consomme)
+  if (termCtlPrefix) {
+    termCtlPrefix = false;
+    if (c == '+' || c == '=') clockRequest = 9;
+    else if (c == '-' || c == '_') clockRequest = 10;
+    else if (c == '0') clockRequest = 5;
+    else if (c == '1') clockRequest = 11;
+    else if (c == '?') clockReport();
+    return true;                           // autre touche apres Ctrl-]: ignoree
+  }
+  if (c == 0x1D) { termCtlPrefix = true; return true; }      // Ctrl-]
+  if (c == RESET_UART_KEY) { resetRequest = true; return true; }
+  return false;
+}
+static void termDrain() {                 // 8088 qui ne lit plus: raccourcis seulement
+  while (UsbSerial.available() > 0) {
+    uint8_t c = (uint8_t)UsbSerial.read();
+    if (termControl(c)) continue;
+    uint8_t nh = (uint8_t)((termPendHead + 1) & 63);
+    if (nh != termPendTail) { termPend[termPendHead] = c; termPendHead = nh; }
+  }
+}
+static int termTake() {
+  if (termPendHead != termPendTail) {
+    uint8_t c = termPend[termPendTail];
+    termPendTail = (uint8_t)((termPendTail + 1) & 63);
+    return c;
+  }
+  while (UsbSerial.available() > 0) {
+    uint8_t c = (uint8_t)UsbSerial.read();
+    if (!termControl(c)) return c;
+  }
+  return -1;
+}
+
 // Vrai si le 8088 peut recevoir un octet du pont
 static uint32_t lastTx = 0;                // date du dernier octet envoye (USE_IBF=0)
 static bool canSend() {
@@ -1154,12 +1255,18 @@ void loop() {
   // alors en fin de tour et le debut du tour suivant revoyait IBF = 1 - le 8088 semblait fige et le reste
   // du collage etait jete ("60 PI = 3.14159265" -> "60").
 #if USE_IBF
-  if (((GPIOA->IDR >> IBF_BIT) & 1) && (uint32_t)(micros() - lastTx) > STUCK_MS * 1000UL) {
-    while (UsbSerial.available() > 0)
-      if ((uint8_t)UsbSerial.read() == RESET_UART_KEY) { resetRequest = true; break; }
-  }
+  if (((GPIOA->IDR >> IBF_BIT) & 1) && (uint32_t)(micros() - lastTx) > STUCK_MS * 1000UL)
+    termDrain();
 #endif
   if (resetRequest) reset8088Pulse();
+  if (clockRequest) {                      // raccourci de l'horloge (clavier PS/2 ou terminal)
+    noInterrupts();
+    uint8_t a = clockRequest;
+    clockRequest = 0;
+    interrupts();
+    clockChange(a);
+    clockReport();
+  }
 
 #if HEARTBEAT
   { static uint32_t t = 0;
@@ -1261,13 +1368,11 @@ void loop() {
       sendTo8088(0, v);
       dbgSent(v);
       markSent();
-    } else if (UsbSerial.available() > 0 && ps2Quiet(BUS_QUIET_US) &&
+    } else if ((termPendHead != termPendTail || UsbSerial.available() > 0) && ps2Quiet(BUS_QUIET_US) &&
                (int32_t)(millis() - uartHoldUntil) >= 0) {
-      uint8_t c = (uint8_t)UsbSerial.read();
-      if (c == RESET_UART_KEY) {
-        resetRequest = true;               // Ctrl-\: reset MATERIEL au prochain tour (non transmis)
-      } else {
-        sendTo8088(1, c);
+      int c = termTake();                  // Ctrl-\ (reset) et Ctrl-] (horloge) traites par termControl
+      if (c >= 0) {
+        sendTo8088(1, (uint8_t)c);
         markSent();
         if (c == 13) uartHoldUntil = millis() + LINE_DELAY_MS;   // le 8088 traite la ligne
       }

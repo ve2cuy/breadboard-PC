@@ -118,6 +118,16 @@ out = st['out'].decode('latin-1')
 check('Edit+Run (512K): R execute le code par defaut en 1000:0000 (AX=0001 BX=0002), Echap revient au menu',
       st['done'] and 'AX=0001' in out and 'BX=0002' in out, out[-400:])
 
+# --- horloge de 1 Hz a 10 MHz (pont 2.0): affichage sous 1 MHz (ROM 1.3) ---
+for hz, txt in ((1, b'    1 Hz '), (500, b'  500 Hz '), (250000, b'  250 kHz'), (4800000, b' 4.80 MHz')):
+    br = S.H.BridgeModel()
+    br.clock_hz = hz
+    st = S.run_rom([(S.MENU, b'4'), (b'4) ', b'1'), (b'Current speed: ' + txt, S.ps2(0x76)), (b'4) ', S.ps2(0x76)),
+                    (S.MENU, b'')], bridge=br, tail_blocks=50_000)
+    out = st['out']
+    check('Clock speed a %d Hz: "%s" au sous-menu puis au menu principal' % (hz, txt.decode()),
+          st['done'] and out.count(txt + b'\r\n') >= 2, out[-300:])
+
 # --- ROM COMPLETE (option --complet: plusieurs minutes) ---
 if '--complet' in sys.argv:
     if os.path.exists(os.path.join(DOS, 'pcdos2_1.img')):

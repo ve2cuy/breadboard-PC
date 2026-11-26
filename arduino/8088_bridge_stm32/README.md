@@ -22,7 +22,7 @@ Portage de l'ancien pont `ve2cuy_bridge.ino` (Arduino UNO, retiré du dépôt, v
 | `TAG` | **PB4** | `PC0` | sortie : `0` = scan code, `1` = octet UART |
 | `IBF` (facultatif) | **PA15** | `PC5` | voir `USE_IBF` ; non câblé = « libre » (pull-down interne) |
 | `TAG1` (**réponses**) | **PB5** | `PC1` (broche 15 du 8255A) | **sortie seulement** (PB5 n'est pas tolérante 5 V). **À câbler** pour l'horloge RTC, avec une **résistance de 10 kΩ vers la masse** sur `PC1` : `1` = l'octet envoyé est une réponse à une commande |
-| **Horloge du 8088** | **PA3** | broche `CLK` (19) du 8088 | **PWM matériel** (`TIM2` canal 4), duty cycle fixe 1/3, 1-10 MHz (défaut 4,77 MHz) — remplace le fil depuis l'Arduino UNO R4 de `projets/Clock-8088/`. `PA3` servait à `TAG2`/`PC2` (jamais câblée) : **si votre montage câble `TAG2`, cette broche est prise et ne convient plus** |
+| **Horloge du 8088** | **PA3** | broche `CLK` (19) du 8088 | **PWM matériel** (`TIM2` canal 4), duty cycle fixe 1/3, 1 Hz-10 MHz depuis le pont 2.0 (défaut 4,77 MHz ; raccourcis plus bas) — remplace le fil depuis l'Arduino UNO R4 de `projets/Clock-8088/`. `PA3` servait à `TAG2`/`PC2` (jamais câblée) : **si votre montage câble `TAG2`, cette broche est prise et ne convient plus** |
 | **RESET du 8088** | **PB2** | broche `RESET` (21) du 8088 | actif **haut** ; le montage le tire à la masse (**4,7 kΩ**, R1 du PCB) et son bouton le porte à +5 V. Le pont met `PB2` en **sortie haute** pendant un reset — à son propre démarrage (le 8088 reste en reset, horloge en marche, jusqu'à ce que le pont soit prêt), sur **Ctrl-Alt-Suppr** au clavier PS/2 et sur **`Ctrl-\`** au terminal — puis la remet en **entrée** (le bouton reste utilisable). Jamais forcée basse. Niveau haut 3,3 V : suffisant pour le 8088 (VIH ≈ 2 V) ; à vérifier si la même ligne attaque de la logique 74HC |
 | PS/2 `CLK` | **PA1** | connecteur clavier | interruption EXTI1 ; pull-up 4,7-10 kΩ vers +5 V conseillé |
 | PS/2 `DATA` | **PA2** | connecteur clavier | idem |
@@ -89,6 +89,30 @@ Ouvrir le port série (COM du PC, n'importe quel débit) **ne réinitialise pas*
 la carte, contrairement à l'UNO. Terminal : ANSI, 24×80 au moins, **écho local
 désactivé**, Entrée = `CR`.
 
+## Horloge du 8088 de 1 Hz à 10 MHz (pont 2.0)
+
+À basse fréquence, le 8088 ne peut plus exécuter le menu `Clock speed` de la ROM : le pont traite
+lui-même ces raccourcis, **sans passer par le 8088** (comme Ctrl-Alt-Suppr et `Ctrl-\`).
+
+| Clavier PS/2 | Terminal | Effet |
+|---|---|---|
+| Ctrl+Alt+PgUp | `Ctrl-]` puis `+` | valeur suivante de la suite 1-2-5 (1, 2, 5, 10 Hz … 1, 2, 5, 10 MHz) |
+| Ctrl+Alt+PgDn | `Ctrl-]` puis `-` | valeur précédente |
+| Ctrl+Alt+Début | `Ctrl-]` puis `0` | 4,77 MHz |
+| Ctrl+Alt+Fin | `Ctrl-]` puis `1` | 1 Hz |
+| — | `Ctrl-]` puis `?` | afficher la fréquence |
+
+- La fréquence obtenue est écrite au terminal : `[Pont] Horloge 8088: 200 Hz`.
+- Les touches PS/2 partent aussi au 8088 (comme Ctrl-Alt-Suppr) ; `Ctrl-]` et la touche qui suit, non.
+- `TIM2` précharge `ARR` et `PSC` : la nouvelle fréquence part à la fin de la période en cours (au plus
+  1 s à 1 Hz), sans impulsion tronquée.
+- Le RESET du 8088 dure au moins 5 cycles d'horloge (10 ms au-dessus de 500 Hz, ~5 s à 1 Hz).
+- Quand le 8088 ne lit plus (fige, ou horloge très lente), le pont vide quand même le port USB pour y
+  trouver ces raccourcis et garde les autres caractères (64 au plus) pour plus tard ; avant le pont 2.0,
+  ils étaient jetés.
+- Le 8088 NMOS d'Intel est spécifié à 2 MHz au minimum (registres dynamiques) : seul un processeur CMOS
+  statique (80C88, NEC V20 µPD70108H) garde son état jusqu'à 1 Hz.
+
 ## Horloge temps réelle (RTC) et commandes du canal 3
 
 > ✅ **Validé sur le matériel** : `TIME$` et `DATE$` (lecture et réglage) depuis le BASIC.
@@ -154,7 +178,7 @@ PlatformIO : `Adafruit SPIFlash` et `SdFat - Adafruit Fork`.
 | `29h`, LBA (4 octets) | LIRE le secteur LBA de l'image dans le tampon du pont → état (puis `22h`) |
 | `2Ah`, LBA (4 octets) | ÉCRIRE le tampon (déposé par `23h`) dans le secteur LBA de l'image → état |
 | `2Bh` | SOMME de contrôle : somme (16 bits) des 512 octets du tampon → 2 octets (poids faible d'abord). Le 8088 la demande après chaque secteur lu (`21h`/`29h`), la compare à celle des octets reçus et relit le secteur (3 essais) si elles diffèrent |
-| `2Ch`, action | HORLOGE du 8088 : `0` lire (ne rien changer), `1` +0,1 MHz, `2` -0,1 MHz, `3` +1 MHz, `4` -1 MHz (bornes 1-10 MHz), `5` → 4,77 MHz (défaut), `6` → 8 MHz, `7` → 7,2 MHz (1.4), `8` → 2,35 MHz (1.7) (la ROM traduit les touches du sous-menu Clock speed en ces codes : table `clock_key_action`, `Solution-01/solution-01.asm`) → 4 octets (fréquence **réellement générée** en Hz, poids faible d'abord — lue dans les registres ARR/PSC du minuteur après coup, **pas** la fréquence demandée : un écart de plusieurs % a été mesuré à l'oscilloscope loin de 4,77 MHz, l'arrondi entier du prescaler/de l'ARR devenant significatif à ces fréquences) |
+| `2Ch`, action | HORLOGE du 8088 : `0` lire (ne rien changer), `1` +0,1 MHz, `2` -0,1 MHz, `3` +1 MHz, `4` -1 MHz (bornes 1-10 MHz), `5` → 4,77 MHz (défaut), `6` → 8 MHz, `7` → 7,2 MHz (1.4), `8` → 2,35 MHz (1.7), `9` / `10` → valeur suivante / précédente de la suite 1-2-5 (1 Hz-10 MHz), `11` → 1 Hz (2.0) (la ROM traduit les touches du sous-menu Clock speed en ces codes : table `clock_key_action`, `Solution-01/solution-01.asm`) → 4 octets (fréquence **réellement générée** en Hz, poids faible d'abord — lue dans les registres ARR/PSC du minuteur après coup, **pas** la fréquence demandée : un écart de plusieurs % a été mesuré à l'oscilloscope loin de 4,77 MHz, l'arrondi entier du prescaler/de l'ARR devenant significatif à ces fréquences) |
 | `25h` | USB ON : le PC prend le disque (lecteur de masse) → état ; état 9 = pile USB sans lecteur de masse |
 | `26h` | USB OFF : le pont reprend le disque (remonte le volume) → état |
 
