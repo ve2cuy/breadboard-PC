@@ -468,6 +468,53 @@ static void fsCloseAll() {
   if (dirOpen)  { dirRoot.close(); dirOpen = false; }
 }
 
+// Geometrie CHS du disque C: (pont 2.0). Le BIOS du 8088 annonce 255 tetes x 63 secteurs
+// (INT 13h AH=08h, Solution-01/lib/bios.asm) et DOS convertit chaque secteur logique en CHS avec
+// les champs "secteurs par piste" et "tetes" du BPB. SdFat 2.3 (FatFormatter::initPbs) les laisse
+// a 0 (les versions precedentes y mettaient 63 et 255) et ecrit le MBR en 2 tetes x 32 secteurs:
+// sous DOS 6, DIR C: lisait des secteurs au hasard (repertoire fait d'octets 00h, 01h, 02h...).
+// fsFixGeometry remet BPB et MBR en 255 x 63, apres FORMAT et a chaque montage (en place, sans
+// toucher aux fichiers). Ne fait rien sans MBR (secteur 0 = secteur de demarrage, "superfloppy"
+// d'un formatage par Windows: DOS ne peut de toute facon pas s'en servir comme disque dur).
+static void chs255x63(uint8_t *chs, uint32_t lba) {
+  uint32_t c = lba / (255UL * 63UL), r = lba % (255UL * 63UL);
+  uint8_t h = (uint8_t)(r / 63), s = (uint8_t)(r % 63 + 1);
+  if (c > 1023) { c = 1023; h = 254; s = 63; }
+  chs[0] = h;
+  chs[1] = (uint8_t)(((c >> 2) & 0xC0) | s);
+  chs[2] = (uint8_t)c;
+}
+static uint32_t le32(const uint8_t *p) {
+  return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+static void fsFixGeometry() {
+  static uint8_t sec[512];
+  if (!flashOk || !flash.readBlocks(0, sec, 1)) return;
+  if (sec[510] != 0x55 || sec[511] != 0xAA) return;
+  if ((sec[0] == 0xEB || sec[0] == 0xE9) && sec[11] == 0x00 && sec[12] == 0x02) return;  // superfloppy
+  uint8_t *p = sec + 446;                  // premiere entree de la table des partitions
+  uint8_t t = p[4];
+  uint32_t start = le32(p + 8), n = le32(p + 12);
+  if ((p[0] != 0x00 && p[0] != 0x80) || !(t == 0x01 || t == 0x04 || t == 0x06 || t == 0x0B ||
+      t == 0x0C || t == 0x0E) || start == 0 || n == 0 || start + n > flash.size() / 512) return;
+  uint8_t b[3], e[3];
+  chs255x63(b, start);
+  chs255x63(e, start + n - 1);
+  if (memcmp(p + 1, b, 3) != 0 || memcmp(p + 5, e, 3) != 0) {
+    memcpy(p + 1, b, 3);
+    memcpy(p + 5, e, 3);
+    flash.writeBlocks(0, sec, 1);
+  }
+  if (flash.readBlocks(start, sec, 1) && sec[510] == 0x55 && sec[511] == 0xAA &&
+      sec[11] == 0x00 && sec[12] == 0x02 &&
+      (sec[24] != 63 || sec[25] != 0 || sec[26] != 255 || sec[27] != 0)) {
+    sec[24] = 63; sec[25] = 0;             // secteurs par piste (BPB, 18h)
+    sec[26] = 255; sec[27] = 0;            // tetes (BPB, 1Ah)
+    flash.writeBlocks(start, sec, 1);
+  }
+  flash.syncBlocks();
+}
+
 // Formate la flash en FAT16 (DETRUIT tout). Vrai si le volume est ensuite monte.
 static bool fsFormat() {
   static uint8_t secBuf[512];
@@ -476,6 +523,7 @@ static bool fsFormat() {
   FatFormatter formatter;
   bool ok = formatter.format(&flash, secBuf, nullptr);
   flash.syncBlocks();
+  if (ok) fsFixGeometry();                 // BPB et MBR en 255 x 63, comme le BIOS du 8088
   fsOk = ok && fatfs.begin(&flash);
   return fsOk;
 }
@@ -534,6 +582,7 @@ static void fsMount() {
     flashGeneric = flashOk;
   }
   if (flashOk) flashUnprotect();
+  fsFixGeometry();                         // disque formate par SdFat 2.3: geometrie reparee en place
   fsOk = flashOk && fatfs.begin(&flash);
   if (flashOk && !fsOk && flashLooksBlank()) fsFormat();
 }
