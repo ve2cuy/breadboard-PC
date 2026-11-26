@@ -77,55 +77,23 @@ avr_octet:
         ret
 
 ; avr_recoit : recoit CX octets (CX >= 1) de l'ATmega selectionne vers ES:DI, en envoyant
-; 00h (LIRE). 8 bits deroules par octet ; entre deux octets, ~65 us (3 AAM) : l'ATmega recharge
-; SPDR dans son interruption. Le banc simavr disait 25 us, mais sur le montage (2026-11-26)
-; ~33 us (BIOS 3.2-3.4, un seul AAM) perdaient des octets sous ELKS (ping sans reponse) et
-; ~47 us (BIOS 3.1, avr_octet) suffisaient. ~160 us par octet au lieu de ~215 avec avr_octet.
-; Detruit AX, BX, CX, DX, DI.
+; 00h (LIRE). avr_envoie : envoie a l'ATmega selectionne les CX octets (CX >= 1) de DS:SI
+; (ECRIRE ; MISO ignore), SI avance. Un avr_octet par octet (~215 us), comme le BIOS 3.1 :
+; les versions deroulees des BIOS 3.2 a 3.4 (~115 us par octet ; ~33 puis ~65 us entre deux
+; octets) perdaient des octets sur le montage (2026-11-26 : sous ELKS, ping sans reponse,
+; 'IP: BAD CHKSUM'), alors que le banc simavr et le simulateur les acceptaient. Seule la 3.1
+; a fait ses preuves sur le vrai ATmega. Detruisent AX, BX, CX, DX, DI (avr_recoit).
 avr_recoit:
-        mov     dx, PPI2_PC
-        mov     bl, AVR_SEL & ~AVR_MOSI         ; SCK = 0, MOSI = 0
-        mov     bh, (AVR_SEL & ~AVR_MOSI) | AVR_SCK
-.o:
-%rep 8
-        mov     al, bl
-        out     dx, al
-        mov     al, bh
-        out     dx, al                  ; SCK = 1 : bit lu par les deux
-        in      al, PPI2_PB
-        and     al, AVR_MISO
-        add     al, 0F0h                ; CF = MISO
-        rcl     ah, 1
-%endrep
-        mov     al, ah
+.o:     xor     al, al
+        call    avr_octet
         stosb
-        aam                             ; (~16 us chacun : delai pour l'ATmega)
-        aam
-        aam
         loop    .o
-        mov     al, AVR_SEL
-        out     dx, al                  ; SCK = 0, MOSI = 1
         ret
 
-; avr_envoie : envoie a l'ATmega selectionne les CX octets (CX >= 1) de DS:SI (ECRIRE ; MISO
-; ignore). Deroule, ~35 us entre deux octets. Detruit AX, BX, CX, DX ; SI avance.
 avr_envoie:
-        mov     dx, PPI2_PC
 .o:     lodsb
-        mov     bl, al
-%rep 8
-        shl     bl, 1
-        sbb     al, al                  ; FFh si le bit vaut 1
-        and     al, AVR_MOSI
-        or      al, AVR_SEL & ~AVR_MOSI
-        out     dx, al                  ; SCK = 0, MOSI pose
-        or      al, AVR_SCK
-        out     dx, al                  ; SCK = 1
-%endrep
-        aam
+        call    avr_octet
         loop    .o
-        mov     al, AVR_SEL
-        out     dx, al
         ret
 
 ; avr_debut : prend le bus et selectionne l'ATmega. CF = 1 si le bus est occupe (autre
