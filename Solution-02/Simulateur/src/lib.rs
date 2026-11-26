@@ -304,7 +304,7 @@ impl Sim {
             Some(a) => format!(
                 concat!(
                     "{{\"rx_nb\":{},\"tx_nb\":{},\"irq\":{},\"rts\":{},\"baud\":{},",
-                    "\"octets_spi\":{},\"trop_tot\":{},\"recus\":{},\"emis\":{},",
+                    "\"octets_spi\":{},\"trop_tot\":{},\"ecrase\":{},\"ecart_min\":{},\"recus\":{},\"emis\":{},",
                     "\"baud2\":{},\"rx2_nb\":{},\"tx2_nb\":{},\"recus2\":{},\"emis2\":{}}}"
                 ),
                 a.p.rx_nb(),
@@ -314,6 +314,8 @@ impl Sim {
                 a.baud,
                 a.octets_spi,
                 a.trop_tot,
+                a.ecrase,
+                if a.ecart_min == u64::MAX { 0 } else { a.ecart_min },
                 a.recus,
                 a.emis,
                 a.baud2,

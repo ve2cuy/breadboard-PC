@@ -77,9 +77,11 @@ avr_octet:
         ret
 
 ; avr_recoit : recoit CX octets (CX >= 1) de l'ATmega selectionne vers ES:DI, en envoyant
-; 00h (LIRE). 8 bits deroules par octet ; entre deux octets, ~35 us (AAM) : l'ATmega recharge
-; SPDR dans son interruption (25 us suffisent, mesure au banc simavr). ~115 us par octet au
-; lieu de ~215 avec avr_octet. Detruit AX, BX, CX, DX, DI.
+; 00h (LIRE). 8 bits deroules par octet ; entre deux octets, ~65 us (3 AAM) : l'ATmega recharge
+; SPDR dans son interruption. Le banc simavr disait 25 us, mais sur le montage (2026-11-26)
+; ~33 us (BIOS 3.2-3.4, un seul AAM) perdaient des octets sous ELKS (ping sans reponse) et
+; ~47 us (BIOS 3.1, avr_octet) suffisaient. ~160 us par octet au lieu de ~215 avec avr_octet.
+; Detruit AX, BX, CX, DX, DI.
 avr_recoit:
         mov     dx, PPI2_PC
         mov     bl, AVR_SEL & ~AVR_MOSI         ; SCK = 0, MOSI = 0
@@ -97,7 +99,9 @@ avr_recoit:
 %endrep
         mov     al, ah
         stosb
-        aam                             ; (~16 us : delai)
+        aam                             ; (~16 us chacun : delai pour l'ATmega)
+        aam
+        aam
         loop    .o
         mov     al, AVR_SEL
         out     dx, al                  ; SCK = 0, MOSI = 1

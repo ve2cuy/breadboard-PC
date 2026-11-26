@@ -5,8 +5,8 @@
 //!
 //! `Proto` reprend a l'identique arduino/atmega_uart/src/protocole.c (protocole version 3, memes
 //! essais, plus bas). `Avr` ajoute ce que fait main.c : esclave SPI au niveau des broches (mode 0,
-//! poids fort en premier ; l'octet suivant est charge dans SPDR par l'interruption, ~3 us apres
-//! la fin d'un octet : un 8088 trop rapide recoit le registre a decalage, compte dans
+//! poids fort en premier ; l'octet suivant est charge dans SPDR par l'interruption, ~41 us
+//! (LATENCE_SPI) apres la fin d'un octet : un 8088 trop rapide recoit le registre a decalage, compte dans
 //! `trop_tot`), UART du terminal (decodeur de la ligne, generateur des trames emises), CTS et
 //! vitesse ; et `Wifi`, un module AT simplifie au bout du canal 2.
 
@@ -47,8 +47,12 @@ pub const RX_BAS: usize = 128;
 pub const RX2_TAILLE: usize = 1024;
 pub const TX2_TAILLE: usize = 128;
 
-/// Latence de l'interruption SPI de l'ATmega (entree + prologue + ecriture de SPDR) : ~3 us.
-pub const LATENCE_SPI: u64 = 16;
+/// Latence de l'interruption SPI de l'ATmega (entree + prologue + ecriture de SPDR), en cycles
+/// du 8088 : 220 (~41 us). Le banc simavr donnait ~3 us, mais sur le montage (2026-11-26) un
+/// ecart de ~33 us entre deux octets lus (BIOS 3.2-3.4) perdait des octets sous ELKS et ~47 us
+/// (BIOS 3.1) suffisaient : la vraie latence (interruptions de l'UART logiciel, sections
+/// masquees de la boucle principale) est entre les deux. S02_LATENCE_SPI la remplace.
+pub const LATENCE_SPI: u64 = 220;
 
 #[derive(Clone, Copy, PartialEq)]
 enum E {
@@ -600,6 +604,17 @@ pub struct Avr {
     /// Statistiques.
     pub octets_spi: u64,
     pub trop_tot: u64,
+    /// Latence de l'interruption SPI (cycles du 8088) : LATENCE_SPI, ou S02_LATENCE_SPI.
+    pub latence: u64,
+    /// Plus petit ecart (cycles) entre le 8e front d'un octet et le 1er du suivant, dans une
+    /// transaction : temps laisse a l'ATmega pour recharger SPDR.
+    pub ecart_min: u64,
+    /// Octets recus ecrases : l'octet suivant fini avant que l'interruption ait lu SPDR.
+    pub ecrase: u64,
+    /// Instant du 8e front du dernier octet de la transaction en cours.
+    fin_octet: Option<u64>,
+    /// Commande (premier octet) de la transaction en cours.
+    cmd_tr: u8,
     pub recus: u64,
     pub emis: u64,
     /// Journal de mise au point : (instant, commande, octets de la transaction).
@@ -643,6 +658,12 @@ impl Avr {
             fin_tx: 0,
             octets_spi: 0,
             trop_tot: 0,
+            latence: std::env::var("S02_LATENCE_SPI").ok().and_then(|v| v.parse().ok())
+                .unwrap_or(LATENCE_SPI),
+            ecart_min: u64::MAX,
+            ecrase: 0,
+            fin_octet: None,
+            cmd_tr: 0,
             recus: 0,
             emis: 0,
             journal: Vec::new(),
@@ -715,7 +736,8 @@ impl Avr {
                     }
                 }
                 let o = self.p.ss_fin();
-                self.pend = Some((t + LATENCE_SPI, o));
+                self.pend = Some((t + self.latence, o));
+                self.fin_octet = None;
             } else {
                 self.p.ss_debut();
                 self.octet_tr = 0;
@@ -724,13 +746,19 @@ impl Avr {
         if !ss && sck && !self.sck {
             if self.k == 8 {
                 // premier front d'un octet : SPDR recharge a temps ?
+                // ECRIRE (03h, 13h) : apres la place libre (2e octet), le 8088 ignore MISO ;
+                // une reponse en retard n'y fait rien
+                let ignore = self.cmd_tr & 0x0F == ECRIRE && self.cmd_tr < 0x20 && self.octet_tr >= 2;
+                if let (Some(f), false) = (self.fin_octet, ignore) {
+                    self.ecart_min = self.ecart_min.min(t - f);
+                }
                 match self.pend.take() {
                     Some((tr, o)) if t >= tr => self.cur = o,
                     other => {
                         // l'ATmega n'a pas encore ecrit SPDR : le registre a decalage contient
                         // l'octet recu ; l'ecriture tardive tombera en collision (WCOL)
                         self.cur = self.inp;
-                        if other.is_some() {
+                        if other.is_some() && !ignore {
                             self.trop_tot += 1;
                         }
                     }
@@ -744,9 +772,18 @@ impl Avr {
                 if self.octet_tr == 0 && self.journal.len() < 4096 {
                     self.journal.push((t, self.inp, 0));
                 }
+                if self.octet_tr == 0 {
+                    self.cmd_tr = self.inp;
+                }
                 self.octet_tr += 1;
+                if let Some(f) = self.fin_octet {
+                    if t < f + self.latence {
+                        self.ecrase += 1; // l'interruption n'a pas encore lu l'octet precedent
+                    }
+                }
+                self.fin_octet = Some(t);
                 let o = self.p.spi(self.inp);
-                self.pend = Some((t + LATENCE_SPI, o));
+                self.pend = Some((t + self.latence, o));
                 self.octets_spi += 1;
                 self.service(t);
             }
@@ -1192,14 +1229,14 @@ mod essais {
         t += 20;
         let r: Vec<u8> = [IDENT, 0, 0, 0].iter().map(|&o| {
             let v = octet(&mut a, &mut t, o, 25);
-            t += 60; // ~11 us entre deux octets
+            t += LATENCE_SPI + 10; // juste assez entre deux octets
             v
         }).collect();
         a.port_c(0x01, t);
         assert_eq!(r, vec![0xA5, b'S', b'2', VERSION]);
         assert_eq!(a.trop_tot, 0);
         // 8088 trop rapide : octet suivant 1 cycle apres le precedent
-        t += 100;
+        t += LATENCE_SPI + 100;
         a.port_c(0x00, t);
         t += 20;
         let _ = octet(&mut a, &mut t, IDENT, 2);
