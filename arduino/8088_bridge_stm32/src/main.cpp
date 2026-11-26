@@ -467,10 +467,62 @@ static bool flashLooksBlank() {
   return a == 0xFF || b == 0x00;
 }
 
+// Puce de flash (pont 2.0). Adafruit SPIFlash ne connait qu'une courte liste de puces (W25Qxx de
+// Winbond, GD25Q, S25FL...); les Black Pill recents portent souvent une autre marque (Puya P25Q,
+// XTX XT25F, Zbit ZB25VQ, Boya BY25Q...): flash.begin() echouait alors et tout le disque repondait
+// "pas pret", meme apres un formatage. Puce inconnue: identifiant JEDEC lu ici (commande 9Fh) et,
+// si la capacite est plausible (64 Ko a 16 Mo), description generique en SPI simple (lecture rapide
+// 0Bh, programmation 02h, effacement 20h: communs a toutes ces puces). Les bits de protection des
+// blocs (BP, registre d'etat 1) sont remis a 0 s'ils sont poses (sinon les ecritures echouent).
+static uint8_t flashJedec[3] = { 0, 0, 0 };
+static bool flashGeneric = false;          // puce hors de la liste de la bibliotheque
+static SPIFlash_Device_t flashGenericDev;
+
+static void flashUnprotect() {
+  uint8_t st = 0;
+  flashTransport.readCommand(0x05, &st, 1);          // registre d'etat 1
+  if ((st & 0x3C) == 0) return;                      // BP0-BP3: aucune protection
+  uint8_t zero = 0;
+  flashTransport.runCommand(0x06);                   // ecriture permise
+  flashTransport.writeCommand(0x01, &zero, 1);       // BP = 0
+  for (uint32_t t0 = millis(); millis() - t0 < 100; ) {
+    flashTransport.readCommand(0x05, &st, 1);
+    if (!(st & 0x01)) break;                         // fin d'ecriture
+  }
+}
+
 static void fsMount() {
+  flashTransport.begin();
+  flashTransport.readCommand(0x9F, flashJedec, 3);
   flashOk = flash.begin();
+  if (!flashOk && flashJedec[0] != 0x00 && flashJedec[0] != 0xFF &&
+      flashJedec[2] >= 0x10 && flashJedec[2] <= 0x18) {
+    memset(&flashGenericDev, 0, sizeof(flashGenericDev));
+    flashGenericDev.total_size = 1UL << flashJedec[2];
+    flashGenericDev.start_up_time_us = 5000;
+    flashGenericDev.manufacturer_id = flashJedec[0];
+    flashGenericDev.memory_type = flashJedec[1];
+    flashGenericDev.capacity = flashJedec[2];
+    flashGenericDev.max_clock_speed_mhz = 33;        // prudent: SPI simple
+    flashGenericDev.supports_fast_read = true;
+    flashGenericDev.single_status_byte = true;       // pas de 35h (registre 2) suppose
+    flashOk = flash.begin(&flashGenericDev, 1);
+    flashGeneric = flashOk;
+  }
+  if (flashOk) flashUnprotect();
   fsOk = flashOk && fatfs.begin(&flash);
   if (flashOk && !fsOk && flashLooksBlank()) fsFormat();
+}
+
+// Etat de la flash en texte (LCD au demarrage, Ctrl-] ? au terminal): "Flash EF4017 8 Mo",
+// "Flash 856017 8 Mo*" (* = description generique), "Flash ? 000000" (puce absente ou muette).
+static void flashText(char *t, size_t n) {
+  if (flashOk)
+    snprintf(t, n, "Flash %02X%02X%02X %lu %s%s", flashJedec[0], flashJedec[1], flashJedec[2],
+             (unsigned long)(flash.size() >= 1048576UL ? flash.size() >> 20 : flash.size() >> 10),
+             flash.size() >= 1048576UL ? "Mo" : "Ko", flashGeneric ? "*" : "");
+  else
+    snprintf(t, n, "Flash ? %02X%02X%02X", flashJedec[0], flashJedec[1], flashJedec[2]);
 }
 
 // Nom 8.3 (majuscules, chiffres, . _ - $ ~) : 1-8 caracteres, point facultatif, 0-3 d'extension
@@ -862,6 +914,10 @@ static void lcdPrintAt(uint8_t addr, const char *s) {
 static void lcdBanner() {
   lcdPrintAt(0x00, "Pont STM32 v" FW_STR(FW_VERSION_MAJOR) "." FW_STR(FW_VERSION_MINOR));
   lcdPrintAt(0x40, "En attente 8088");
+  char t[24];                              // ligne 3 du 20x4 (adresse 14h: hors de l'ecran d'un 16x2)
+  flashText(t, sizeof(t));
+  lcdPrintAt(0x14, t);
+  if (!fsOk) lcdPrintAt(0x54, flashOk ? "Disque non formate" : "Disque absent");
 }
 
 // ============================================================================
@@ -1203,7 +1259,13 @@ static bool termControl(uint8_t c) {      // vrai si l'octet est un raccourci du
     else if (c == '-' || c == '_') clockRequest = 10;
     else if (c == '0') clockRequest = 5;
     else if (c == '1') clockRequest = 11;
-    else if (c == '?') clockReport();
+    else if (c == '?') {
+      char t[24];
+      clockReport();
+      flashText(t, sizeof(t));
+      UsbSerial.print("[Pont] "); UsbSerial.print(t);
+      UsbSerial.print(fsOk ? ", disque monte\r\n" : (flashOk ? ", disque non formate\r\n" : ", disque absent\r\n"));
+    }
     return true;                           // autre touche apres Ctrl-]: ignoree
   }
   if (c == 0x1D) { termCtlPrefix = true; return true; }      // Ctrl-]
