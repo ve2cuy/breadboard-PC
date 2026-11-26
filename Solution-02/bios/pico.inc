@@ -101,6 +101,9 @@ pico_detecte:
         mov     byte [es:V_PICO], 0
         mov     byte [es:V_PICO_SD], 0
         mov     byte [es:V_PICO_OCC], 0
+%ifdef SANS_PICO
+        ret                             ; make SANS_PICO=1 : aucun acces aux ports 50h-5Fh
+%endif
         in      al, PICO_ETAT
         test    al, 80h
         jnz     .fin

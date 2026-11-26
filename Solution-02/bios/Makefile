@@ -4,7 +4,8 @@ IMAGE  = build/solution-02-bios.bin
 # BIOS anglais (textes sous %ifdef LANG_EN) ; le francais est l'image par defaut
 IMAGE_EN = build/solution-02-bios-en.bin
 # calibration de l'UART logiciel : make UART_N=28 (voir README) ; refaire "make clean" avant
-NASM_DEF = $(if $(UART_N),-DUART_N=$(UART_N))
+NASM_DEF = $(if $(UART_N),-DUART_N=$(UART_N)) $(if $(SANS_PICO),-DSANS_PICO)
+# ROM sans detection du Pico W (aucun acces aux ports 50h-5Fh) : make clean ; make SANS_PICO=1
 
 all: $(IMAGE) $(IMAGE_EN)
 en: $(IMAGE_EN)
