@@ -185,8 +185,19 @@ eval_p:
 ; peek_op: examine l'operateur a [SI] sans le consommer. AL = precedence (0 si aucun),
 ; AH = identifiant, DL = nombre de caracteres. Passe les espaces (SI avance dessus).
 peek_op:
-        call    skip_sp
+        SKIPSP
         mov     dl, 1
+        mov     bl, al                  ; ROM 1.5: classe de l'octet par table (pas d'operateur: tout de suite)
+        xor     bh, bh
+        mov     bl, [cs:op_cls + bx]
+        or      bl, bl
+        jz      .none
+        cmp     bl, 13
+        jae     .n6                     ; = < > : deux caracteres possibles
+        shl     bx, 1
+        mov     ax, [cs:op_val - 2 + bx]
+        ret
+.n0:
         cmp     al, '+'
         jne     .n1
         mov     ax, 0C08h
@@ -292,9 +303,20 @@ peek_op:
         xor     ax, ax
         ret
 
+; classes de peek_op: 1-12 = operateur d'un caractere (AX dans op_val), 13 = '=', '<' ou '>', 0 = aucun
+op_cls:
+%assign OPI 0
+%rep 256
+        db      (OPI = '+') * 1 + (OPI = '-') * 2 + (OPI = '*') * 3 + (OPI = '/') * 4 + (OPI = '^') * 5 + \
+                (OPI = '\') * 6 + (OPI = T_MOD) * 7 + (OPI = T_AND) * 8 + (OPI = T_OR) * 9 + (OPI = T_XOR) * 10 + \
+                (OPI = T_EQV) * 11 + (OPI = T_IMP) * 12 + ((OPI = '=') | (OPI = '<') | (OPI = '>')) * 13
+%assign OPI OPI + 1
+%endrep
+op_val: dw      0C08h, 0D08h, 100Bh, 110Bh, 120Dh, 0F0Ah, 0E09h, 0505h, 0404h, 0303h, 0202h, 0101h
+
 ; eval_unary: operande avec operateurs prefixes (-, +, NOT)
 eval_unary:
-        call    skip_sp
+        SKIPSP
         cmp     al, '-'
         jne     .np
         inc     si
@@ -382,8 +404,52 @@ eval_primary:
         call    [cs:tok_handlers + bx]
         ret
 
-; lit_number: litteral numerique a [SI]
+; lit_number: litteral numerique a [SI]. ROM 1.5: une constante du programme n'est convertie qu'une
+; fois (cache BC_NUM, cle = son adresse dans le texte): ensuite, valeur et type sont recopies.
 lit_number:
+        cmp     si, B_TXT
+        jb      lit_parse
+        cmp     si, [b_vartab]
+        jae     lit_parse
+        mov     bx, si
+        and     bx, 63
+        shl     bx, 1
+        shl     bx, 1
+        shl     bx, 1
+        add     bx, BC_NUM
+        cmp     [bx], si
+        jne     .miss
+        mov     ax, [bx+2]              ; AL = longueur, AH = type
+        mov     [fac_t], ah
+        mov     byte [fac_own], 0
+        xor     ah, ah
+        add     si, ax
+        mov     ax, [bx+4]
+        mov     [fac_v], ax
+        mov     ax, [bx+6]
+        mov     [fac_v+2], ax
+        ret
+.miss:
+        push    bx
+        push    si
+        call    lit_parse
+        pop     ax                      ; debut de la constante
+        pop     bx                      ; case du cache
+        mov     dx, si
+        sub     dx, ax
+        or      dh, dh
+        jnz     .r                      ; (plus de 255 caracteres: pas gardee)
+        mov     [bx], ax
+        mov     dh, [fac_t]
+        mov     [bx+2], dx
+        mov     ax, [fac_v]
+        mov     [bx+4], ax
+        mov     ax, [fac_v+2]
+        mov     [bx+6], ax
+.r:
+        ret
+
+lit_parse:
         xor     al, al
         call    fl_atof
         jnc     .ok
@@ -597,6 +663,7 @@ find_var:
         mov     si, [b_strend]
         mov     cx, si
         sub     cx, [b_arytab]          ; octets a deplacer (tableaux)
+        inc     word [b_agen]           ; les tableaux bougent (cache des variables)
         mov     di, si
         add     di, [b_t1]
         dec     si
@@ -714,11 +781,52 @@ var_load:
         call    var_ref
         jmp     load_slot
 
-; var_ref: [SI] sur une lettre -> BX = adresse de la valeur, CL = type; SI avance.
+; var_ref: [SI] sur une lettre -> BX = adresse de la valeur, CL = type (aussi dans b_bb3); SI avance.
+; ROM 1.5: une variable SIMPLE du programme n'est cherchee qu'une fois (cache BC_VAR, cle = adresse du
+; nom dans le texte; les variables simples ne bougent pas: une nouvelle s'insere avant les tableaux).
+; Sur un succes du cache, b_word/b_wlen ne sont pas recharges (aucun appelant ne s'en sert).
 var_ref:
+        mov     word [b_vck], 0
+        cmp     si, B_TXT
+        jb      .slow
+        cmp     si, [b_vartab]
+        jae     .slow
+        mov     bx, si
+        and     bx, 63
+        shl     bx, 1
+        shl     bx, 1
+        shl     bx, 1
+        add     bx, BC_VAR
+        cmp     [bx], si
+        jne     .miss
+        mov     ax, [bx+4]              ; AL = longueur, AH = type
+        test    ah, 80h
+        jnz     .hit_arr
+        mov     cl, ah
+        mov     [b_bb3], ah
+        xor     ah, ah
+        add     si, ax
+        mov     bx, [bx+2]
+        ret
+.hit_arr:
+        mov     cx, [bx+6]
+        cmp     cx, [b_agen]
+        jne     .miss                   ; le tableau a bouge: recherche normale
+        and     ah, 7Fh
+        mov     cl, ah                  ; CL = type
+        push    si                      ; debut du nom (comme le chemin lent)
+        xor     ah, ah
+        add     si, ax                  ; SI apres '('
+        mov     bx, [bx+2]              ; BX = entete
+        mov     word [b_vck], 0         ; rien a remplir
+        jmp     .arr_go
+.miss:
+        mov     [b_vck], bx
+.slow:
+        mov     [b_vks], si
         push    si                      ; debut du nom
         call    parse_name
-        call    skip_sp
+        SKIPSP
         cmp     al, '('
         je      .arr
         add     sp, 2
@@ -726,9 +834,30 @@ var_ref:
         call    find_var
         pop     si
         mov     cl, [b_bb3]
+        mov     di, [b_vck]
+        or      di, di
+        jz      .r
+        mov     ax, si
+        sub     ax, [b_vks]
+        or      ah, ah
+        jnz     .r
+        mov     ah, cl
+        mov     [di+4], ax
+        mov     [di+2], bx
+        mov     ax, [b_vks]
+        mov     [di], ax
+.r:
         ret
 .arr:
         inc     si
+        xor     bx, bx                  ; entete inconnu
+        mov     cl, [b_bb3]
+.arr_go:                                ; BX = entete (0 = inconnu), CL = type, SI apres '('; pile: [debut du nom]
+        push    word [b_vck]            ; (les indices peuvent appeler var_ref: contexte sur la pile)
+        push    bx
+        push    word [b_agen]
+        push    si
+        push    cx
         xor     cx, cx
 .idx:
         cmp     cx, 8
@@ -760,14 +889,73 @@ var_ref:
         pop     ax
         mov     [b_idx + bx], ax
         jnz     .pop
+        pop     ax                      ; AL = type
+        mov     [b_bb3], al
+        pop     dx                      ; DX = SI apres '('
+        pop     ax                      ; generation du tableau connu
+        pop     bx                      ; entete (0 = inconnu)
+        pop     di                      ; case du cache (0 = rien)
         pop     si                      ; debut du nom
-        call    parse_name              ; recharge b_word / b_wlen / b_bb3
         mov     cx, [b_t8]
-        push    cx
-        call    arr_element             ; BX = adresse de l'element
-        pop     cx
+        or      bx, bx
+        jz      .find
+        cmp     ax, [b_agen]
+        jne     .find                   ; les indices ont cree une variable: le tableau a bouge
+        call    arr_elem_at             ; BX = adresse de l'element
+        jmp     .fin
+.find:
+        push    di
+        push    dx
+        push    si
+        call    parse_name              ; recharge b_word / b_wlen / b_bb3
+        pop     si                      ; debut du nom (b_vks a pu changer: indices)
+        mov     cx, [b_t8]
+        call    arr_element             ; BX = adresse de l'element, b_vae = entete
+        pop     dx
+        pop     di
+        or      di, di
+        jz      .fin
+        mov     ax, dx
+        sub     ax, si
+        or      ah, ah
+        jnz     .fin
+        mov     ah, [b_bb3]
+        or      ah, 80h
+        mov     [di+4], ax
+        mov     ax, [b_vae]
+        mov     [di+2], ax
+        mov     ax, [b_agen]
+        mov     [di+6], ax
+        mov     [di], si
+.fin:
         mov     si, [b_t7]
         mov     cl, [b_bb3]
+        ret
+
+; var_skip: SI sur une variable SIMPLE connue du cache -> SI apres (comme skip_target), CF = 0;
+; sinon CF = 1, SI inchange. Detruit AX, BX.
+var_skip:
+        cmp     si, B_TXT
+        jb      .no
+        cmp     si, [b_vartab]
+        jae     .no
+        mov     bx, si
+        and     bx, 63
+        shl     bx, 1
+        shl     bx, 1
+        shl     bx, 1
+        add     bx, BC_VAR
+        cmp     [bx], si
+        jne     .no
+        mov     ax, [bx+4]
+        test    ah, 80h
+        jnz     .no
+        xor     ah, ah
+        add     si, ax
+        clc
+        ret
+.no:
+        stc
         ret
 
 ; ------------------------------------------------------------
@@ -831,7 +1019,7 @@ arr_element:
         push    cx
         call    arr_find
         pop     cx
-        jz      .have
+        jz      arr_elem_at
         push    cx
         mov     bx, 0
         mov     ax, 10
@@ -843,7 +1031,10 @@ arr_element:
         push    cx
         call    arr_create
         pop     cx
-.have:
+; arr_elem_at: BX = entete du tableau, CX = nombre d'indices (b_idx) -> BX = adresse de l'element
+; (b_vae = entete). Type dans b_bb3. Preserve SI.
+arr_elem_at:
+        mov     [b_vae], bx
         mov     al, [bx+1]
         xor     ah, ah
         mov     di, bx
@@ -884,6 +1075,7 @@ arr_element:
 ; arr_create: CX = nombre de dimensions, bornes dans b_bnd, nom dans b_word.
 ; Cree le tableau (elements a zero). Retour BX = debut de l'entree. Preserve SI.
 arr_create:
+        inc     word [b_agen]           ; (cache des variables)
         push    si
         mov     [b_t3], cx
         mov     ax, 1

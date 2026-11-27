@@ -959,6 +959,9 @@ st_dskread:
         push    ds
         pop     es                      ; ES = DS (sans toucher aux indicateurs)
         pop     si
+        pushf
+        call    cache_clear             ; le secteur a pu ecraser le texte du programme
+        popf
         call    disk_chk
         jmp     bas_newstt
 

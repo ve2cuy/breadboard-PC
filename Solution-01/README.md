@@ -892,6 +892,39 @@ Un module par rôle, tous assemblés à partir de `lib/basic.asm` :
   le texte du programme ; le ramasse-miettes compacte le tas quand il est plein
   (les temporaires et les valeurs en attente dans une expression sont des
   racines).
+- **Vitesse (ROM 1.5)** : le texte du programme reste tel qu'il a été tapé (`LIST` fidèle), mais
+  l'exécution garde en mémoire, à l'adresse de chaque élément dans le texte, ce qu'elle a déjà
+  trouvé ; ces **caches** occupent `E000h-E4FFh`, sous la pile :
+
+  | Cache | Clé | Contenu |
+  |---|---|---|
+  | constantes (64) | adresse de la constante | type et valeur déjà convertis |
+  | variables (64) | adresse du nom | adresse de la valeur ; pour un tableau : son en-tête et une génération |
+  | lignes (64) | numéro de ligne | adresse de la ligne (`GOTO`, `GOSUB`, `THEN n`…) |
+
+  - Ils sont vidés quand le programme change (édition, `LOAD`, `MERGE`, `NEW`), quand les variables
+    sont effacées (`RUN`, `CLEAR`), par `DEFINT/DEFSNG/DEFSTR`, et par `POKE` ou `DSKREAD` dans le texte
+    du programme.
+  - Les tableaux bougent quand une variable simple est créée, et par `DIM` ou `ERASE` : chacun de ces
+    déplacements augmente la génération (`b_agen`), ce qui invalide leur entrée.
+  - Les commandes directes n'utilisent pas ces caches.
+  - Autres gains : addition et division flottantes en registres (même arrondi au plus proche pair,
+    vérifié contre numpy) ; conversion entier → flottant par table ; opérateurs reconnus par table ;
+    pas d'appel pour sauter les espaces quand il n'y en a pas.
+  - Bancs de Rugg/Feldman, `python tests/basic_bench.py` (temps estimé à 4,77 MHz d'après les octets
+    lus et écrits sur le bus ; mesures à l'émulateur, pas sur le montage) :
+
+    | Banc | ROM 1.4 | ROM 1.5 | Gain |
+    |---|---|---|---|
+    | BM1 (`FOR`/`NEXT` vide) | 1,45 s | 0,99 s | × 1,46 |
+    | BM2 (`K=K+1`, `IF`) | 5,14 s | 2,91 s | × 1,77 |
+    | BM3 (`A=K/K*K+K-K`) | 11,34 s | 7,43 s | × 1,53 |
+    | BM4 (constantes) | 13,57 s | 7,77 s | × 1,75 |
+    | BM5 (`GOSUB`) | 14,12 s | 8,25 s | × 1,71 |
+    | BM6 (`FOR` imbriqué) | 22,88 s | 13,53 s | × 1,69 |
+    | BM7 (tableau) | 34,48 s | 20,84 s | × 1,65 |
+    | BM8 (`^`, `LOG`, `SIN`, 100 tours) | 3,92 s | 2,92 s | × 1,34 |
+
 - **`POKE` protégé** : une écriture dans la table des vecteurs (`0000:0000-03FF`),
   dans l'espace de travail du BASIC (`1000:0000-03FF`) ou dans les variables du
   firmware (`1000:F800-FFFF`) donne `Illegal function call`.

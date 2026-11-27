@@ -206,6 +206,11 @@ fl_add:
         add     bx, 2
         loop    .sw
 .ordered:
+        ; ROM 1.5: en registres. Mantisses de 32 bits (24 bits significatifs << 8: 8 bits de garde);
+        ; B decale de d bits vers la droite, les bits perdus "colles" au bit 0 (comme softfloat:
+        ; shiftRightJam). Resultat arrondi au plus proche pair par fl_pack, identique au calcul exact
+        ; sur 64 bits de la version precedente (d <= 1: rien n'est perdu; d >= 2: au plus un decalage
+        ; a gauche apres la soustraction, le bit colle reste sous le bit de garde).
         mov     cx, [fl_ua+FU_E]
         sub     cx, [fl_ub+FU_E]        ; CX = d >= 0
         cmp     cx, 25
@@ -213,88 +218,87 @@ fl_add:
         mov     di, fl_ua               ; B negligeable
         jmp     fl_store
 .align:
-        ; A64 = ma:0 ; B64 = mb:0 >> d   (mots bas d'abord dans fl_q64/fl_r64)
-        mov     ax, [fl_ua+FU_M]
-        mov     dx, [fl_ua+FU_M+2]
-        mov     word [fl_q64], 0
-        mov     word [fl_q64+2], 0
-        mov     [fl_q64+4], ax
-        mov     [fl_q64+6], dx
         mov     ax, [fl_ub+FU_M]
-        mov     dx, [fl_ub+FU_M+2]
-        mov     word [fl_r64], 0
-        mov     word [fl_r64+2], 0
-        mov     [fl_r64+4], ax
-        mov     [fl_r64+6], dx
+        mov     dx, [fl_ub+FU_M+2]      ; DX:AX = mb
+        xor     bx, bx                  ; BX <> 0: bits perdus
         jcxz    .aligned
-.shr:
-        shr     word [fl_r64+6], 1
-        rcr     word [fl_r64+4], 1
-        rcr     word [fl_r64+2], 1
-        rcr     word [fl_r64], 1
-        loop    .shr
+        cmp     cl, 16
+        jb      .a8
+        mov     bx, ax
+        mov     ax, dx
+        xor     dx, dx
+        sub     cl, 16
+.a8:
+        cmp     cl, 8
+        jb      .a1
+        or      bl, al
+        mov     al, ah
+        mov     ah, dl
+        mov     dl, dh
+        xor     dh, dh
+        sub     cl, 8
+.a1:
+        jcxz    .aligned
+.sh:
+        shr     dx, 1
+        rcr     ax, 1
+        adc     bx, 0
+        loop    .sh
 .aligned:
-        mov     al, [fl_ua+FU_S]
-        cmp     al, [fl_ub+FU_S]
+        or      bx, bx
+        jz      .nj
+        or      al, 1                   ; bit colle
+.nj:
+        mov     cl, [fl_ua+FU_S]
+        cmp     cl, [fl_ub+FU_S]
         jne     .diff
-        ; memes signes: A + B
-        mov     ax, [fl_r64]
-        add     [fl_q64], ax
-        mov     ax, [fl_r64+2]
-        adc     [fl_q64+2], ax
-        mov     ax, [fl_r64+4]
-        adc     [fl_q64+4], ax
-        mov     ax, [fl_r64+6]
-        adc     [fl_q64+6], ax
-        jnc     .norm
-        ; retenue: decale a droite de 1 avec le bit sortant en tete
-        rcr     word [fl_q64+6], 1
-        rcr     word [fl_q64+4], 1
-        rcr     word [fl_q64+2], 1
-        rcr     word [fl_q64], 1
+        add     ax, [fl_ua+FU_M]        ; memes signes: A + B
+        adc     dx, [fl_ua+FU_M+2]
+        jnc     .store
+        rcr     dx, 1                   ; retenue: un bit a droite, la retenue en tete
+        rcr     ax, 1
+        jnc     .nst
+        mov     byte [fl_st], 1
+.nst:
         inc     word [fl_ua+FU_E]
-        jmp     .norm
+        jmp     .store
 .diff:
-        mov     ax, [fl_r64]
-        sub     [fl_q64], ax
-        mov     ax, [fl_r64+2]
-        sbb     [fl_q64+2], ax
-        mov     ax, [fl_r64+4]
-        sbb     [fl_q64+4], ax
-        mov     ax, [fl_r64+6]
-        sbb     [fl_q64+6], ax
-.norm:
-        ; normalise: bit 63 a 1
-        mov     ax, [fl_q64]
-        or      ax, [fl_q64+2]
-        or      ax, [fl_q64+4]
-        or      ax, [fl_q64+6]
-        jnz     .nz
-        xor     ax, ax                  ; resultat nul
-        mov     [fac_v], ax
+        mov     bx, [fl_ua+FU_M]        ; A - B (|A| >= |B|)
+        mov     cx, [fl_ua+FU_M+2]
+        sub     bx, ax
+        sbb     cx, dx
+        mov     ax, bx
+        mov     dx, cx
+        or      bx, cx
+        jnz     .n16
+        mov     [fac_v], ax             ; resultat nul: +0
         mov     [fac_v+2], ax
         clc
         ret
-.nz:
-.nl:
-        test    word [fl_q64+6], 8000h
-        jnz     .normed
-        shl     word [fl_q64], 1
-        rcl     word [fl_q64+2], 1
-        rcl     word [fl_q64+4], 1
-        rcl     word [fl_q64+6], 1
+.n16:
+        or      dx, dx
+        jnz     .n8
+        xchg    ax, dx
+        sub     word [fl_ua+FU_E], 16
+.n8:
+        or      dh, dh
+        jnz     .n1
+        mov     dh, dl
+        mov     dl, ah
+        mov     ah, al
+        xor     al, al
+        sub     word [fl_ua+FU_E], 8
+        jmp     .n8
+.n1:
+        test    dh, 80h
+        jnz     .store
+        shl     ax, 1
+        rcl     dx, 1
         dec     word [fl_ua+FU_E]
-        jmp     .nl
-.normed:
-        mov     ax, [fl_q64+4]
-        mov     dx, [fl_q64+6]
+        jmp     .n1
+.store:
         mov     [fl_ua+FU_M], ax
         mov     [fl_ua+FU_M+2], dx
-        mov     ax, [fl_q64]
-        or      ax, [fl_q64+2]
-        jz      .nost
-        mov     byte [fl_st], 1
-.nost:
         mov     di, fl_ua
         jmp     fl_store
 
@@ -389,33 +393,39 @@ fl_div:
         mov     bl, 1
 .noq:
         mov     [fl_dq], bl             ; bit de tete du quotient
-        mov     word [fl_q64], 0        ; quotient 32 bits (bas)
-        mov     word [fl_q64+2], 0
+        ; ROM 1.5: les 32 pas en registres (meme calcul): reste DX:AX, diviseur BX:BP, quotient SI:DI
+        push    si
+        push    bp
+        mov     bx, [fl_ub+FU_M+2]
+        mov     bp, [fl_ub+FU_M]
+        xor     si, si
+        xor     di, di
         mov     cx, 32
 .bit:
-        ; r = r*2 (33 bits)
-        shl     word [fl_q64], 1
-        rcl     word [fl_q64+2], 1      ; decale le quotient (le bit sera mis apres)
-        shl     ax, 1
+        shl     di, 1                   ; decale le quotient (le bit sera mis apres)
+        rcl     si, 1
+        shl     ax, 1                   ; r = r*2 (33 bits)
         rcl     dx, 1
         jc      .sub                    ; r >= 2^32 > mb
-        cmp     dx, [fl_ub+FU_M+2]
+        cmp     dx, bx
         jb      .next
         ja      .sub
-        cmp     ax, [fl_ub+FU_M]
+        cmp     ax, bp
         jb      .next
 .sub:
-        sub     ax, [fl_ub+FU_M]
-        sbb     dx, [fl_ub+FU_M+2]
-        or      word [fl_q64], 1
+        sub     ax, bp
+        sbb     dx, bx
+        or      di, 1
 .next:
         loop    .bit
         or      ax, dx                  ; reste non nul ?
         jz      .norem
         mov     byte [fl_st], 1
 .norem:
-        mov     ax, [fl_q64]
-        mov     dx, [fl_q64+2]
+        mov     ax, di
+        mov     dx, si
+        pop     bp
+        pop     si
         cmp     byte [fl_dq], 0
         je      .noshift
         ; quotient a 33 bits: >>1, le bit perdu devient collant
@@ -542,6 +552,40 @@ fl_from_u32_s:                          ; signe dans fl_sgn
         ret
 .nz:
         mov     cx, 31                  ; exposant = 31 - decalages
+        or      dx, dx                  ; ROM 1.5: normalisation par mot puis par octet, ensuite bit a bit
+        jnz     .b
+        xchg    ax, dx
+        mov     cl, 15
+.b:
+        or      dh, dh
+        jnz     .clz
+        mov     dh, dl
+        mov     dl, ah
+        mov     ah, al
+        xor     al, al
+        sub     cx, 8
+.clz:
+        ; ROM 1.5: DH <> 0 ici; ses zeros de tete (0-7) par table, puis un seul decalage
+        push    cx
+        mov     bl, dh
+        xor     bh, bh
+        mov     cl, [cs:fl_clz8 + bx]
+        xor     ch, ch
+        jcxz    .nz0
+        shl     dx, cl
+        mov     bx, ax
+        shl     ax, cl
+        neg     cl
+        add     cl, 16
+        shr     bx, cl
+        or      dx, bx
+        mov     bx, cx                  ; 16 - n
+        pop     cx
+        add     cx, bx
+        sub     cx, 16                  ; exposant - n
+        jmp     .nl
+.nz0:
+        pop     cx
 .nl:
         test    dx, 8000h
         jnz     .go
@@ -550,6 +594,25 @@ fl_from_u32_s:                          ; signe dans fl_sgn
         dec     cx
         jmp     .nl
 .go:
+        or      al, al                  ; ROM 1.5: 8 bits d'arrondi nuls = valeur exacte: emballee directement
+        jnz     .round
+        add     cx, 127
+        mov     bx, cx
+        mov     cl, 7
+        shl     bx, cl                  ; exposant biaise, bits 14-7
+        and     dh, 7Fh
+        or      bl, dh                  ; fraction, bits 22-16
+        cmp     byte [fl_sgn], 0
+        je      .pos
+        or      bh, 80h
+.pos:
+        mov     al, ah
+        mov     ah, dl                  ; fraction, bits 15-0
+        mov     [fac_v], ax
+        mov     [fac_v+2], bx
+        clc
+        ret
+.round:
         mov     [fl_ua+FU_M], ax
         mov     [fl_ua+FU_M+2], dx
         mov     [fl_ua+FU_E], cx
@@ -558,6 +621,14 @@ fl_from_u32_s:                          ; signe dans fl_sgn
         mov     byte [fl_st], 0
         mov     di, fl_ua
         jmp     fl_store
+
+; fl_clz8: nombre de zeros de tete d'un octet non nul (0 -> 8, inutilise)
+fl_clz8:
+%assign CLZI 0
+%rep 256
+        db      (CLZI < 1) + (CLZI < 2) + (CLZI < 4) + (CLZI < 8) + (CLZI < 16) + (CLZI < 32) + (CLZI < 64) + (CLZI < 128)
+%assign CLZI CLZI + 1
+%endrep
 
 ; ------------------------------------------------------------
 ; fl_to_i16: FAC -> AX. mode: AL = 0 tronque (FIX), 1 arrondi (CINT).
@@ -590,6 +661,16 @@ fl_to_i16:
         mov     cx, 31
         sub     cx, bx                  ; CX = decalage (16..31)
         mov     bx, 0                   ; BX = reste (bits perdus, pour la garde)
+        cmp     cx, 17                  ; ROM 1.5: par mot puis par octet tant qu'il reste plus d'un bit
+        jb      .sh                     ; (seul le dernier bit sorti, la garde, compte)
+        mov     ax, dx
+        xor     dx, dx
+        sub     cx, 16
+        cmp     cx, 9
+        jb      .sh
+        mov     al, ah
+        xor     ah, ah
+        sub     cx, 8
 .sh:
         cmp     cx, 1
         jbe     .last

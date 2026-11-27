@@ -560,6 +560,22 @@ for label, quit_txt in (('SYSTEM', 'SYSTEM\r'), ('BYE', 'BYE\r'), ('Ctrl-X', '\x
     check('%s: DS = CS (C000h), SP restaure' % label, r.get('ds') == 0xC000 and r.get('sp') == 0x0000, str(r))
     check('%s: aucune ecriture hors zones' % label, not st['bad'], str(st['bad'][:5]))
 
+# --- caches de l'execution (ROM 1.5): constantes, variables, lignes -------------
+ok_run('cache: DEFINT apres usage (A! puis A%)',
+       '10 FOR I=1 TO 2\r20 PRINT A;\r30 A=2.5\r40 DEFINT A\r50 NEXT\rRUN\r', ' 0  0 ')
+ok_run('cache: POKE dans une constante du programme',
+       '10 PRINT 5;\r20 IF Q=1 THEN END\r30 Q=1:POKE &HC06,55:GOTO 10\rRUN\r', ' 5  7 ')
+got = R('10 GOTO 30\r20 PRINT "X"\r30 PRINT "Y"\rRUN\r30 PRINT "Z"\r25 PRINT "W"\rRUN\r')
+check('cache: GOTO apres modification du programme', got == 'Y\nZ', repr(got))
+ok_run('cache: ERASE deplace un tableau deja vu',
+       '10 DIM A(2),B(2)\r20 FOR K=1 TO 2\r30 B(1)=K*10:PRINT B(1);\r40 IF K=1 THEN ERASE A\r50 NEXT\r60 PRINT B(1)\rRUN\r', ' 10  20  20 ')
+ok_run('cache: variable creee entre deux acces au meme tableau',
+       '10 DIM M(3):M(2)=7\r20 FOR K=1 TO 3\r30 PRINT M(2);\r40 IF K=1 THEN V1=1\r45 IF K=2 THEN V2=1\r50 NEXT\rRUN\r', ' 7  7  7 ')
+ok_run('cache: variable creee pendant les indices d un tableau deja vu',
+       '10 DIM M(3):M(1)=4:M(2)=9\r20 FOR K=1 TO 2\r30 PRINT M(K);\r40 NEXT\r50 PRINT M(1+NV*0)\rRUN\r', ' 4  9  4 ')
+ok_run('cache: meme constante, texte different (commande directe)', 'PRINT 1.5+1.5\rPRINT 2.5\r', ' 3 \n 2.5 ')
+ok_run('cache: CLEAR puis la meme variable', '10 A=3:CLEAR:PRINT A;:A=4:PRINT A\rRUN\r', ' 0  4 ')
+
 # --- memes scenarios avec les VRAIES routines uart_* -----------------------------
 print('--- mode reel: vraies routines uart_* (arduino_send, tampon circulaire) ---')
 PASTE = ('10 LET A=0\r20 LET B=1\r30 PRINT A\r100 PRINT B\r110 LET B=A+B\r120 LET A=B-A\r'

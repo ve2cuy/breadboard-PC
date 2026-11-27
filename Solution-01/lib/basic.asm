@@ -153,7 +153,17 @@ B_HIST  equ     0B40h                   ; derniere commande saisie au prompt (19
 B_TXT   equ     0C00h                   ; debut du programme
 B_STRTOP equ    0DFF0h                  ; haut de l'espace des chaines (descend)
 B_STK   equ     0F3F0h                  ; sommet de la pile
-B_STKLIM equ    0E000h                  ; limite basse de la pile
+B_STKLIM equ    0E500h                  ; limite basse de la pile (ROM 1.5: E000h-E4FFh = caches)
+; --- caches de l'execution (ROM 1.5, voir cache_clear): cles = adresses dans le TEXTE du programme
+; --- [B_TXT, b_vartab), jamais le tampon des commandes directes. Videes a chaque modification du
+; --- programme (relink), des variables (bas_clear: NEW, CLEAR, RUN, edition, LOAD) ou des types par
+; --- defaut (DEFINT...), et par POKE/DSKREAD dans le texte du programme.
+BC_NUM  equ     0E000h                  ; constantes: 64 x [cle:2][longueur:1][type:1][valeur:4]
+BC_VAR  equ     0E200h                  ; variables: 64 x [cle:2][adresse:2][longueur:1][type:1][generation:2]
+                                        ; type + 80h = tableau: adresse = son entete, longueur jusqu'apres '(',
+                                        ; valable si generation = b_agen (les tableaux bougent: voir b_agen)
+BC_LIN  equ     0E400h                  ; lignes (find_line): 64 x [numero:2][adresse:2]
+BC_END  equ     0E500h
 
 ; --- variables de l'interpreteur (a partir de 0100h) ---
 %assign BVP 0100h
@@ -244,6 +254,10 @@ BVAR    b_t8, 2
 BVAR    b_bb1, 1
 BVAR    b_bb2, 1
 BVAR    b_bb3, 1
+BVAR    b_vks, 2                        ; var_ref: debut du nom (cle du cache des variables)
+BVAR    b_vck, 2                        ; var_ref: case du cache a remplir (0 = hors du programme)
+BVAR    b_vae, 2                        ; arr_elem_at: entete du dernier tableau
+BVAR    b_agen, 2                       ; +1 chaque fois que les tableaux bougent (variable creee, DIM, ERASE)
 BVAR    b_run, 1                        ; 1 si un programme s'execute
 BVAR    b_zone, 1
 BVAR    b_kh, 1                         ; file d'attente des touches (INKEY$/INPUT$)
@@ -685,6 +699,31 @@ hist_edit:
 .cancel:
         mov     byte [B_IBUF], 0
         mov     byte [b_brk], 1
+        ret
+
+; SKIPSP: comme "call skip_sp" (AL = premier caractere non espace, SI dessus), sans appel quand il n'y a
+; pas d'espace (le cas courant: le texte tokenise en a peu). ROM 1.5, dans les chemins les plus suivis.
+%macro SKIPSP 0
+        mov     al, [si]
+        cmp     al, ' '
+        jne     %%d
+        call    skip_sp
+%%d:
+%endmacro
+
+; cache_clear: vide les caches de l'execution (constantes, variables, lignes). ES = DS. Preserve tout.
+cache_clear:
+        push    ax
+        push    cx
+        push    di
+        xor     ax, ax
+        mov     di, BC_NUM
+        mov     cx, (BC_END - BC_NUM) / 2
+        cld
+        rep     stosw
+        pop     di
+        pop     cx
+        pop     ax
         ret
 
 ; skip_sp: SI avance sur les espaces; AL = premier caractere non espace (SI le designe).

@@ -16,6 +16,7 @@ bas_new:
         mov     word [b_oldptr], 0
         ; (continue: efface les variables)
 bas_clear:
+        call    cache_clear             ; variables effacees: plus aucune adresse valable
         mov     ax, [b_vartab]
         mov     [b_arytab], ax
         mov     [b_strend], ax
@@ -35,9 +36,25 @@ bas_clear:
 ; ------------------------------------------------------------
 ; Programme: recherche, suppression, insertion
 ; ------------------------------------------------------------
-; find_line: AX = numero -> BX = premiere ligne de numero >= AX (ou la fin);
-; ZF = 1 si la ligne existe exactement.
+; find_line: AX = numero -> BX = premiere ligne de numero >= AX (ou la fin), DX = son lien;
+; ZF = 1 si la ligne existe exactement. ROM 1.5: les lignes trouvees sont gardees dans BC_LIN
+; (vide par relink a chaque modification du programme): GOTO/GOSUB sans parcourir le programme.
 find_line:
+        mov     bx, ax
+        and     bx, 63
+        shl     bx, 1
+        shl     bx, 1
+        add     bx, BC_LIN
+        cmp     [bx], ax
+        jne     .scan
+        cmp     word [bx+2], 0
+        je      .scan
+        mov     bx, [bx+2]
+        mov     dx, [bx]
+        cmp     ax, ax                  ; ZF = 1
+        ret
+.scan:
+        push    bx                      ; case du cache
         mov     bx, B_TXT
 .l:
         mov     dx, [bx]
@@ -48,14 +65,28 @@ find_line:
         mov     bx, dx
         jmp     .l
 .found:
-        ret                             ; ZF de CMP
+        jne     .ne                     ; ZF de CMP
+        pop     dx
+        xchg    bx, dx
+        mov     [bx], ax
+        mov     [bx+2], dx
+        mov     bx, dx
+        mov     dx, [bx]
+        cmp     ax, ax                  ; ZF = 1
+        ret
+.ne:
+        pop     dx                      ; (POP ne change pas ZF = 0)
+        mov     dx, [bx]
+        ret
 .end:
+        pop     dx
         xor     dx, dx
         inc     dx                      ; ZF = 0
         ret
 
 ; relink: recalcule tous les liens de lignes.
 relink:
+        call    cache_clear             ; le programme a change: adresses perimees
         mov     bx, B_TXT
         mov     dx, [b_vartab]
         sub     dx, 2
@@ -201,7 +232,7 @@ bas_stmt:
         mov     word [fac_t], TY_INT
         call    bas_chkbrk
 .again:
-        call    skip_sp
+        SKIPSP
         or      al, al
         jz      bas_eol
         cmp     al, ':'
@@ -230,7 +261,7 @@ bas_stmt:
 
 ; bas_newstt: fin d'instruction: ':' = suite, 0 = ligne suivante, ELSE = fin de ligne.
 bas_newstt:
-        call    skip_sp
+        SKIPSP
         cmp     al, ':'
         jne     .n1
         inc     si
@@ -626,6 +657,7 @@ defty:
         inc     bx
         cmp     bl, dh
         jbe     .f
+        call    cache_clear             ; type par defaut change: les variables sans suffixe aussi
         call    skip_sp
         cmp     al, ','
         jne     bas_newstt
@@ -706,10 +738,13 @@ skip_target:
         ERROR   ERR_SN
 
 st_let:
-        call    skip_sp
+        SKIPSP
         push    si                      ; debut de la cible
+        call    var_skip                ; variable simple deja vue: sans rebalayer son nom
+        jnc     .sk
         call    skip_target
-        call    skip_sp
+.sk:
+        SKIPSP
         cmp     al, '='
         je      .eq
         ERROR   ERR_SN
@@ -957,6 +992,7 @@ st_erase:
         rep     movsb
         pop     ax
         sub     [b_strend], ax
+        inc     word [b_agen]           ; les tableaux suivants ont bouge (cache des variables)
         mov     si, dx
         call    skip_sp
         cmp     al, ','
@@ -2526,6 +2562,60 @@ poke_guard:
 .bad:
         ERROR   ERR_FC
 
+; poke_cache: AX:BX = adresse ecrite par POKE. Dans le texte du programme (DS:B_TXT a DS:b_vartab,
+; adresse physique): cache_clear. Preserve AX, BX, DX.
+poke_cache:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        mov     cl, 4
+        mov     dx, ax
+        shl     ax, cl
+        mov     cl, 12
+        shr     dx, cl                  ; DX:AX = segment x 16
+        add     ax, bx
+        adc     dx, 0                   ; DX:AX = adresse physique
+        mov     bx, ax
+        mov     cx, dx                  ; CX:BX = adresse ecrite
+        mov     ax, ds
+        mov     dx, ax
+        push    cx
+        mov     cl, 4
+        shl     ax, cl
+        mov     cl, 12
+        shr     dx, cl                  ; DX:AX = DS x 16
+        pop     cx
+        push    ax
+        push    dx
+        add     ax, B_TXT
+        adc     dx, 0
+        cmp     cx, dx
+        jb      .nonp
+        ja      .h
+        cmp     bx, ax
+        jb      .nonp
+.h:
+        pop     dx
+        pop     ax
+        add     ax, [b_vartab]
+        adc     dx, 0
+        cmp     cx, dx
+        ja      .non
+        jb      .oui
+        cmp     bx, ax
+        jae     .non
+.oui:
+        call    cache_clear
+        jmp     .non
+.nonp:
+        add     sp, 4
+.non:
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
 st_poke:
         call    eval_addr16
         push    ax
@@ -2539,6 +2629,7 @@ st_poke:
         pop     bx
         mov     ax, [b_defseg]
         call    poke_guard
+        call    poke_cache              ; octet du texte du programme: caches perimes
         mov     es, ax
         mov     [es:bx], dl
         push    ds
