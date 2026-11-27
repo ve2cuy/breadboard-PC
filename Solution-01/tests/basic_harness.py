@@ -120,7 +120,7 @@ class BridgeModel:
             return 8
         if op in (0x21, 0x24):
             return 5
-        if op in (0x25, 0x26, 0x28, 0x2B):
+        if op in (0x25, 0x26, 0x28, 0x2B, 0x2D):
             return 1
         if op == 0x2C:
             return 2
@@ -181,6 +181,9 @@ class BridgeModel:
             self.clock_hz = hz
             real = 96000000 // (96000000 // hz)               # diviseur entier du minuteur (96 MHz)
             return [real & 0xFF, (real >> 8) & 0xFF, (real >> 16) & 0xFF, real >> 24]
+        if op == 0x2D:                                    # console au LCD (pont 2.1): sans reponse
+            self.lcd_con = getattr(self, 'lcd_con', 0) + 1
+            return []
         if op == 0x2B:
             total = sum(self.secbuf) & 0xFFFF
             return [total & 0xFF, total >> 8]

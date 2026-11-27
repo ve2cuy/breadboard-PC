@@ -1,0 +1,10 @@
+4) Configuration => 3
+4) DOS 2.1 => 4
+Enter new date => \r
+Enter new time => \r
+B> => dir a:\r
+B> => masm hello;\r
+B> => link hello;\r
+B> => hello\r
+Hello, world! => dir\r
+B> =>

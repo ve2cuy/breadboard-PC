@@ -39,6 +39,20 @@ BIOS_TRACE      equ     0                       ; 1 (`make trace`): trace ACTIVE
                                                 ; au 5e INT 1Ah AH=00. La trace elle-meme est TOUJOURS dans la ROM: Ctrl-T
                                                 ; (UART) ou Ctrl-Echap (PS/2) la bascule (BIOS_TRC_ON, lib/isr.asm)
 %endif
+%ifdef DOS_ROM
+; DOS EN ROM (ROM 1.4, solution-01.asm definit DOS_ROM): disquette PC-DOS 2.1 de 180 Ko (FCh: 40 cylindres,
+; 1 tete, 9 secteurs) dont les DOS_ROM_NSEC premiers secteurs sont dans la ROM en DOS_ROM_SEG:0000
+; (tests/gen_dos21_rom.py); les suivants (amas libres) se lisent comme des zeros. A: = cette disquette,
+; protegee en ecriture (AH = 03h). Avec 512 Ko de RAM, B: = disque en RAM de 180 Ko (meme format), formate a
+; neuf a chaque demarrage de ce DOS, sous la memoire du DOS: RAMB_SEG:0000-VAR_SEG:F7FF (2D000h octets);
+; INT 12h annonce alors RAMB_KB. Le contenu de B: est perdu au redemarrage (la RAM est effacee).
+DOS_ROM_SEG     equ     0D800h          ; = physique D8000h (decalage 18000h de la ROM)
+DOS_ROM_TOTAL   equ     360             ; secteurs de la disquette
+%ifdef RAM_512K
+RAMB_SEG        equ     VAR_SEG + 0F80h - 2D00h ; 5280h: 52800h-7F7FFh
+RAMB_KB         equ     (RAMB_SEG / 64)          ; 330 Ko pour le DOS
+%endif
+%endif
 BIOS_SHOW_PATCH equ     1               ; 1 = '+' sur l'UART a chaque instruction OUT neutralisee (diagnostic)
 BIOS_SHOW_RETRY equ     1               ; 1 = '!' sur l'UART a chaque lecture de secteur refaite (somme de controle fausse)
 BIOS_STACK_TOP  equ     0FF00h          ; pile privee: 1000:FE00-FEFF (256 octets)
@@ -345,12 +359,21 @@ int11h_handler:
         cmp     byte [BIOS_FLOP_OFF], 0
         je      .r
         mov     ax, 0221h               ; une image montee = 1 lecteur de disquette
+%ifdef DOS_ROM
+        cmp     byte [BIOS_RAMB_OFF], 0
+        je      .r
+        mov     ax, 0261h               ; DOS de la ROM + B: en RAM = 2 lecteurs de disquette
+%endif
 .r:
         pop     ds
         iret
 
-int12h_handler:
-        mov     ax, BIOS_MEM_KB
+int12h_handler:                         ; memoire de la zone de donnees du BIOS (0040:0013), comme sur le PC
+        push    ds
+        xor     ax, ax
+        mov     ds, ax
+        mov     ax, [0413h]
+        pop     ds
         iret
 
 ; INT 14h (serie) et INT 17h (imprimante): absents ("delai depasse")
@@ -492,11 +515,22 @@ int13h_handler:
         cmp     dl, 80h
         je      .d_hd
         ja      .d_bad
+%ifdef DOS_ROM
+        cmp     dl, 1                   ; 1 = B: (disque en RAM du DOS de la ROM)
+        jne     .d_a
+        cmp     byte [BIOS_RAMB_OFF], 0
+        je      .d_none
+        mov     byte [BIOS_DRV_OFF], 3
+        jmp     .d_geo                  ; meme format que A: (180 Ko)
+.d_a:
+%endif
         or      dl, dl                  ; 0 = A:
         jnz     .d_none
         cmp     byte [BIOS_FLOP_OFF], 0
         je      .d_none
-        mov     byte [BIOS_DRV_OFF], 1
+        mov     al, [BIOS_FLOP_OFF]     ; 1 = image du pont, 2 = disquette de la ROM
+        mov     [BIOS_DRV_OFF], al
+.d_geo:
         mov     al, [BIOS_FHEADS_OFF]
         xor     ah, ah
         mov     [BIOS_GH_OFF], ax
@@ -532,8 +566,8 @@ int13h_handler:
         call    .drive
         or      ah, ah
         jnz     .status
-        cmp     byte [BIOS_DRV_OFF], 1
-        je      .params_fl
+        cmp     byte [BIOS_DRV_OFF], 0
+        jne     .params_fl
         call    bios_nsec               ; DX:AX = nombre de secteurs (0 = pas de disque)
         jc      .tmo
         mov     bx, ax
@@ -562,6 +596,12 @@ int13h_handler:
         dec     al
         mov     [bp + FR_DX + 1], al    ; DH = derniere tete
         mov     byte [bp + FR_DX], 1    ; DL = un lecteur
+%ifdef DOS_ROM
+        cmp     byte [BIOS_RAMB_OFF], 0
+        je      .pf1
+        mov     byte [bp + FR_DX], 2    ; A: et B:
+.pf1:
+%endif
         mov     al, [BIOS_FTYPE_OFF]
         mov     [bp + FR_BX], al        ; BL = type de lecteur
         mov     al, [BIOS_FSPT_OFF]
@@ -579,8 +619,8 @@ int13h_handler:
         or      ah, ah
         jnz     .status
         mov     ah, BIOSD_BADCMD
-        cmp     byte [BIOS_DRV_OFF], 1
-        jne     .status
+        cmp     byte [BIOS_DRV_OFF], 0
+        je      .status
         mov     ah, 0Ch
         mov     al, [bp + FR_CX]
         and     al, 3Fh                 ; CL bits 0-5 = secteurs par piste
@@ -610,8 +650,8 @@ int13h_handler:
         call    .drive
         or      ah, ah
         jnz     .status
-        cmp     byte [BIOS_DRV_OFF], 1
-        jne     .dtype_hd
+        cmp     byte [BIOS_DRV_OFF], 0
+        je      .dtype_hd
         mov     byte [bp + FR_ALH], 1   ; AH = 1: disquette sans detection de changement
         mov     byte [BIOS_STAT_OFF], 0
         jmp     bios_return
@@ -780,6 +820,9 @@ int13h_handler:
         call    bios_img_geom           ; geometrie d'apres la taille; CF = 1: non reconnue
         jc      .badsize
         mov     byte [BIOS_FLOP_OFF], 1
+%ifdef DOS_ROM
+        call    bios_ramb_off           ; plus de B: en RAM (memoire du DOS rendue)
+%endif
         mov     [bp + FR_CX], dx        ; CX:DX = taille en octets (poids fort dans CX)
         mov     [bp + FR_DX], cx
         mov     ax, 0221h               ; equipement: 1 disquette
@@ -798,6 +841,9 @@ int13h_handler:
 .umount:
         call    fs_img_umount
         mov     byte [BIOS_FLOP_OFF], 0
+%ifdef DOS_ROM
+        call    bios_ramb_off
+%endif
         mov     ax, 0220h
         call    bios_equip
         xor     ah, ah
@@ -909,6 +955,13 @@ bios_xfer:
         call    fs_sec_read             ; AL = etat du pont, CF = delai
         jmp     .r
 .ir:
+%ifdef DOS_ROM
+        cmp     byte [BIOS_DRV_OFF], 2
+        jb      .ir1
+        call    bios_mem_sec            ; disquette de la ROM ou B: en RAM
+        jmp     .r
+.ir1:
+%endif
         call    fs_img_read
         jmp     .r
 .w:
@@ -917,6 +970,17 @@ bios_xfer:
         call    fs_sec_write
         jmp     .r
 .iw:
+%ifdef DOS_ROM
+        cmp     byte [BIOS_DRV_OFF], 2
+        jb      .iw1
+        ja      .iw_ram
+        mov     ah, 03h                 ; A: de la ROM: protegee en ecriture (AX = LBA: pas avant ce test)
+        jmp     .done
+.iw_ram:
+        call    bios_mem_sec            ; B: en RAM
+        jmp     .r
+.iw1:
+%endif
         call    fs_img_write
 .r:
         jc      .to
@@ -924,6 +988,8 @@ bios_xfer:
         jnz     .err
         cmp     byte [BIOS_OP_OFF], 0
         jne     .vf
+        cmp     byte [BIOS_DRV_OFF], 2  ; ROM / RAM: rien a neutraliser (fichiers deja connus)
+        jae     .vf
         call    bios_patch_sector       ; lecture: neutralise les OUT parasites du code lu
 .vf:
         mov     byte [BIOS_TRY], 0      ; secteur suivant: on repart a zero tentative
@@ -967,6 +1033,175 @@ bios_xfer:
 .done:
         mov     cx, [BIOS_DONE_OFF]
         ret
+
+%ifdef DOS_ROM
+; bios_mem_sec: un secteur de la disquette de la ROM (BIOS_DRV_OFF = 2) ou de B: en RAM (3). DX:AX = LBA,
+; BIOS_OP_OFF = 0: lecture vers ES:DI (DI avance de 512), 1: ecriture depuis ES:SI (SI avance de 512, B:
+; seulement). Retour: AL = 0, ou FSE_IO (secteur hors du disque); CF = 0. Preserve BX, CX, DX.
+bios_mem_sec:
+        push    bx
+        push    cx
+        or      dx, dx
+        jnz     .hors
+        cmp     ax, DOS_ROM_TOTAL
+        jae     .hors
+        mov     bx, ax
+        mov     cl, 5
+        shl     bx, cl                  ; BX = LBA x 32 paragraphes
+        cmp     byte [BIOS_DRV_OFF], 3
+        je      .ramb
+        cmp     ax, DOS_ROM_NSEC
+        jae     .zero                   ; amas libre: absent de la ROM
+        add     bx, DOS_ROM_SEG
+        jmp     .lire
+.ramb:
+%ifdef RAM_512K
+        add     bx, RAMB_SEG
+        cmp     byte [BIOS_OP_OFF], 0
+        jne     .ecrire
+%else
+        jmp     .hors
+%endif
+.lire:
+        push    ds
+        push    si
+        mov     ds, bx
+        xor     si, si
+        mov     cx, 256
+        rep     movsw
+        pop     si
+        pop     ds
+        jmp     .ok
+.zero:
+        push    ax
+        xor     ax, ax
+        mov     cx, 256
+        rep     stosw
+        pop     ax
+        jmp     .ok
+.ecrire:
+        push    ds
+        push    es
+        push    di
+        push    es
+        pop     ds                      ; source: ES:SI de l'appelant
+        mov     es, bx
+        xor     di, di
+        mov     cx, 256
+        rep     movsw
+        pop     di
+        pop     es
+        pop     ds
+.ok:
+        xor     al, al
+        jmp     .r
+.hors:
+        mov     al, FSE_IO
+.r:
+        clc
+        pop     cx
+        pop     bx
+        ret
+
+; bios_ramb_off: plus de B: en RAM; la memoire du DOS (INT 12h) et l'equipement redeviennent ceux d'une
+; seule disquette. DS = VAR_SEG. Preserve tout.
+bios_ramb_off:
+        push    ax
+        push    es
+        mov     byte [BIOS_RAMB_OFF], 0
+        xor     ax, ax
+        mov     es, ax
+        mov     word [es:0413h], BIOS_MEM_KB
+        pop     es
+        pop     ax
+        ret
+
+; bios_rom_mount: A: = disquette PC-DOS 2.1 de la ROM (l'image du pont est demontee) et, avec 512 Ko de RAM,
+; B: = disque en RAM de 180 Ko formate a neuf (secteur d'amorce de la ROM, FAT vides, racine vide); INT 12h
+; et INT 11h mis a jour. DS = VAR_SEG, SS = VAR_SEG. Preserve tout.
+bios_rom_mount:
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    es
+        cmp     byte [BIOS_FLOP_OFF], 1
+        jne     .sans_img
+        call    fs_img_umount           ; (sans reponse du pont: tant pis, l'image ne sert plus)
+.sans_img:
+        mov     byte [BIOS_FLOP_OFF], 2
+        mov     word [BIOS_FCYL_OFF], 40
+        mov     byte [BIOS_FHEADS_OFF], 1
+        mov     byte [BIOS_FSPT_OFF], 9
+        mov     byte [BIOS_FTYPE_OFF], 1
+        mov     ax, 0221h               ; 1 disquette
+        call    bios_equip
+        call    bios_ramb_off
+%ifdef RAM_512K
+        cld
+        mov     bx, RAMB_SEG            ; B: tout a zero, secteur par secteur
+        mov     dx, DOS_ROM_TOTAL
+.z:
+        mov     es, bx
+        xor     di, di
+        xor     ax, ax
+        mov     cx, 256
+        rep     stosw
+        add     bx, 32
+        dec     dx
+        jnz     .z
+        mov     ax, RAMB_SEG
+        mov     es, ax
+        xor     di, di
+        push    ds
+        mov     ax, DOS_ROM_SEG         ; secteur 0 (amorce + BPB) de la disquette de la ROM
+        mov     ds, ax
+        xor     si, si
+        mov     cx, 256
+        rep     movsw
+        pop     ds
+        mov     ax, RAMB_SEG + 32       ; FAT 1 (secteurs 1-2) et FAT 2 (3-4): FCh FFh FFh, puis libre
+        call    .fat
+        mov     ax, RAMB_SEG + 96
+        call    .fat
+        mov     byte [BIOS_RAMB_OFF], 1
+        xor     ax, ax
+        mov     es, ax
+        mov     word [es:0413h], RAMB_KB
+        mov     ax, 0261h               ; 2 disquettes
+        call    bios_equip
+%endif
+        pop     es
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+        ret
+%ifdef RAM_512K
+.fat:
+        mov     es, ax
+        mov     word [es:0], 0FFFCh
+        mov     byte [es:2], 0FFh
+        ret
+%endif
+
+; dos_rom_boot: option "4) DOS 2.1 (ROM)" du sous-menu USB Disk (et "0)" de dos_menu): monte la disquette de
+; la ROM en A: (+ B: en RAM) et amorce. Ne revient qu'en cas d'echec. Appelee du menu (SS = VAR_SEG).
+dos_rom_boot:
+        push    ax
+        push    ds
+        mov     ax, VAR_SEG
+        mov     ds, ax
+        call    bios_rom_mount
+        int     19h
+        pop     ds
+        pop     ax
+        ret
+%endif
 
 ; bios_patch_sector: ES:DI = fin du secteur de 512 octets qui vient d'etre lu. Le decodage d'adresses du 8255 est
 ; partiel (A7 = 1 suffit: 80h-0FFh, 180h-1FFh... tout le bloc d'E/S le selectionne), alors que sur un vrai PC ces ports
@@ -1667,6 +1902,8 @@ int19h_handler:
         mov     bl, 80h
 .jump:
         ; --- saut a l'amorce: DL = BL (80h disque dur, 0 disquette), DS = ES = 0, pile 0000:7C00, interruptions ---
+        mov     al, FS_LCD_CON          ; pont 2.1: le LCD montre la console (fenetre 20x4, Maj + fleches)
+        call    bridge_tx
         cli
         xor     ax, ax
         mov     ds, ax
@@ -1680,13 +1917,29 @@ int19h_handler:
         ; --- image montee: on amorce la DISQUETTE A: (secteur 0 de l'image, sans signature 55AA exigee: les
         ; disquettes DOS 1.x-2.x n'en portent pas toujours) ---
         mov     si, bios_msg_bootA
+%ifdef DOS_ROM
+        cmp     byte [BIOS_FLOP_OFF], 2
+        jne     .msg_a
+        mov     si, bios_msg_bootR
+.msg_a:
+%endif
         call    bios_puts
         mov     byte [BIOS_DOTS], 1
         xor     ax, ax
         mov     es, ax
         mov     di, 7C00h
         xor     dx, dx                  ; LBA 0
+%ifdef DOS_ROM
+        cmp     byte [BIOS_FLOP_OFF], 2
+        jne     .f_img
+        mov     byte [BIOS_DRV_OFF], 2
+        mov     byte [BIOS_OP_OFF], 0
+        call    bios_mem_sec            ; secteur 0 de la disquette de la ROM
+        jmp     .f_lu
+.f_img:
+%endif
         call    fs_img_read
+.f_lu:
         jc      .tmo
         or      al, al
         jnz     .nodisk
@@ -1735,16 +1988,26 @@ bios_puts:
 %ifdef LANG_EN
 bios_msg_boot:  db      13, 10, 'Boot: flash disk...  (Ctrl-\ = back to the menu)', 13, 10, 0
 bios_msg_bootA: db      13, 10, 'Boot: floppy image (A:)...  (Ctrl-\ = back to the menu)', 13, 10, 0
+bios_msg_bootR: db      13, 10, 'Boot: PC-DOS 2.1 from the ROM (A:, B: = RAM disk)...  (Ctrl-\ = back to the menu)', 13, 10, 0
 bios_msg_nosig: db      'Boot: no boot signature (55AA)', 13, 10, 0
 bios_msg_nodisk: db     'Boot: disk not ready / read error', 13, 10, 0
 bios_msg_tmo:   db      'Boot: bridge does not answer', 13, 10, 0
 %else
 bios_msg_boot:  db      13, 10, 'Amorce: disque flash...  (Ctrl-\ = retour au menu)', 13, 10, 0
 bios_msg_bootA: db      13, 10, 'Amorce: image disquette (A:)...  (Ctrl-\ = retour au menu)', 13, 10, 0
+bios_msg_bootR: db      13, 10, 'Amorce: PC-DOS 2.1 de la ROM (A:, B: = disque en RAM)...  (Ctrl-\ = retour au menu)', 13, 10, 0
 bios_msg_nosig: db      'Amorce: signature de demarrage absente (55AA)', 13, 10, 0
 bios_msg_nodisk: db     'Amorce: disque non pret / erreur de lecture', 13, 10, 0
 bios_msg_tmo:   db      'Amorce: le pont ne repond pas', 13, 10, 0
 %endif
+
+; bios_crlf_cs: CR LF -> UART. Preserve tout.
+bios_crlf_cs:
+        push    si
+        mov     si, dm_crlf
+        call    bios_puts
+        pop     si
+        ret
 
 ; bios_puts_ds: chaine en RAM (DS:SI, zero final) -> UART
 bios_puts_ds:
@@ -1785,13 +2048,19 @@ dos_menu:
         mov     ds, ax
         mov     es, ax
         cld
+        mov     al, FS_LCD_CON          ; pont 2.1: la liste au LCD aussi (console, Maj + fleches)
+        call    bridge_tx
         mov     si, dm_title
         call    bios_puts
+        xor     bp, bp                  ; BP = nombre d'images trouvees
+%ifdef DOS_ROM
+        mov     si, dm_rom              ; "  0) PC-DOS 2.1 (ROM)": meme sans disque
+        call    bios_puts
+%endif
         call    fs_dir_first
         jc      .tmo
         or      al, al
         jnz     .nodisk
-        xor     bp, bp                  ; BP = nombre d'images trouvees
 .next:
         cmp     bp, 9
         jae     .show
@@ -1832,6 +2101,7 @@ dos_menu:
 .show:
         or      bp, bp
         jz      .none
+.liste:
         xor     bx, bx
 .l:
         mov     si, dm_sp
@@ -1853,6 +2123,7 @@ dos_menu:
         inc     bx
         cmp     bx, bp
         jb      .l
+.invite:
         mov     si, dm_prompt
         call    bios_puts
 .key:
@@ -1863,6 +2134,14 @@ dos_menu:
         pop     ds
         cmp     al, 27
         je      .cancel
+%ifdef DOS_ROM
+        cmp     al, '0'
+        jne     .pas_rom
+        call    bios_crlf_cs
+        call    dos_rom_boot            ; ne revient qu'en cas d'echec
+        jmp     .done
+.pas_rom:
+%endif
         xor     ah, ah
         sub     ax, '1'
         jb      .key
@@ -1892,15 +2171,20 @@ dos_menu:
         jmp     .msg
 .none:
         mov     si, dm_none
-        jmp     .msg
+        jmp     .msg_rom
 .nodisk:
         mov     si, dm_e_disk
         cmp     byte [BIOS_USB_STATE], 0
-        je      .msg
+        je      .msg_rom
         mov     si, dm_e_usb            ; USB ON: le PC a la flash du pont
-        jmp     .msg
+        jmp     .msg_rom
 .tmo:
         mov     si, dm_e_tmo
+.msg_rom:
+%ifdef DOS_ROM
+        call    bios_puts               ; pas d'image: le DOS de la ROM reste offert (touche 0)
+        jmp     .invite
+%endif
 .msg:
         call    bios_puts
 .done:
@@ -1923,6 +2207,7 @@ dm_crlf:        db      13, 10, 0
 %ifdef LANG_EN
 dm_title:       db      13, 10, 27, '[36m', '--- DOS: boot from a disk image (.IMG on the flash disk) ---', 27, '[0m', 13, 10, 0
 dm_prompt:      db      'Image number (Esc = cancel): ', 0
+dm_rom:         db      '  0) PC-DOS 2.1 + MASM, LINK, EDLIN (ROM; B: = RAM disk)', 13, 10, 0
 dm_cancel:      db      13, 10, 'Cancelled.', 13, 10, 0
 dm_none:        db      'No .IMG file found on the disk.', 13, 10, 0
 dm_e_disk:      db      'Disk not ready.', 13, 10, 0
@@ -1934,6 +2219,7 @@ dm_e_mount:     db      13, 10, 'Cannot mount the image.', 13, 10, 0
 %else
 dm_title:       db      13, 10, 27, '[36m', '--- DOS: demarrer depuis une image disquette (.IMG sur la flash) ---', 27, '[0m', 13, 10, 0
 dm_prompt:      db      'Numero d', 27h, 'image (Echap = annuler): ', 0
+dm_rom:         db      '  0) PC-DOS 2.1 + MASM, LINK, EDLIN (ROM; B: = disque en RAM)', 13, 10, 0
 dm_cancel:      db      13, 10, 'Annule.', 13, 10, 0
 dm_none:        db      'Aucun fichier .IMG trouve sur le disque.', 13, 10, 0
 dm_e_disk:      db      'Disque non pret.', 13, 10, 0
@@ -2279,6 +2565,9 @@ bios_init:
         mov     [es:BIOS_NSEC_OFF], ax
         mov     [es:BIOS_NSEC_OFF + 2], ax
         mov     [es:BIOS_FLOP_OFF], al          ; aucune image montee
+%ifdef DOS_ROM
+        mov     [es:BIOS_RAMB_OFF], al          ; pas de B: en RAM
+%endif
         mov     [es:BIOS_DRV_OFF], al
         pop     es
         pop     di

@@ -113,6 +113,22 @@ lui-même ces raccourcis, **sans passer par le 8088** (comme Ctrl-Alt-Suppr et `
 - Le 8088 NMOS d'Intel est spécifié à 2 MHz au minimum (registres dynamiques) : seul un processeur CMOS
   statique (80C88, NEC V20 µPD70108H) garde son état jusqu'à 1 Hz.
 
+## Console au LCD (pont 2.1)
+
+Le pont tient en permanence l'**écran 80 × 25 du terminal** : chaque octet que le 8088 envoie à l'UART est
+interprété (caractères, CR, LF, retour arrière, tabulation, séquences `ESC [` du BIOS : position,
+effacements ; UTF-8 de la page 437 → caractères du LCD). Après la commande `2Dh` (envoyée par la ROM 1.4 à
+l'amorçage d'un DOS), le LCD montre une fenêtre de 20 × 4 de cet écran :
+
+- elle suit le curseur à la verticale ; à l'arrêt de l'affichage (150 ms), elle se place par pas de
+  10 colonnes pour montrer le curseur ; curseur souligné du LCD ;
+- **Maj + flèches** au clavier PS/2 la déplacent (haut/bas 1 ligne, gauche/droite 10 colonnes) et sont
+  retirées du flux du 8088 (avec leurs préfixes `E0`/`F0` ; les Maj factices `E0 12` sont ignorées) ;
+- dessin par différence, quelques cases par tour de boucle ; tant que le 8088 affiche, presque rien
+  (2 cases toutes les 50 ms) pour ne pas ralentir l'UART : le LCD rattrape à l'arrêt ;
+- CGRAM : é, è, ê, à, `\` (5Ch = yen dans la ROM A00 du LCD), ç, ù, ô ;
+- fin : premier octet LCD du 8088 (son menu reprend le LCD) ou RESET du 8088.
+
 ## Horloge temps réelle (RTC) et commandes du canal 3
 
 > ✅ **Validé sur le matériel** : `TIME$` et `DATE$` (lecture et réglage) depuis le BASIC.
@@ -179,6 +195,7 @@ PlatformIO : `Adafruit SPIFlash` et `SdFat - Adafruit Fork`.
 | `2Ah`, LBA (4 octets) | ÉCRIRE le tampon (déposé par `23h`) dans le secteur LBA de l'image → état |
 | `2Bh` | SOMME de contrôle : somme (16 bits) des 512 octets du tampon → 2 octets (poids faible d'abord). Le 8088 la demande après chaque secteur lu (`21h`/`29h`), la compare à celle des octets reçus et relit le secteur (3 essais) si elles diffèrent |
 | `2Ch`, action | HORLOGE du 8088 : `0` lire (ne rien changer), `1` +0,1 MHz, `2` -0,1 MHz, `3` +1 MHz, `4` -1 MHz (bornes 1-10 MHz), `5` → 4,77 MHz (défaut), `6` → 8 MHz, `7` → 7,2 MHz (1.4), `8` → 2,35 MHz (1.7), `9` / `10` → valeur suivante / précédente de la suite 1-2-5 (1 Hz-10 MHz), `11` → 1 Hz (2.0) (la ROM traduit les touches du sous-menu Clock speed en ces codes : table `clock_key_action`, `Solution-01/solution-01.asm`) → 4 octets (fréquence **réellement générée** en Hz, poids faible d'abord — lue dans les registres ARR/PSC du minuteur après coup, **pas** la fréquence demandée : un écart de plusieurs % a été mesuré à l'oscilloscope loin de 4,77 MHz, l'arrondi entier du prescaler/de l'ARR devenant significatif à ces fréquences) |
+| `2Dh` | CONSOLE AU LCD (2.1) : le LCD montre la fenêtre 20 × 4 de l'écran du terminal (voir plus haut) ; sans réponse |
 | `25h` | USB ON : le PC prend le disque (lecteur de masse) → état ; état 9 = pile USB sans lecteur de masse |
 | `26h` | USB OFF : le pont reprend le disque (remonte le volume) → état |
 

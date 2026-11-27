@@ -1142,6 +1142,48 @@ pour le disque, le clavier, l'horloge et la mémoire, et sait **amorcer** un sec
   PC-DOS 2.1 et MS-DOS 3.30, eux, s'amorcent normalement (voir plus haut) : leur initialisation est plus simple et
   n'a pas cette exigence.
 
+### PC-DOS 2.1 en ROM, avec MASM et LINK (ROM 1.4)
+
+La ROM contient une disquette **PC-DOS 2.1 minimale** de 180 Ko, qui démarre **sans la flash du pont** :
+sous-menu **USB Disk → 4) DOS 2.1 (ROM)**, ou touche **0** de la liste des images (option 3).
+
+| Lecteur | Contenu |
+|---|---|
+| `A:` (ROM, protégée en écriture) | `IBMBIO.COM`, `IBMDOS.COM`, `COMMAND.COM`, `EDLIN.COM` (PC-DOS 2.1), `MASM.EXE` (Microsoft MACRO Assembler 1.00), `LINK.EXE` (Object Linker 1.08), `HELLO.ASM` (exemple), `AUTOEXEC.BAT` |
+| `B:` (disque en RAM de 180 Ko) | vide, formaté à chaque démarrage ; MASM et LINK y écrivent. **Contenu perdu au redémarrage** (la RAM est effacée) |
+
+`AUTOEXEC.BAT` demande la date et l'heure, fait `PATH A:\`, copie `HELLO.ASM` sur `B:` et passe sur `B:` :
+
+```
+B>masm hello;
+B>link hello;
+B>hello
+Hello, world! (8088, VE2CUY)
+```
+
+- Image : `tests/gen_dos21_rom.py` (règle `build/dos21_rom.bin` du Makefile) ; seuls les 314 secteurs
+  utilisés sont dans la ROM, en `D800:0000` (physique D8000h-FF3FFh) ; les amas libres se lisent comme des
+  zéros. La disquette complète est aussi écrite dans `PC-DOS/pcdos2_1_s01.img`.
+- `B:` occupe 52800h-7F7FFh : le DOS dispose alors de 330 Ko (`INT 12h` lit `0040:0013`) ; `INT 11h`
+  annonce deux lecteurs de disquette. Monter une image (`AH = F0h`) supprime `B:`. Avec 128 Ko de RAM, pas de `B:`.
+- PC-DOS 2.1 ne connaît pas le FAT16 : le disque `C:` de la flash n'est pas visible sous ce DOS.
+- Pas de `DEBUG` : aucune version compatible avec DOS 2.1 dans le dépôt.
+- Le LCD montre la console du DOS (pont 2.1, voir ci-dessous).
+
+### Le DOS sur le LCD (pont 2.1)
+
+Avec le pont 2.1, le LCD montre une **fenêtre de 20 × 4** sur l'écran 80 × 25 du terminal pendant le DOS
+(et pendant la liste des images). C'est le **pont** qui tient l'écran : il lit tout ce que le 8088 envoie
+au terminal. Le 8088 n'y passe donc aucun temps, même à 1 Hz.
+
+- La fenêtre suit le curseur à la verticale ; quand l'affichage s'arrête, elle se place par pas de
+  10 colonnes pour montrer le curseur (souligné).
+- **Maj + flèches** (clavier PS/2) : haut/bas = 1 ligne, gauche/droite = 10 colonnes. Ces touches ne vont
+  pas au DOS ; la fenêtre reste où on l'a mise jusqu'au prochain affichage.
+- Lettres é, è, ê, à, ç, ù, ô et `\` dessinées en CGRAM ; autres lettres sans accent ; cadres en `+ - | =`.
+- La ROM l'active par la commande `2Dh` du pont, à l'amorçage d'un DOS. Le menu (premier envoi au LCD) ou un
+  RESET y met fin. Un pont plus ancien ignore cette commande.
+
 ## RAM de 512 Ko
 
 Le montage peut recevoir une **AS6C4008** (512 Ko) à la place de la HM628128 (128 Ko). Les deux puces ont le
@@ -1295,6 +1337,7 @@ menu — pas à chaque bascule de page LCD.
 1) USB: OFF
 2) List files
 3) Boot disk image
+4) DOS 2.1 (ROM)
 ```
 
 `1) USB ON/OFF` **bascule** le disque (la flash du pont) entre le 8088 et
@@ -1306,7 +1349,9 @@ BASIC. La ligne elle-même montre l'état courant (`1) USB: OFF` ou
 jour tout de suite après une bascule. `2) List files` liste les fichiers de
 la racine (nom, taille) puis l'espace libre, sur l'UART seulement (comme
 `FILES` au BASIC). `3) Boot disk image` est l'ancienne option 5 du menu
-principal (voir plus bas).
+principal (voir plus bas) ; sa liste commence par `0) PC-DOS 2.1 ... (ROM)`, offert même sans disque.
+`4) DOS 2.1 (ROM)` démarre directement le DOS de la ROM (voir
+[PC-DOS 2.1 en ROM](#pc-dos-21-en-rom-avec-masm-et-link-rom-14)).
 
 **Sous-menu "Configuration"** (option 4) :
 

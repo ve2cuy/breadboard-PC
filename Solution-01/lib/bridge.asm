@@ -52,6 +52,10 @@
 ;                           (defaut au demarrage du pont), 6 = aller a 8 MHz - meme numerotation que les
 ;                           options du sous-menu Clock speed (solution-01.asm)
 ;                           -> 4 octets: la frequence resultante en Hz (poids faible d'abord)
+;   2Dh                     CONSOLE AU LCD (pont 2.1, sans reponse): le pont tient l'ecran 80x25 du terminal
+;                           (tout ce que le 8088 envoie a l'UART) et en montre une fenetre de 20x4 au LCD, qui
+;                           suit le curseur; Maj + fleches du clavier PS/2 la deplacent (et ne vont pas au 8088).
+;                           Fin au premier octet LCD du 8088 (menu) ou au RESET. Un pont plus ancien l'ignore.
 ; La RTC du STM32 ne gere que 2000-2099. Un pont sans ces commandes (UNO) ne repond
 ; pas: les routines rendent CF = 1 apres le delai (environ 0,5 s a 4,77 MHz par
 ; unite de delai).
@@ -94,6 +98,7 @@ FS_IMG_READ     equ     29h
 FS_IMG_WRITE    equ     2Ah
 FS_SEC_SUM      equ     2Bh
 FS_CLOCK        equ     2Ch
+FS_LCD_CON      equ     2Dh             ; pont 2.1: le LCD montre la console (sans reponse; voir l'en-tete)
 
 FSE_OK          equ     0
 FSE_NOTREADY    equ     1               ; pas de flash ou pas de systeme de fichiers

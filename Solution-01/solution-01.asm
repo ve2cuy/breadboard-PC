@@ -140,6 +140,7 @@ SECONDE         equ     1000            ; 1 seconde = 1000 ms
 %%done:
 %endmacro
 
+%define DOS_ROM                 ; ROM 1.4: PC-DOS 2.1 (+ MASM, LINK, EDLIN) en ROM = A:, voir lib/bios.asm
 %include "include/hardware.inc"
 %include "include/delay.inc"
 %include "include/lcd_macros.inc"
@@ -553,6 +554,8 @@ start:
         print   lcd_txt_menu_usb_l2, LCDI2C
         gotoxy  2, 0, LCDI2C
         print   lcd_txt_menu_usb_l3, LCDI2C
+        gotoxy  3, 0, LCDI2C
+        print   lcd_txt_menu_usb_l4, LCDI2C
 
         call    ps2_get_char
 
@@ -572,6 +575,11 @@ start:
                                          ; (ne revient que si on annule ou en cas d'echec)
         jmp     .usb_menu
 .usb_esc:
+        cmp     al, '4'
+        jne     .usb_esc2
+        call    dos_rom_boot            ; lib/bios.asm: PC-DOS 2.1 de la ROM (A:), B: en RAM
+        jmp     .usb_menu               ; (ne revient qu'en cas d'echec)
+.usb_esc2:
         cmp     al, 27
         jne     .usb_menu
         jmp     .main_menu
@@ -4798,8 +4806,8 @@ cpu_test_show_result:
 
 ; --- constantes pour clock_datetime_action/information_action, plus bas ---
 BIOS_VERSION_MAJOR equ 1                ; version du BIOS/ROM affichee par
-BIOS_VERSION_MINOR equ 3                ; "4) Information" - correspond a
-                                         ; "Version 1.3" du splash (lcd_txt_splash_l2,
+BIOS_VERSION_MINOR equ 4                ; "4) Information" - correspond a
+                                         ; "Version 1.4" du splash (lcd_txt_splash_l2,
                                          ; plus bas) - A MAINTENIR MANUELLEMENT en
                                          ; phase avec lui si l'un des 2 change
 DISK_TOTAL_KB       equ 8192            ; capacite NOMINALE de la flash SPI du pont
@@ -6656,6 +6664,7 @@ txt_menu_ramtest:       db      27,'[36m','--- Test RAM Submenu ---',27,'[0m',13
 txt_menu_usb_head:      db      27,'[36m','--- USB Disk Submenu ---',27,'[0m',13,10,0
 txt_menu_usb_rest:      db      '2) List files',13,10
                         db      '3) Boot disk image',13,10
+                        db      '4) DOS 2.1 (ROM)',13,10
                         db      '(Esc: back to main menu)',13,10,13,10,0
 
 txt_menu_config:        db      27,'[36m','--- Configuration Submenu ---',27,'[0m',13,10
@@ -6895,6 +6904,7 @@ txt_menu_ramtest:       db      27,'[36m','--- Sous-menu Test RAM ---',27,'[0m',
 txt_menu_usb_head:      db      27,'[36m','--- Sous-menu USB Disk ---',27,'[0m',13,10,0
 txt_menu_usb_rest:      db      '2) List files',13,10
                         db      '3) Boot disk image',13,10
+                        db      '4) DOS 2.1 (ROM)',13,10
                         db      '(Echap: retour au menu principal)',13,10,13,10,0
 
 txt_menu_config:        db      27,'[36m','--- Sous-menu Configuration ---',27,'[0m',13,10
@@ -7106,7 +7116,7 @@ txt_dump_seg_off_sep:   db      ':0x', 0
 
 ; ---- ecran de demarrage (3 secondes, une seule fois - voir start:) ----
 lcd_text lcd_txt_splash_l1, 'Breadboard 8088', 20
-lcd_text lcd_txt_splash_l2, 'Version 1.3', 20
+lcd_text lcd_txt_splash_l2, 'Version 1.4', 20
 lcd_txt_splash_l3:      times   20 db '-'       ; remplissage '-' (pas ' ') - hors macro
                         db      0
 lcd_text lcd_txt_splash_l4, '(c) VE2CUY 2026', 20
@@ -7160,6 +7170,7 @@ lcd_text lcd_txt_run_ram_map, 'Test RAM - MAP', 20
 ; ---- genere par usb_state_print, pas ici - voir solution-01.asm) ----
 lcd_text lcd_txt_menu_usb_l2, '2) List files', 20
 lcd_text lcd_txt_menu_usb_l3, '3) Boot disk image', 20
+lcd_text lcd_txt_menu_usb_l4, '4) DOS 2.1 (ROM)', 20
 
 ; ---- sous-menu Configuration (voir .config_menu, start:) - 4 options,
 ; ---- tiennent sur le LCD sans pagination (l3 - "3) Heure et date"/"3) Set
@@ -7227,6 +7238,18 @@ lcd_text lcd_txt_run_ram_l1, 'Test RAM 128K', 20
 ; ---- remplissage jusqu'au vecteur de reset            ----
 ; ---- calcul en fonction de la taille de la ROM (256K) ----
 ; ---- A ajuster si la taille de la ROM change          ----
+; --- PC-DOS 2.1 de la ROM (lecteur A:, lib/bios.asm): secteurs utilises de la disquette de 180 Ko faite par
+; --- tests/gen_dos21_rom.py (build/dos21_rom.bin, regle du Makefile), en D800:0000 (physique D8000h). Le code
+; --- et les donnees ci-dessus restent sous le decalage 10000h (un seul segment, CS = C000h); D0000h-D7FFFh libre.
+        times   018000h - ($-$$) db 0FFh
+dos_rom_img:
+        incbin  "build/dos21_rom.bin"
+dos_rom_img_end:
+DOS_ROM_NSEC    equ     (dos_rom_img_end - dos_rom_img) / 512
+%if (dos_rom_img_end - dos_rom_img) % 512
+%error "build/dos21_rom.bin: taille non multiple de 512"
+%endif
+
         times   03FFF0h - ($-$$) db 0FFh
 
 reset_vector:

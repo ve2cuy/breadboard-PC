@@ -120,7 +120,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 2
-#define FW_VERSION_MINOR 0
+#define FW_VERSION_MINOR 1
 #define FW_XSTR(x) #x
 #define FW_STR(x)  FW_XSTR(x)                // FW_STR(FW_VERSION_MINOR) -> "9"
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
@@ -890,6 +890,8 @@ static void diskBusy(uint8_t op) {
   else replyStatus(FSE_NOTREADY);
 }
 
+static void conStart();                    // console au LCD (commande 2Dh, pont 2.1), plus bas
+
 // Automate des commandes du canal 3: un octet d'operation, puis ses arguments.
 static uint32_t uartHoldUntil = 0;         // pas d'octet UART avant cette date (ms): LINE_DELAY_MS, CMD_HOLD_MS
 static uint8_t cmdBuf[264], cmdLen = 0;
@@ -940,6 +942,7 @@ static void cmdByte(uint8_t v) {
   else if (op >= 0x27 && op <= 0x2A) imgExec(cmdBuf);
   else if (op == 0x2B) secSum();
   else if (op == 0x2C) clockExec(cmdBuf[1]);
+  else if (op == 0x2D) { conStart(); cmdLen = 0; return; }   // console au LCD: sans reponse ni collage
   // Le 8088 est occupe avec sa commande: pas de collage pour l'instant - SEULEMENT pour les commandes
   // longues (disque, fichiers, USB: op >= 10h, sauf 2Ch). Les commandes courtes (ping, heure, version,
   // horloge) n'en ont pas besoin: l'ecran Information lit l'heure toutes les ~170 ms a 7,38 MHz (moins
@@ -1011,6 +1014,240 @@ static void lcdBanner() {
 }
 
 // ============================================================================
+// CONSOLE AU LCD (pont 2.1, commande 2Dh). Le pont tient en permanence l'ecran 80x25 du terminal: chaque
+// octet que le 8088 envoie a l'UART passe par conPut (caracteres, CR, LF, BS, TAB, sequences ESC [ ... du
+// BIOS: position, effacements; UTF-8 de la page 437 -> caracteres du LCD). Apres 2Dh (le BIOS l'envoie a
+// l'amorcage d'un DOS et a la liste des images), le LCD montre une fenetre de 20x4 de cet ecran, comme
+// Solution-02: elle suit le curseur a la verticale; a l'arret de l'affichage (CON_IDLE_MS), elle se place
+// par pas de 10 colonnes pour montrer le curseur (gauche = (colonne/10 - 1) x 10). Maj + fleches au
+// clavier PS/2 la deplacent (haut/bas: 1 ligne, gauche/droite: 10 colonnes) et ne vont pas au 8088; elle
+// reste ou on l'a mise jusqu'au prochain affichage. Curseur souligne du LCD a la position du curseur.
+// Dessin par difference (seules les cases changees sont ecrites), quelques cases par tour de boucle,
+// presque rien tant que le 8088 affiche (le debit de l'UART n'est pas ralenti): le LCD rattrape a l'arret.
+// Fin: premier octet LCD du 8088 (menu) ou RESET du 8088.
+// ============================================================================
+#define CON_W 80
+#define CON_H 25
+#define CON_IDLE_MS    150UL               // sans affichage depuis: suivi horizontal, dessin a pleine vitesse
+#define CON_BUSY_MS     50UL               // pendant l'affichage: un peu de dessin toutes les CON_BUSY_MS
+static uint8_t conScr[CON_H][CON_W];       // caracteres DEJA traduits pour le LCD (ROM A00 + CGRAM)
+static uint8_t conR = 0, conC = 0, conSaveR = 0, conSaveC = 0;
+static bool conWrap = false;               // 80e colonne ecrite: retour a la ligne au caractere suivant
+static uint8_t conEsc = 0;                 // 0 texte, 1 ESC recu, 2 dans ESC [
+static uint8_t conPar[4], conNPar = 0;
+static uint8_t conU8n = 0;                 // octets UTF-8 de continuation attendus
+static uint16_t conU8 = 0;
+static volatile bool lcdCon = false;       // le LCD montre la console (lu par l'ISR du clavier)
+static uint8_t conVR = 0, conVC = 0;       // coin haut gauche de la fenetre
+static bool conOut = false, conFollowH = false;
+static uint32_t conLastOut = 0, conRenderT = 0;
+static uint16_t lcdShadow[4][20];          // ce que montre le LCD (100h = inconnu)
+static uint8_t lcdAddr = 0xFF;             // compteur d'adresse DDRAM du LCD (FFh = inconnu)
+static bool lcdCursor = false;
+static volatile uint8_t navQ[8];
+static volatile uint8_t navHead = 0, navTail = 0;
+
+// CGRAM 0-7: e aigu, e grave, e circonflexe, a grave, barre oblique inverse (5Ch = yen dans la ROM A00),
+// c cedille, u grave, o circonflexe (les memes que Solution-02).
+static const uint8_t conGlyphs[64] = {
+  0x02,0x04,0x0E,0x11,0x1F,0x10,0x0E,0x00,  0x08,0x04,0x0E,0x11,0x1F,0x10,0x0E,0x00,
+  0x04,0x0A,0x0E,0x11,0x1F,0x10,0x0E,0x00,  0x08,0x04,0x0E,0x01,0x0F,0x11,0x0F,0x00,
+  0x00,0x10,0x08,0x04,0x02,0x01,0x00,0x00,  0x00,0x0E,0x10,0x10,0x11,0x0E,0x04,0x0C,
+  0x08,0x04,0x11,0x11,0x11,0x13,0x0D,0x00,  0x04,0x0A,0x0E,0x11,0x11,0x11,0x0E,0x00 };
+
+// Point de code Unicode -> caractere du LCD
+static uint8_t conMap(uint16_t u) {
+  if (u >= 0x20 && u < 0x7F) return u == '\\' ? 4 : (uint8_t)u;
+  switch (u) {
+    case 0xE9: return 0;  case 0xE8: return 1;  case 0xEA: return 2;  case 0xE0: return 3;
+    case 0xE7: return 5;  case 0xF9: return 6;  case 0xF4: return 7;
+    case 0xA0: return ' '; case 0xB0: return 0xDF; case 0xB5: case 0x3BC: return 0xE4;
+    case 0xB7: case 0x2219: return 0xA5; case 0xB1: return '+'; case 0xF7: return 0xFD;
+    case 0xDF: case 0x3B2: return 0xE2; case 0x3B1: return 0xE0; case 0x3B5: return 0xE3;
+    case 0x3C0: return 0xF7; case 0x3A3: return 0xF6; case 0x3C3: return 0xE5; case 0x3A9: return 0xF4;
+    case 0x398: return 0xF2; case 0x221A: return 0xE8; case 0x221E: return 0xF3;
+    case 0x2265: return '>'; case 0x2264: return '<'; case 0x2248: return '~'; case 0xAB: return '<';
+    case 0xBB: return '>'; case 0xA2: return 'c'; case 0xA3: return 'L'; case 0xA5: return 'Y';
+  }
+  if (u >= 0xC0 && u <= 0xFF) {            // lettres accentuees: sans accent
+    static const char base[] = "AAAAAAACEEEEIIIIDNOOOOOxOUUUUYPsaaaaaaaceeeeiiiidnooooo/ouuuuypy";
+    return (uint8_t)base[u - 0xC0];
+  }
+  if (u >= 0x2500 && u <= 0x257F) {        // cadres
+    if (u == 0x2550) return '=';
+    if (u == 0x2551) return '|';
+    if (u <= 0x250B) return (u & 2) ? '|' : '-';
+    if (u >= 0x254C && u <= 0x254F) return (u & 2) ? '|' : '-';
+    return '+';
+  }
+  if ((u >= 0x2580 && u <= 0x259F) || u == 0x25A0) return 0xFF;   // blocs
+  return '?';
+}
+
+static void conClear(uint8_t r0, uint8_t c0, uint8_t r1, uint8_t c1) {   // de (r0,c0) a (r1,c1) inclus
+  for (uint8_t r = r0; r <= r1; r++)
+    for (uint8_t c = (r == r0 ? c0 : 0); c <= (r == r1 ? c1 : CON_W - 1); c++) conScr[r][c] = ' ';
+}
+static void conLF() {
+  if (conR < CON_H - 1) { conR++; return; }
+  memmove(conScr[0], conScr[1], (CON_H - 1) * CON_W);
+  memset(conScr[CON_H - 1], ' ', CON_W);
+}
+static void conChar(uint8_t v) {
+  if (conWrap) { conWrap = false; conC = 0; conLF(); }
+  conScr[conR][conC] = v;
+  if (conC == CON_W - 1) conWrap = true; else conC++;
+}
+static void conCsi(uint8_t f) {
+  uint8_t a = conNPar ? conPar[0] : 0, b = conNPar > 1 ? conPar[1] : 0, n = a ? a : 1;
+  conWrap = false;
+  switch (f) {
+    case 'H': case 'f':
+      conR = (uint8_t)((a ? a - 1 : 0) < CON_H ? (a ? a - 1 : 0) : CON_H - 1);
+      conC = (uint8_t)((b ? b - 1 : 0) < CON_W ? (b ? b - 1 : 0) : CON_W - 1);
+      break;
+    case 'J':
+      if (a == 2 || a == 3) conClear(0, 0, CON_H - 1, CON_W - 1);
+      else if (a == 1) conClear(0, 0, conR, conC);
+      else conClear(conR, conC, CON_H - 1, CON_W - 1);
+      break;
+    case 'K':
+      if (a == 2) conClear(conR, 0, conR, CON_W - 1);
+      else if (a == 1) conClear(conR, 0, conR, conC);
+      else conClear(conR, conC, conR, CON_W - 1);
+      break;
+    case 'A': conR = conR >= n ? conR - n : 0; break;
+    case 'B': conR = conR + n < CON_H ? conR + n : CON_H - 1; break;
+    case 'C': conC = conC + n < CON_W ? conC + n : CON_W - 1; break;
+    case 'D': conC = conC >= n ? conC - n : 0; break;
+    case 's': conSaveR = conR; conSaveC = conC; break;
+    case 'u': conR = conSaveR; conC = conSaveC; break;
+  }
+}
+// Un octet du 8088 vers le terminal
+static void conPut(uint8_t v) {
+  conOut = true;
+  if (conEsc == 1) {
+    if (v == '[') { conEsc = 2; conNPar = 0; conPar[0] = 0; return; }
+    conEsc = 0;
+    if (v == '7') { conSaveR = conR; conSaveC = conC; }
+    else if (v == '8') { conR = conSaveR; conC = conSaveC; conWrap = false; }
+    return;
+  }
+  if (conEsc == 2) {
+    if (v >= '0' && v <= '9') {
+      if (!conNPar) conNPar = 1;
+      uint16_t x = (uint16_t)(conPar[conNPar - 1] * 10 + (v - '0'));
+      conPar[conNPar - 1] = (uint8_t)(x > 255 ? 255 : x);
+    } else if (v == ';') {
+      if (!conNPar) conNPar = 1;
+      if (conNPar < 4) conPar[conNPar++] = 0;
+    } else if (v >= 0x40 && v <= 0x7E) { conEsc = 0; conCsi(v); }
+    else if (v < 0x20 || v > 0x3F) conEsc = 0;       // ('?' et autres octets de parametre: ignores)
+    return;
+  }
+  if (conU8n) {
+    if ((v & 0xC0) == 0x80) {
+      conU8 = (uint16_t)((conU8 << 6) | (v & 0x3F));
+      if (--conU8n == 0) conChar(conMap(conU8));
+      return;
+    }
+    conU8n = 0;
+    conChar('?');
+  }
+  if (v >= 0x20 && v < 0x7F) { conChar(conMap(v)); return; }
+  switch (v) {
+    case 0x1B: conEsc = 1; return;
+    case 0x0D: conC = 0; conWrap = false; return;
+    case 0x0A: conWrap = false; conLF(); return;
+    case 0x08: if (conWrap) conWrap = false; else if (conC) conC--; return;
+    case 0x09: conWrap = false; conC = (uint8_t)((conC | 7) + 1 < CON_W ? (conC | 7) + 1 : CON_W - 1); return;
+  }
+  if (v >= 0xC2 && v <= 0xDF) { conU8n = 1; conU8 = v & 0x1F; return; }
+  if (v >= 0xE0 && v <= 0xEF) { conU8n = 2; conU8 = v & 0x0F; return; }
+  if (v >= 0x80) conChar('?');             // (autres octets de commande: ignores)
+}
+
+static inline uint8_t conCurCol() { return conWrap ? CON_W - 1 : conC; }
+
+// Commande 2Dh: le LCD passe a la console (CGRAM chargee, fenetre sur le curseur, tout redessine)
+static void conStart() {
+  lcdCon = true;
+  lcdSend(0x0C, 0);                        // curseur cache le temps du dessin
+  lcdCursor = false;
+  lcdSend(0x40, 0);                        // CGRAM 0
+  for (uint8_t i = 0; i < 64; i++) lcdSend(conGlyphs[i], LCD_RS);
+  lcdAddr = 0xFF;
+  for (uint8_t r = 0; r < 4; r++) for (uint8_t c = 0; c < 20; c++) lcdShadow[r][c] = 0x100;
+  conVR = conR > 3 ? conR - 3 : 0;
+  int vc = (conCurCol() / 10 - 1) * 10;
+  conVC = (uint8_t)(vc < 0 ? 0 : vc > CON_W - 20 ? CON_W - 20 : vc);
+  conOut = false; conFollowH = false;
+  conLastOut = millis();
+}
+
+// Deplacements demandes par Maj + fleches (ISR du clavier) -> fenetre
+static void conNav() {
+  while (navHead != navTail) {
+    uint8_t d = navQ[navTail];
+    navTail = (uint8_t)((navTail + 1) & 7);
+    if (d == 1 && conVR > 0) conVR--;
+    else if (d == 2 && conVR < CON_H - 4) conVR++;
+    else if (d == 3) conVC = conVC >= 10 ? conVC - 10 : 0;
+    else if (d == 4) conVC = conVC + 10 <= CON_W - 20 ? conVC + 10 : CON_W - 20;
+    conFollowH = false;                    // la fenetre reste ou on l'a mise jusqu'au prochain affichage
+  }
+}
+
+// Un tour de dessin: au plus `budget` cases changees, puis le curseur
+static void conRender(uint8_t budget) {
+  for (uint8_t r = 0; r < 4; r++) {
+    for (uint8_t c = 0; c < 20; c++) {
+      uint8_t v = conScr[conVR + r][conVC + c];
+      if (lcdShadow[r][c] == v) continue;
+      if (!budget) return;
+      budget--;
+      if (lcdCursor) { lcdSend(0x0C, 0); lcdCursor = false; }
+      uint8_t a = (uint8_t)((r & 1 ? 0x40 : 0x00) + (r & 2 ? 0x14 : 0x00) + c);
+      if (lcdAddr != a) lcdSend((uint8_t)(0x80 | a), 0);
+      lcdSend(v, LCD_RS);
+      lcdShadow[r][c] = v;
+      lcdAddr = (uint8_t)(a + 1);
+    }
+  }
+  uint8_t cc = conCurCol();
+  bool vis = conR >= conVR && conR < conVR + 4 && cc >= conVC && cc < conVC + 20;
+  if (vis) {
+    uint8_t r = conR - conVR;
+    uint8_t a = (uint8_t)((r & 1 ? 0x40 : 0x00) + (r & 2 ? 0x14 : 0x00) + (cc - conVC));
+    if (lcdAddr != a) { lcdSend((uint8_t)(0x80 | a), 0); lcdAddr = a; }
+    if (!lcdCursor) { lcdSend(0x0E, 0); lcdCursor = true; }
+  } else if (lcdCursor) { lcdSend(0x0C, 0); lcdCursor = false; }
+}
+
+// Appelee a chaque tour de loop()
+static void conPoll() {
+  if (!lcdCon) { navHead = navTail; return; }
+  uint32_t now = millis();
+  if (conOut) {                            // affichage depuis le dernier tour: la fenetre suit le curseur
+    conOut = false;
+    conLastOut = now;
+    conFollowH = true;
+    if (conR < conVR) conVR = conR;
+    else if (conR > conVR + 3) conVR = conR - 3;
+  }
+  conNav();
+  bool idle = (uint32_t)(now - conLastOut) >= CON_IDLE_MS;
+  if (idle && conFollowH) {
+    conFollowH = false;
+    int vc = (conCurCol() / 10 - 1) * 10;
+    conVC = (uint8_t)(vc < 0 ? 0 : vc > CON_W - 20 ? CON_W - 20 : vc);
+  }
+  if (idle) conRender(6);
+  else if ((uint32_t)(now - conRenderT) >= CON_BUSY_MS) { conRenderT = now; conRender(2); }
+}
+
+// ============================================================================
 // Trace PS/2 (DEBUG_PS2=1): evenements ecrits dans un petit anneau, affiches
 // par loop() sur le terminal, ENTRELACES avec la sortie du 8088:
 //   {76}  octet decode et valide      {>76} octet envoye au 8088
@@ -1069,6 +1306,45 @@ static inline bool ps2DataHigh() { return (GPIOA->IDR >> PS2_DATA_BIT) & 1; }
 
 static void kbdTrack(uint8_t sc);          // Ctrl-Alt-Suppr (voir RESET du 8088, plus bas)
 
+static inline void ps2Push(uint8_t v) {    // octet pour le 8088 (dans l'ISR)
+  uint8_t nh = (uint8_t)((ps2Head + 1) & 31);
+  if (nh != ps2Tail) { ps2Buf[ps2Head] = v; ps2Head = nh; dbg(v); }
+  else dbg(0x400);
+}
+
+// Console au LCD (pont 2.1): Maj (12h, 59h; pas les Maj factices E0 12h / E0 59h que le clavier envoie autour
+// des fleches) + fleche (75h haut, 72h bas, 6Bh gauche, 74h droite, avec ou sans E0: pave numerique) = navigation
+// de la fenetre, retiree du flux du 8088 avec ses prefixes. Pendant la console, un prefixe E0/F0 attend donc
+// l'octet suivant avant de partir (quelques ms). Hors console: tout part tel quel.
+static volatile uint8_t navPfx[2], navPfxN = 0;
+static volatile uint8_t navMods = 0;       // bit 0: F0 recu, bit 1: E0 recu, bit 2: Maj gauche, bit 3: Maj droite
+static void ps2Accept(uint8_t sc) {
+  bool brk = navMods & 1, ext = navMods & 2;
+  bool pfx = (sc == 0xF0 || sc == 0xE0);
+  if (sc == 0xF0) navMods |= 1;
+  else if (sc == 0xE0) navMods |= 2;
+  else {
+    navMods &= (uint8_t)~3;
+    uint8_t bit = ext ? 0 : (sc == 0x12) ? 4 : (sc == 0x59) ? 8 : 0;
+    if (bit) { if (brk) navMods &= (uint8_t)~bit; else navMods |= bit; }
+  }
+  if (lcdCon) {
+    if (pfx && navPfxN < 2) { navPfx[navPfxN++] = sc; return; }
+    if (!pfx && (navMods & 12)) {
+      uint8_t d = sc == 0x75 ? 1 : sc == 0x72 ? 2 : sc == 0x6B ? 3 : sc == 0x74 ? 4 : 0;
+      if (d) {
+        navPfxN = 0;
+        uint8_t nh = (uint8_t)((navHead + 1) & 7);
+        if (!brk && nh != navTail) { navQ[navHead] = d; navHead = nh; }
+        return;
+      }
+    }
+  }
+  for (uint8_t i = 0; i < navPfxN; i++) ps2Push(navPfx[i]);
+  navPfxN = 0;
+  ps2Push(sc);
+}
+
 // Test du clavier sur le LCD (pont 1.9): tant que le 8088 n'a rien envoye au LCD (lcdBridge), le pont y
 // affiche lui-meme chaque octet PS/2 recu (kbdTestPoll, ligne 2). Copie des octets prise dans l'ISR: sans
 // 8088, ps2Buf n'est jamais vide (IBF reste a 1) et finit plein. Bits 8-9: erreur de parite / de stop.
@@ -1113,9 +1389,7 @@ static void ps2Isr() {
     ps2Bit++;
   } else {                                 // bit de stop: doit etre 1
     if (b && ps2ParOk) {
-      uint8_t nh = (uint8_t)((ps2Head + 1) & 31);
-      if (nh != ps2Tail) { ps2Buf[ps2Head] = ps2Shift; ps2Head = nh; dbg(ps2Shift); }
-      else dbg(0x400);
+      ps2Accept(ps2Shift);                 // vers le 8088, sauf Maj + fleche pendant la console au LCD
       kbdTrack(ps2Shift);                  // Ctrl-Alt-Suppr -> reset du 8088 (meme s'il est fige)
       kbdEvtPush(ps2Shift);
     } else if (!ps2ParOk) { dbg(0x100 | ps2Shift); kbdEvtPush(0x100 | ps2Shift); }
@@ -1243,6 +1517,8 @@ static void reset8088Pulse() {
   rqHead = rqTail = 0;
   cmdLen = 0;
   uartHoldUntil = 0;
+  lcdCon = false;                          // le menu du 8088 reprend le LCD
+  navPfxN = 0;
   // Le 8088 exige un RESET d'au moins 4 cycles d'horloge: 10 ms, ou 5 cycles si l'horloge est plus
   // lente (pont 2.0: 5 s a 1 Hz). L'USB reste servi pendant l'attente.
   uint32_t ms = RESET8088_PULSE_MS;
@@ -1325,6 +1601,7 @@ void setup() {
   Wire.begin();
   Wire.setClock(100000);
   lcdInit();
+  memset(conScr, ' ', sizeof(conScr));   // ecran du terminal vide (console au LCD)
   lcdBanner();                             // "Pont STM32 v1.9 / En attente 8088"
 
   pinMode(PIN_PS2_CLK, INPUT_PULLUP);      // + pull-ups externes 4,7-10 kohm vers +5 V conseilles
@@ -1430,6 +1707,7 @@ void loop() {
   if (!qFull() && ps2Quiet(BUS_QUIET_US)) {
     uint8_t chan, val;
     if (takeFrom8088(chan, val)) {
+      if (chan == CH_UART) conPut(val);    // ecran 80x25 du terminal (console au LCD)
       q[qHead].chan = chan; q[qHead].val = val;
       qHead++;
     }
@@ -1448,8 +1726,10 @@ void loop() {
         qTail++; stallSince = 0;           // personne ne lit le port USB: octet jete
       }
     } else {
-      if (it.chan == CH_LCD_CMD || it.chan == CH_LCD_DATA)
+      if (it.chan == CH_LCD_CMD || it.chan == CH_LCD_DATA) {
         lcdBridge = false;                 // le 8088 prend le LCD: fin du test du clavier
+        if (lcdCon) { lcdCon = false; lcdAddr = 0xFF; }   // ... et de la console au LCD
+      }
       if (it.chan == CH_LCD_CMD) {
         if (it.val == 0x28) lcdResync();   // Function Set = debut de i2c_lcd_init
                                            // (8088): resynchronise un LCD deregle
@@ -1461,6 +1741,7 @@ void loop() {
     }
   }
   kbdTestPoll();                           // test du clavier sur le LCD (tant que le 8088 ne l'a pas pris)
+  conPoll();                               // console au LCD (commande 2Dh)
 
   // 3. reponses / clavier / UART recu -> 8088
   uint8_t v;

@@ -44,6 +44,13 @@ BAS_SRC     = lib/basic.asm lib/basic_tokens.inc lib/basic_float.asm lib/basic_f
 # du fichier de sortie. Un dossier local du projet n'a pas ce probleme.
 CHECK_DIR   = build/check
 
+# PC-DOS 2.1 de la ROM (lecteur A:, ROM 1.4): secteurs utilises de la disquette faite par tests/gen_dos21_rom.py
+# (IBMBIO, IBMDOS, COMMAND, EDLIN de PC-DOS 2.1, MASM 1.00, LINK 1.08, HELLO.ASM, AUTOEXEC.BAT), inclus par
+# solution-01.asm en D800:0000. Ecrit aussi ../PC-DOS/pcdos2_1_s01.img (la disquette complete de 180 Ko).
+DOS_IMG     = build/dos21_rom.bin
+$(DOS_IMG): tests/gen_dos21_rom.py ../PC-DOS/pcdos2_1.img ../PC-DOS/MASM/MASM1.EXE ../PC-DOS/MASM/LINK1.EXE
+	python3 tests/gen_dos21_rom.py
+
 .PHONY: all rom rom-fr rom-en rom-128 rom-128-en rom-pause ramtest test-ramtest lib check clean check-modules test test-rom test-rom-complet map trace trace-nohd
 
 # --- Cible par defaut: la ROM complete + les modules individuels ---
@@ -55,7 +62,7 @@ rom: $(ROM_BIN)
 	cp $(ROM_BIN) "$(ROM_OUT)"
 	@echo "ROM copiee vers $(ROM_OUT)"
 
-$(ROM_BIN): Makefile solution-01.asm include/hardware.inc include/delay.inc include/lcd_macros.inc \
+$(ROM_BIN): $(DOS_IMG) Makefile solution-01.asm include/hardware.inc include/delay.inc include/lcd_macros.inc \
             lib/common.asm lib/lcd.asm lib/uart.asm lib/utils.asm lib/lcd_i2c.asm lib/ps2.asm lib/tiny_basic.asm lib/isr.asm lib/bios.asm $(BAS_SRC)
 	$(NASM) $(NASMFLAGS) solution-01.asm -o $(ROM_BIN)
 
@@ -68,23 +75,23 @@ $(ROM_BIN): Makefile solution-01.asm include/hardware.inc include/delay.inc incl
 # --- eloignes dans ce gros fichier - inoffensif (2 compilations
 # --- successives produisent un binaire IDENTIQUE, verifie), juste plus
 # --- lent a converger; "rom"/"rom-fr" n'en ont jamais eu besoin.
-rom-fr: $(BAS_SRC) solution-01.asm lib/bios.asm
+rom-fr: $(BAS_SRC) solution-01.asm lib/bios.asm $(DOS_IMG)
 	$(NASM) $(NASMFLAGS) solution-01.asm -o solution-01-fr.bin
 	cp solution-01-fr.bin "$(dir $(ROM_OUT))solution-01-fr.bin"
 	@echo "ROM (francais): solution-01-fr.bin, copiee vers $(dir $(ROM_OUT))"
 
-rom-en: $(BAS_SRC) solution-01.asm lib/bios.asm
+rom-en: $(BAS_SRC) solution-01.asm lib/bios.asm $(DOS_IMG)
 	$(NASM) $(NASMFLAGS) -dLANG_EN=1 -w-error=label-redef-late solution-01.asm -o solution-01-en.bin
 	cp solution-01-en.bin "$(dir $(ROM_OUT))solution-01-en.bin"
 	@echo "ROM (anglais): solution-01-en.bin, copiee vers $(dir $(ROM_OUT))"
 
 # --- ancienne RAM de 128 Ko (HM628128): sans -dRAM_512K - identique a la ROM 1.2 ---
-rom-128: $(BAS_SRC) solution-01.asm lib/bios.asm
+rom-128: $(BAS_SRC) solution-01.asm lib/bios.asm $(DOS_IMG)
 	$(NASM) -f bin solution-01.asm -o solution-01-128k.bin
 	cp solution-01-128k.bin "$(dir $(ROM_OUT))solution-01-128k.bin"
 	@echo "ROM 128 Ko (francais): solution-01-128k.bin, copiee vers $(dir $(ROM_OUT))"
 
-rom-128-en: $(BAS_SRC) solution-01.asm lib/bios.asm
+rom-128-en: $(BAS_SRC) solution-01.asm lib/bios.asm $(DOS_IMG)
 	$(NASM) -f bin -dLANG_EN=1 -w-error=label-redef-late solution-01.asm -o solution-01-128k-en.bin
 	cp solution-01-128k-en.bin "$(dir $(ROM_OUT))solution-01-128k-en.bin"
 	@echo "ROM 128 Ko (anglais): solution-01-128k-en.bin, copiee vers $(dir $(ROM_OUT))"
@@ -102,19 +109,19 @@ test-ramtest: ramtest-128k.asm include/hardware.inc tests/ramtest_sim.py
 	python tests/ramtest_sim.py
 
 # --- ROM d'ESSAI: pause (~5 ms) apres chaque ecriture de secteur (BRIDGE_WRITE_PAUSE, lib/bridge.asm) ---
-rom-pause: $(BAS_SRC) solution-01.asm lib/bios.asm
+rom-pause: $(BAS_SRC) solution-01.asm lib/bios.asm $(DOS_IMG)
 	$(NASM) $(NASMFLAGS) -dBRIDGE_WRITE_PAUSE=1400 solution-01.asm -o solution-01-pause.bin
 	cp solution-01-pause.bin "$(dir $(ROM_OUT))solution-01-pause.bin"
 	@echo "ROM d'essai (pause apres ecriture): solution-01-pause.bin, copiee vers $(dir $(ROM_OUT))"
 
 # --- ROM de diagnostic: chaque INT 13h / 1Ah est tracee sur l'UART (<nn AX BX CX DX ES -AH CF>); copiee en solution-01-trace.bin ---
-trace: $(BAS_SRC) solution-01.asm lib/bios.asm
+trace: $(BAS_SRC) solution-01.asm lib/bios.asm $(DOS_IMG)
 	$(NASM) $(NASMFLAGS) -dBIOS_TRACE=1 solution-01.asm -o solution-01-trace.bin
 	cp solution-01-trace.bin "$(dir $(ROM_OUT))solution-01-trace.bin"
 	@echo "ROM de trace copiee vers $(dir $(ROM_OUT))solution-01-trace.bin"
 
 # --- idem + INT 13h refuse les disques DL >= 80h (le DOS ne voit pas la flash comme disque dur): solution-01-trace-nohd.bin ---
-trace-nohd: $(BAS_SRC) solution-01.asm lib/bios.asm
+trace-nohd: $(BAS_SRC) solution-01.asm lib/bios.asm $(DOS_IMG)
 	$(NASM) $(NASMFLAGS) -dBIOS_TRACE=1 -dBIOS_HIDE_HD=1 solution-01.asm -o solution-01-trace-nohd.bin
 	cp solution-01-trace-nohd.bin "$(dir $(ROM_OUT))solution-01-trace-nohd.bin"
 	@echo "ROM trace sans disque dur copiee vers $(dir $(ROM_OUT))solution-01-trace-nohd.bin"
@@ -226,7 +233,7 @@ check: $(ROM_BIN)
 	python3 check_rom.py $(ROM_BIN)
 
 # --- Plan (MAP) de la ROM: zones, tailles, espace libre - voir rom_map.py ---
-map:
+map: $(DOS_IMG)
 	python3 rom_map.py
 
 # --- Bancs d'essai sous emulateur (Unicorn - pip install unicorn numpy): Tiny BASIC,
@@ -234,10 +241,10 @@ map:
 # --- scenarios de bout en bout avec IRQ1 ASYNCHRONES (tests/rom_sim.py): DOS 2.1/3.30 reels, trace,
 # --- scrutation du pont (~ 2 min); test-rom-complet ajoute la ROM COMPLETE: menu, Ctrl-\, reamorcage
 # --- de DOS, collage au BASIC (plusieurs minutes de plus). Hors de "test" (trop longs). ---
-test-rom:
+test-rom: $(DOS_IMG)
 	python3 tests/rom_test.py
 
-test-rom-complet:
+test-rom-complet: $(DOS_IMG)
 	python3 tests/rom_test.py --complet
 
 test:
