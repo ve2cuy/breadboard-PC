@@ -166,7 +166,205 @@ fl_abs:
 ; ------------------------------------------------------------
 fl_sub:
         call    fl_neg
+; ROM 1.6: en registres, directement sur les nombres emballes quand les deux exposants sont dans
+; 1-254 (cas courant); sinon (zero, exposant 255) fl_add_slow. Meme resultat: |A| >= |B|, B aligne avec
+; les bits perdus colles au bit 0, arrondi au plus proche pair.
 fl_add:
+        push    si
+        push    bp
+        mov     dx, [arg_v+2]
+        mov     cx, [fac_v+2]
+        mov     ax, dx
+        and     ax, 7FFFh
+        mov     bx, cx
+        and     bx, 7FFFh
+        mov     si, arg_v
+        mov     di, fac_v
+        cmp     ax, bx                  ; magnitudes emballees: meme ordre que les entiers
+        ja      .ord
+        jb      .swap
+        mov     bp, [si]
+        cmp     bp, [di]
+        jae     .ord
+.swap:
+        xchg    si, di
+        xchg    dx, cx
+        xchg    ax, bx
+.ord:                                   ; A = [SI] (haut DX, |haut| AX) >= B = [DI] (haut CX, |haut| BX)
+        cmp     bx, 0080h
+        jb      .slow                   ; B nul (ou denormalise)
+        cmp     ax, 7F80h
+        jae     .slow                   ; exposant 255
+        shl     ax, 1
+        mov     al, ah
+        xor     ah, ah                  ; AX = exposant de A
+        shl     bx, 1
+        mov     bl, bh
+        xor     bh, bh                  ; BX = exposant de B
+        mov     bp, ax                  ; BP = exposant du resultat (biaise)
+        sub     ax, bx                  ; AX = d
+        cmp     ax, 25
+        ja      .big
+        push    dx                      ; signe du resultat (bit 15)
+        mov     bx, dx
+        xor     bx, cx
+        push    bx                      ; bit 15: signes differents
+        push    ax                      ; d
+        mov     ax, [si]
+        mov     bx, [di]
+        mov     dh, dl
+        or      dh, 80h
+        mov     dl, ah
+        mov     ah, al
+        xor     al, al                  ; DX:AX = ma << 8
+        mov     ch, cl
+        or      ch, 80h
+        mov     cl, bh
+        mov     bh, bl
+        xor     bl, bl                  ; CX:BX = mb << 8
+        pop     si                      ; SI = d
+        xor     di, di                  ; DI <> 0: bits perdus
+        cmp     si, 16
+        jb      .a8
+        or      bx, bx
+        jz      .a16
+        inc     di
+.a16:
+        mov     bx, cx
+        xor     cx, cx
+        sub     si, 16
+.a8:
+        cmp     si, 8
+        jb      .a1
+        or      bl, bl
+        jz      .a8b
+        inc     di
+.a8b:
+        mov     bl, bh
+        mov     bh, cl
+        mov     cl, ch
+        xor     ch, ch
+        sub     si, 8
+.a1:
+        or      si, si
+        jz      .al
+.sh:
+        shr     cx, 1
+        rcr     bx, 1
+        adc     di, 0
+        dec     si
+        jnz     .sh
+.al:
+        or      di, di
+        jz      .nj
+        or      bl, 1                   ; bit colle
+.nj:
+        pop     di
+        or      di, di
+        js      .diff
+        add     ax, bx                  ; memes signes
+        adc     dx, cx
+        jnc     .rnd
+        rcr     dx, 1
+        rcr     ax, 1
+        jnc     .nst
+        or      al, 1
+.nst:
+        inc     bp
+        jmp     .rnd
+.diff:
+        sub     ax, bx                  ; |A| - |B|
+        sbb     dx, cx
+        mov     bx, ax
+        or      bx, dx
+        jz      .zero
+        or      dx, dx
+        jnz     .n8
+        xchg    ax, dx
+        sub     bp, 16
+.n8:
+        or      dh, dh
+        jnz     .n1
+        mov     dh, dl
+        mov     dl, ah
+        mov     ah, al
+        xor     al, al
+        sub     bp, 8
+        jmp     .n8
+.n1:
+        test    dh, 80h
+        jnz     .rnd
+        shl     ax, 1
+        rcl     dx, 1
+        dec     bp
+        jmp     .n1
+.rnd:                                   ; AL = bits d'arrondi (bit 7 = garde)
+        test    al, 80h
+        jz      .pk
+        test    al, 7Fh
+        jnz     .up
+        test    ah, 1
+        jz      .pk
+.up:
+        add     ax, 0100h
+        adc     dx, 0
+        jnc     .pk
+        mov     dx, 8000h
+        inc     bp
+.pk:
+        pop     cx                      ; signe
+        cmp     bp, 0
+        jle     .uf
+        cmp     bp, 255
+        jge     .ovf
+        mov     al, ah
+        mov     ah, dl
+        mov     [fac_v], ax
+        mov     bx, bp
+        mov     bh, bl
+        xor     bl, bl
+        shr     bx, 1                   ; exposant << 7
+        and     dh, 7Fh
+        or      bl, dh
+        and     ch, 80h
+        or      bh, ch
+        mov     [fac_v+2], bx
+        pop     bp
+        pop     si
+        clc
+        ret
+.zero:
+        pop     cx
+.uf:
+        xor     ax, ax
+        mov     [fac_v], ax
+        mov     [fac_v+2], ax
+        pop     bp
+        pop     si
+        clc
+        ret
+.ovf:
+        mov     word [fac_v], 0FFFFh
+        and     ch, 80h
+        or      ch, 7Fh
+        mov     cl, 7Fh
+        mov     [fac_v+2], cx
+        pop     bp
+        pop     si
+        stc
+        ret
+.big:                                   ; B negligeable: A tel quel
+        mov     ax, [si]
+        mov     [fac_v], ax
+        mov     [fac_v+2], dx
+        pop     bp
+        pop     si
+        clc
+        ret
+.slow:
+        pop     bp
+        pop     si
+fl_add_slow:
         call    fl_load_a
         call    fl_load_b
         mov     byte [fl_st], 0
@@ -400,7 +598,7 @@ fl_div:
         mov     bp, [fl_ub+FU_M]
         xor     si, si
         xor     di, di
-        mov     cx, 32
+        mov     cx, 25                  ; ROM 1.6: 25 pas (24 bits + garde); le reste donne le bit collant
 .bit:
         shl     di, 1                   ; decale le quotient (le bit sera mis apres)
         rcl     si, 1
@@ -423,21 +621,34 @@ fl_div:
         mov     byte [fl_st], 1
 .norem:
         mov     ax, di
-        mov     dx, si
+        mov     dx, si                  ; DX:AX = Q, 25 bits
         pop     bp
         pop     si
         cmp     byte [fl_dq], 0
         je      .noshift
-        ; quotient a 33 bits: >>1, le bit perdu devient collant
-        test    al, 1
-        jz      .even
-        mov     byte [fl_st], 1
-.even:
+        ; bit de tete en plus: V = 2^25 + Q (26 bits) -> V << 6 = (V >> 2) << 8, les 2 bits sortis en 7-6
+        or      dx, 0200h
         shr     dx, 1
         rcr     ax, 1
-        or      dx, 8000h
+        rcr     bl, 1
+        shr     dx, 1
+        rcr     ax, 1
+        rcr     bl, 1
+        mov     dh, dl
+        mov     dl, ah
+        mov     ah, al
+        mov     al, bl
+        and     al, 0C0h
         jmp     .have
 .noshift:
+        ; Q << 7 = (Q >> 1) << 8, le bit sorti en 7 (garde)
+        shr     dx, 1
+        rcr     ax, 1
+        mov     dh, dl
+        mov     dl, ah
+        mov     ah, al
+        mov     al, 0
+        rcr     al, 1
         dec     word [fl_ua+FU_E]
 .have:
         mov     [fl_ua+FU_M], ax
@@ -528,14 +739,53 @@ fl_cmp:
 ; ------------------------------------------------------------
 ; fl_from_i16: AX (entier signe) -> FAC (flottant)
 ; ------------------------------------------------------------
+; ROM 1.6: emballe directement (16 bits significatifs au plus: toujours exact)
 fl_from_i16:
-        xor     dx, dx
         or      ax, ax
-        jns     fl_from_u32_p
-        neg     ax
-        mov     dx, 0
-        mov     byte [fl_sgn], 1
-        jmp     fl_from_u32_s
+        jnz     .nz
+        mov     [fac_v], ax
+        mov     [fac_v+2], ax
+        ret
+.nz:
+        cwd
+        xor     ax, dx
+        sub     ax, dx                  ; AX = |x| (8000h reste 8000h = 32768)
+        and     dx, 8000h
+        or      ah, ah
+        jnz     .big
+        mov     bl, al                  ; |x| < 256: mot haut par table, mot bas nul
+        xor     bh, bh
+        shl     bx, 1
+        or      dx, [cs:fl_i8 + bx]
+        xor     ax, ax
+        mov     [fac_v], ax
+        mov     [fac_v+2], dx
+        clc
+        ret
+.big:
+        mov     di, dx                  ; DI = signe
+        mov     dx, 127 + 15            ; exposant si le bit 15 est le premier
+        or      ah, ah
+        jnz     .h
+        xchg    al, ah
+        sub     dx, 8
+.h:
+        mov     bl, ah
+        xor     bh, bh
+        mov     cl, [cs:fl_clz8 + bx]
+        shl     ax, cl                  ; bit 15 = 1
+        sub     dl, cl
+        mov     cl, 7
+        shl     dx, cl
+        and     ah, 7Fh
+        or      dl, ah
+        or      dx, di
+        mov     ah, al
+        xor     al, al
+        mov     [fac_v], ax
+        mov     [fac_v+2], dx
+        clc
+        ret
 fl_from_u32_p:
         mov     byte [fl_sgn], 0
         jmp     fl_from_u32_s
@@ -622,6 +872,19 @@ fl_from_u32_s:                          ; signe dans fl_sgn
         mov     di, fl_ua
         jmp     fl_store
 
+; fl_i8: mot haut du flottant de 0-255 (ROM 1.6; le mot bas est nul)
+fl_i8:
+%assign I8 0
+%rep 256
+%if I8 = 0
+        dw      0
+%else
+%assign I8E (I8 >= 2) + (I8 >= 4) + (I8 >= 8) + (I8 >= 16) + (I8 >= 32) + (I8 >= 64) + (I8 >= 128)
+        dw      ((127 + I8E) << 7) | ((I8 << (7 - I8E)) & 7Fh)
+%endif
+%assign I8 I8 + 1
+%endrep
+
 ; fl_clz8: nombre de zeros de tete d'un octet non nul (0 -> 8, inutilise)
 fl_clz8:
 %assign CLZI 0
@@ -635,6 +898,40 @@ fl_clz8:
 ; CF=1 si hors de -32768..32767 (depassement).
 ; ------------------------------------------------------------
 fl_to_i16:
+        ; ROM 1.6: 1 <= |x| < 32768 directement depuis l'emballe (16 bits de tete de la mantisse)
+        mov     ch, al                  ; mode
+        mov     dx, [fac_v+2]
+        mov     bx, dx
+        shl     bx, 1
+        mov     bl, bh
+        xor     bh, bh
+        sub     bx, 127                 ; e
+        cmp     bx, 14
+        ja      .slow                   ; e < 0 (|x| < 1, zero) ou e > 14
+        mov     cl, 14
+        sub     cl, bl
+        mov     al, [fac_v+1]
+        mov     ah, dl
+        or      ah, 80h                 ; AX = mantisse >> 8
+        shr     ax, cl
+        shr     ax, 1                   ; CF = garde
+        jnc     .t
+        or      ch, ch
+        jz      .t
+        inc     ax                      ; CINT: demi vers le haut (en magnitude)
+.t:
+        or      dx, dx
+        js      .ng
+        or      ax, ax
+        js      .ovf                    ; +32768 apres arrondi
+        clc
+        ret
+.ng:
+        neg     ax
+        clc
+        ret
+.slow:
+        mov     al, ch
         push    ax                      ; mode
         mov     ax, [fac_v]
         mov     dx, [fac_v+2]

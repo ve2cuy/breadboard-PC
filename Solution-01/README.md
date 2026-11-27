@@ -884,7 +884,8 @@ Un module par rôle, tous assemblés à partir de `lib/basic.asm` :
   | `0400h-0B3Fh` | tampon de saisie, tampon de ligne tokenisée, tampon de nombres, pile des valeurs |
   | `0C00h…` | programme, puis variables simples, puis tableaux (vers le haut) |
   | `…-DFF0h` | chaînes (tas qui descend depuis `DFF0h`) |
-  | `E000h-F3F0h` | pile de l'interpréteur |
+  | `E000h-E6FFh` | caches de l'exécution (ROM 1.5-1.6, voir « Vitesse ») |
+  | `E700h-F3F0h` | pile de l'interpréteur |
   | `F800h-FFFFh` | variables du firmware et pile du menu — **non touchées** |
 
 - **Chaînes** : un descripteur (`[longueur][pointeur]`) par variable/élément de
@@ -892,15 +893,16 @@ Un module par rôle, tous assemblés à partir de `lib/basic.asm` :
   le texte du programme ; le ramasse-miettes compacte le tas quand il est plein
   (les temporaires et les valeurs en attente dans une expression sont des
   racines).
-- **Vitesse (ROM 1.5)** : le texte du programme reste tel qu'il a été tapé (`LIST` fidèle), mais
+- **Vitesse (ROM 1.5, 1.6)** : le texte du programme reste tel qu'il a été tapé (`LIST` fidèle), mais
   l'exécution garde en mémoire, à l'adresse de chaque élément dans le texte, ce qu'elle a déjà
-  trouvé ; ces **caches** occupent `E000h-E4FFh`, sous la pile :
+  trouvé ; ces **caches** occupent `E000h-E6FFh`, sous la pile :
 
   | Cache | Clé | Contenu |
   |---|---|---|
   | constantes (64) | adresse de la constante | type et valeur déjà convertis |
   | variables (64) | adresse du nom | adresse de la valeur ; pour un tableau : son en-tête et une génération |
   | lignes (64) | numéro de ligne | adresse de la ligne (`GOTO`, `GOSUB`, `THEN n`…) |
+  | auxiliaire (64, ROM 1.6) | adresse d'une cible de `LET` ou d'un numéro de ligne | fin de la cible ; valeur et fin du numéro |
 
   - Ils sont vidés quand le programme change (édition, `LOAD`, `MERGE`, `NEW`), quand les variables
     sont effacées (`RUN`, `CLEAR`), par `DEFINT/DEFSNG/DEFSTR`, et par `POKE` ou `DSKREAD` dans le texte
@@ -908,22 +910,33 @@ Un module par rôle, tous assemblés à partir de `lib/basic.asm` :
   - Les tableaux bougent quand une variable simple est créée, et par `DIM` ou `ERASE` : chacun de ces
     déplacements augmente la génération (`b_agen`), ce qui invalide leur entrée.
   - Les commandes directes n'utilisent pas ces caches.
-  - Autres gains : addition et division flottantes en registres (même arrondi au plus proche pair,
-    vérifié contre numpy) ; conversion entier → flottant par table ; opérateurs reconnus par table ;
-    pas d'appel pour sauter les espaces quand il n'y en a pas.
-  - Bancs de Rugg/Feldman, `python tests/basic_bench.py` (temps estimé à 4,77 MHz d'après les octets
-    lus et écrits sur le bus ; mesures à l'émulateur, pas sur le montage) :
+  - Chemins rapides de la ROM 1.6 :
+    - une variable simple ou une constante déjà vue est chargée directement par l'évaluateur ;
+    - `LET` vers une variable simple déjà vue écrit directement, son adresse ne changeant pas ;
+    - un tableau à un seul indice déjà vu (variable simple, ou constante entière) suivi de `)` est
+      lu sans l'évaluateur, et l'adresse de l'élément est calculée sans `MUL` ;
+    - `NEXT` retrouve sa variable par le cache.
+  - Calcul :
+    - ROM 1.5 : addition et division flottantes en registres, conversion entier → flottant par
+      table, opérateurs reconnus par table, pas d'appel pour sauter les espaces quand il n'y en a pas.
+    - ROM 1.6 : addition directement sur les nombres emballés, sans passer par la forme déballée ;
+      conversions entier ↔ flottant directes, et table pour 0-255 ; division en 25 pas au lieu de 32.
+    - Les résultats sont identiques bit pour bit : arrondi au plus proche pair, vérifié contre numpy
+      et contre l'ancienne version.
+  - Bancs de Rugg/Feldman, `python tests/basic_bench.py`. Le temps est estimé à 4,77 MHz : 4 cycles par
+    octet lu ou écrit sur le bus, plus le temps propre des `MUL`/`DIV`. Ce sont des mesures à
+    l'émulateur, pas sur le montage :
 
-    | Banc | ROM 1.4 | ROM 1.5 | Gain |
-    |---|---|---|---|
-    | BM1 (`FOR`/`NEXT` vide) | 1,45 s | 0,99 s | × 1,46 |
-    | BM2 (`K=K+1`, `IF`) | 5,14 s | 2,91 s | × 1,77 |
-    | BM3 (`A=K/K*K+K-K`) | 11,34 s | 7,43 s | × 1,53 |
-    | BM4 (constantes) | 13,57 s | 7,77 s | × 1,75 |
-    | BM5 (`GOSUB`) | 14,12 s | 8,25 s | × 1,71 |
-    | BM6 (`FOR` imbriqué) | 22,88 s | 13,53 s | × 1,69 |
-    | BM7 (tableau) | 34,48 s | 20,84 s | × 1,65 |
-    | BM8 (`^`, `LOG`, `SIN`, 100 tours) | 3,92 s | 2,92 s | × 1,34 |
+    | Banc | ROM 1.4 | ROM 1.5 | ROM 1.6 | 1.4 → 1.6 |
+    |---|---|---|---|---|
+    | BM1 (`FOR`/`NEXT` vide) | 1,45 s | 0,99 s | 0,82 s | × 1,8 |
+    | BM2 (`K=K+1`, `IF`) | 5,19 s | 2,96 s | 2,10 s | × 2,5 |
+    | BM3 (`A=K/K*K+K-K`) | 11,50 s | 7,59 s | 5,62 s | × 2,0 |
+    | BM4 (constantes) | 13,73 s | 7,93 s | 5,85 s | × 2,3 |
+    | BM5 (`GOSUB`) | 14,36 s | 8,48 s | 6,25 s | × 2,3 |
+    | BM6 (`FOR` imbriqué) | 23,12 s | 13,77 s | 10,37 s | × 2,2 |
+    | BM7 (tableau) | 34,98 s | 21,34 s | 14,32 s | × 2,4 |
+    | BM8 (`^`, `LOG`, `SIN`, 100 tours) | 4,14 s | 3,14 s | 2,57 s | × 1,6 |
 
 - **`POKE` protégé** : une écriture dans la table des vecteurs (`0000:0000-03FF`),
   dans l'espace de travail du BASIC (`1000:0000-03FF`) ou dans les variables du

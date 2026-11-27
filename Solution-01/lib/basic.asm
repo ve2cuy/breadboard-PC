@@ -153,9 +153,10 @@ B_HIST  equ     0B40h                   ; derniere commande saisie au prompt (19
 B_TXT   equ     0C00h                   ; debut du programme
 B_STRTOP equ    0DFF0h                  ; haut de l'espace des chaines (descend)
 B_STK   equ     0F3F0h                  ; sommet de la pile
-B_STKLIM equ    0E500h                  ; limite basse de la pile (ROM 1.5: E000h-E4FFh = caches)
+B_STKLIM equ    0E700h                  ; limite basse de la pile (ROM 1.6: E000h-E6FFh = caches)
 ; --- caches de l'execution (ROM 1.5, voir cache_clear): cles = adresses dans le TEXTE du programme
-; --- [B_TXT, b_vartab), jamais le tampon des commandes directes. Videes a chaque modification du
+; --- [B_TXT, b_vartab), jamais le tampon des commandes directes (ROM 1.6: controle fait a l'ecriture
+; --- seulement; une lecture compare la cle a SI, ce qui suffit: une cle est toujours dans le texte). Videes a chaque modification du
 ; --- programme (relink), des variables (bas_clear: NEW, CLEAR, RUN, edition, LOAD) ou des types par
 ; --- defaut (DEFINT...), et par POKE/DSKREAD dans le texte du programme.
 BC_NUM  equ     0E000h                  ; constantes: 64 x [cle:2][longueur:1][type:1][valeur:4]
@@ -163,7 +164,10 @@ BC_VAR  equ     0E200h                  ; variables: 64 x [cle:2][adresse:2][lon
                                         ; type + 80h = tableau: adresse = son entete, longueur jusqu'apres '(',
                                         ; valable si generation = b_agen (les tableaux bougent: voir b_agen)
 BC_LIN  equ     0E400h                  ; lignes (find_line): 64 x [numero:2][adresse:2]
-BC_END  equ     0E500h
+BC_AUX  equ     0E500h                  ; ROM 1.6: 64 x [cle:2][a:2][b:2][-:2]; cle = debut d'une cible de LET
+                                        ; (lettre; a = fin de la cible) ou d'un numero de ligne apres GOTO,
+                                        ; GOSUB, THEN... (chiffre; a = numero, b = fin)
+BC_END  equ     0E700h
 
 ; --- variables de l'interpreteur (a partir de 0100h) ---
 %assign BVP 0100h

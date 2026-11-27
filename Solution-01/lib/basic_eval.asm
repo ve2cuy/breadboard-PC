@@ -156,11 +156,68 @@ eval_expr:
 eval_p:
         STKCHK
         push    ax                      ; [sp] = precedence minimale
+        ; ROM 1.6: operande deja vu dans le texte du programme (variable simple de BC_VAR ou constante de
+        ; BC_NUM, cle = son adresse): charge ici, sans eval_unary/eval_primary/var_ref/lit_number
+        SKIPSP
+        mov     bx, si
+        and     bx, 63
+        shl     bx, 1
+        shl     bx, 1
+        shl     bx, 1
+        cmp     [bx+BC_VAR], si
+        je      .var
+        cmp     [bx+BC_NUM], si
+        jne     .gen
+        mov     ax, [bx+BC_NUM+2]       ; AL = longueur, AH = type
+        mov     cl, ah
+        xor     ah, ah
+        add     si, ax
+        mov     ch, ah                  ; (fac_own = 0)
+        mov     [fac_t], cx
+        mov     ax, [bx+BC_NUM+4]
+        mov     [fac_v], ax
+        mov     ax, [bx+BC_NUM+6]
+        mov     [fac_v+2], ax
+        jmp     .loop
+.var:
+        mov     ax, [bx+BC_VAR+4]       ; AL = longueur, AH = type
+        test    ah, 80h
+        jnz     .gen                    ; tableau: chemin normal
+        mov     [b_bb3], ah
+        mov     cl, ah
+        xor     ah, ah
+        add     si, ax
+        mov     ch, ah
+        mov     [fac_t], cx
+        mov     bx, [bx+BC_VAR+2]       ; adresse de la valeur
+        mov     ax, [bx]
+        mov     [fac_v], ax
+        xor     ax, ax
+        cmp     cl, TY_INT
+        je      .vi
+        mov     ax, [bx+2]
+.vi:
+        mov     [fac_v+2], ax
+        jmp     .loop
+.gen:
         call    eval_unary
 .loop:
-        call    peek_op                 ; AL = precedence (0 = aucun), AH = op, DL = longueur
-        or      al, al
+        ; ROM 1.6: classe du caractere par table ici (sans appel s'il n'y a pas d'operateur)
+        SKIPSP
+        mov     bl, al
+        xor     bh, bh
+        mov     bl, [cs:op_cls + bx]
+        or      bl, bl
         jz      .done
+        cmp     bl, 13
+        jae     .rel
+        mov     dl, 1
+        shl     bx, 1
+        mov     ax, [cs:op_val - 2 + bx]
+        jmp     .op
+.rel:
+        call    peek_op                 ; = < > (un ou deux caracteres): AL = precedence, AH = op, DL
+.op:
         mov     bx, sp
         cmp     al, [bx]
         jb      .done
@@ -407,10 +464,6 @@ eval_primary:
 ; lit_number: litteral numerique a [SI]. ROM 1.5: une constante du programme n'est convertie qu'une
 ; fois (cache BC_NUM, cle = son adresse dans le texte): ensuite, valeur et type sont recopies.
 lit_number:
-        cmp     si, B_TXT
-        jb      lit_parse
-        cmp     si, [b_vartab]
-        jae     lit_parse
         mov     bx, si
         and     bx, 63
         shl     bx, 1
@@ -430,6 +483,10 @@ lit_number:
         mov     [fac_v+2], ax
         ret
 .miss:
+        cmp     si, B_TXT
+        jb      lit_parse
+        cmp     si, [b_vartab]
+        jae     lit_parse
         push    bx
         push    si
         call    lit_parse
@@ -787,10 +844,6 @@ var_load:
 ; Sur un succes du cache, b_word/b_wlen ne sont pas recharges (aucun appelant ne s'en sert).
 var_ref:
         mov     word [b_vck], 0
-        cmp     si, B_TXT
-        jb      .slow
-        cmp     si, [b_vartab]
-        jae     .slow
         mov     bx, si
         and     bx, 63
         shl     bx, 1
@@ -819,8 +872,74 @@ var_ref:
         add     si, ax                  ; SI apres '('
         mov     bx, [bx+2]              ; BX = entete
         mov     word [b_vck], 0         ; rien a remplir
-        jmp     .arr_go
+        ; ROM 1.6: un seul indice deja vu (variable simple ou constante entiere des caches), suivi de ')':
+        ; lu directement (meme conversion que fac_i16), sans l'evaluateur ni le contexte sur la pile
+        mov     di, si
+        and     di, 63
+        shl     di, 1
+        shl     di, 1
+        shl     di, 1
+        cmp     [di+BC_VAR], si
+        je      .fx_v
+        cmp     [di+BC_NUM], si
+        jne     .arr_go
+        mov     ax, [di+BC_NUM+2]       ; AL = longueur, AH = type
+        cmp     ah, TY_INT
+        jne     .arr_go
+        mov     dx, [di+BC_NUM+4]       ; DX = indice
+        mov     di, si
+        xor     ah, ah
+        add     di, ax                  ; DI = apres la constante
+        cmp     byte [di], ')'
+        jne     .arr_go
+        mov     ax, dx
+        mov     dx, di
+        jmp     .fx_ok
+.fx_v:
+        mov     ax, [di+BC_VAR+4]       ; AL = longueur, AH = type
+        mov     dx, [di+BC_VAR+2]       ; DX = adresse de la valeur
+        mov     di, ax
+        and     di, 00FFh
+        add     di, si                  ; DI = apres le nom
+        cmp     byte [di], ')'
+        jne     .arr_go
+        xchg    dx, di                  ; DI = valeur, DX = ')'
+        cmp     ah, TY_INT
+        jne     .fx_s
+        mov     ax, [di]
+        jmp     .fx_ok
+.fx_s:
+        cmp     ah, TY_SNG
+        jne     .arr_go                 ; chaine ou tableau: chemin normal (erreur, ou indices)
+        push    cx
+        push    dx
+        push    bx
+        mov     ax, [di]
+        mov     [fac_v], ax
+        mov     ax, [di+2]
+        mov     [fac_v+2], ax
+        mov     word [fac_t], TY_SNG
+        mov     al, 1
+        call    fl_to_i16               ; (comme fac_i16)
+        pop     bx
+        pop     dx
+        pop     cx
+        jnc     .fx_ok
+        ERROR   ERR_OV
+.fx_ok:                                 ; AX = indice, DX -> ')', BX = entete, CL = type
+        mov     [b_idx], ax
+        inc     dx
+        mov     [b_t7], dx              ; SI final
+        mov     [b_bb3], cl
+        add     sp, 2                   ; debut du nom
+        mov     cx, 1
+        call    arr_elem_at
+        jmp     .fin
 .miss:
+        cmp     si, B_TXT
+        jb      .slow
+        cmp     si, [b_vartab]
+        jae     .slow
         mov     [b_vck], bx
 .slow:
         mov     [b_vks], si
@@ -932,13 +1051,9 @@ var_ref:
         mov     cl, [b_bb3]
         ret
 
-; var_skip: SI sur une variable SIMPLE connue du cache -> SI apres (comme skip_target), CF = 0;
-; sinon CF = 1, SI inchange. Detruit AX, BX.
+; var_skip: SI sur une variable SIMPLE connue du cache -> SI apres (comme skip_target), BX = adresse
+; de la valeur, CL = type, CF = 0; sinon CF = 1, SI inchange. Detruit AX, BX, CL.
 var_skip:
-        cmp     si, B_TXT
-        jb      .no
-        cmp     si, [b_vartab]
-        jae     .no
         mov     bx, si
         and     bx, 63
         shl     bx, 1
@@ -950,8 +1065,10 @@ var_skip:
         mov     ax, [bx+4]
         test    ah, 80h
         jnz     .no
+        mov     cl, ah
         xor     ah, ah
         add     si, ax
+        mov     bx, [bx+2]
         clc
         ret
 .no:
@@ -1047,7 +1164,7 @@ arr_elem_at:
         ERROR   ERR_BS
 .nd:
         add     di, 3                   ; DI -> bornes
-        mov     word [b_t2], 0          ; index lineaire
+        xor     ax, ax                  ; index lineaire
         xor     bx, bx
 .k:
         mov     dx, [b_idx + bx]
@@ -1055,20 +1172,24 @@ arr_elem_at:
         jbe     .in
         ERROR   ERR_BS
 .in:
-        mov     ax, [b_t2]
+        or      ax, ax                  ; ROM 1.6: pas de MUL tant que l'index lineaire est nul
+        jz      .z
+        push    dx
         mov     dx, [di]
         inc     dx
         mul     dx
-        add     ax, [b_idx + bx]
-        mov     [b_t2], ax
+        pop     dx
+.z:
+        add     ax, dx
         add     di, 2
         add     bx, 2
         loop    .k
-        push    di                      ; debut des elements
-        call    elt_size
-        mul     word [b_t2]
-        pop     di
-        add     ax, di
+        shl     ax, 1                   ; ROM 1.6: x taille de l'element (2 ou 4) par decalages
+        cmp     byte [b_bb3], TY_INT
+        je      .i2
+        shl     ax, 1
+.i2:
+        add     ax, di                  ; DI = debut des elements
         mov     bx, ax
         ret
 

@@ -187,8 +187,41 @@ prog_edit:
         ret
 
 ; parse_lineno: SI -> AX = numero de ligne; CF = 1 si pas de chiffre.
+; ROM 1.6: un numero du texte du programme n'est lu qu'une fois (cache BC_AUX, cle = son adresse).
 parse_lineno:
-        call    skip_sp
+        SKIPSP
+        mov     bx, si
+        and     bx, 63
+        shl     bx, 1
+        shl     bx, 1
+        shl     bx, 1
+        add     bx, BC_AUX
+        cmp     [bx], si
+        jne     .miss
+        mov     ax, [bx+2]
+        mov     si, [bx+4]
+        clc
+        ret
+.miss:
+        cmp     si, B_TXT
+        jb      parse_lno
+        cmp     si, [b_vartab]
+        jae     parse_lno
+        push    bx
+        push    si
+        call    parse_lno
+        pop     dx                      ; debut
+        pop     bx                      ; case
+        jc      .r                      ; pas de chiffre: rien a garder
+        mov     [bx], dx
+        mov     [bx+2], ax
+        mov     [bx+4], si
+        clc
+.r:
+        ret
+
+parse_lno:
+        mov     al, [si]
         cmp     al, '0'
         jb      .no
         cmp     al, '9'
@@ -233,10 +266,14 @@ bas_stmt:
         call    bas_chkbrk
 .again:
         SKIPSP
+        cmp     al, 80h                 ; ROM 1.6: affectation implicite (lettre) d'abord
+        jae     .n1
+        cmp     al, ':'
+        je      .col
         or      al, al
         jz      bas_eol
-        cmp     al, ':'
-        jne     .n1
+        jmp     st_let
+.col:
         inc     si
         jmp     .again
 .n1:
@@ -737,16 +774,59 @@ skip_target:
 .sn:
         ERROR   ERR_SN
 
+; tgt_skip: comme skip_target; dans le texte du programme, la fin de la cible est gardee (BC_AUX).
+tgt_skip:
+        mov     bx, si
+        and     bx, 63
+        shl     bx, 1
+        shl     bx, 1
+        shl     bx, 1
+        add     bx, BC_AUX
+        cmp     [bx], si
+        jne     .miss
+        mov     si, [bx+2]
+        ret
+.miss:
+        cmp     si, B_TXT
+        jb      skip_target
+        cmp     si, [b_vartab]
+        jae     skip_target
+        push    bx
+        push    si
+        call    skip_target
+        pop     ax
+        pop     bx
+        mov     [bx], ax
+        mov     [bx+2], si
+        ret
+
 st_let:
         SKIPSP
         push    si                      ; debut de la cible
         call    var_skip                ; variable simple deja vue: sans rebalayer son nom
-        jnc     .sk
-        call    skip_target
+        jc      .gen
+        ; ROM 1.6: son adresse ne change pas (une nouvelle variable simple s'ajoute apres les autres):
+        ; pas de second var_ref apres le membre droit
+        push    bx
+        push    cx
+        SKIPSP
+        cmp     al, '='
+        jne     .sn
+        inc     si
+        call    eval_expr
+        pop     cx
+        pop     bx
+        call    store_slot
+        add     sp, 2
+        mov     word [fac_t], TY_INT
+        jmp     bas_newstt
+.gen:
+        call    tgt_skip                ; ROM 1.6: element de tableau: fin de la cible gardee
 .sk:
         SKIPSP
         cmp     al, '='
         je      .eq
+.sn:
         ERROR   ERR_SN
 .eq:
         inc     si
@@ -1350,6 +1430,8 @@ st_next:
         jb      .find
         cmp     al, 'Z'
         ja      .find
+        call    var_skip                ; ROM 1.6: variable simple deja vue: BX = son adresse
+        jnc     .find
         call    var_ref
 .find:
         mov     bp, sp

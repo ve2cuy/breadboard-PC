@@ -575,6 +575,24 @@ ok_run('cache: variable creee pendant les indices d un tableau deja vu',
        '10 DIM M(3):M(1)=4:M(2)=9\r20 FOR K=1 TO 2\r30 PRINT M(K);\r40 NEXT\r50 PRINT M(1+NV*0)\rRUN\r', ' 4  9  4 ')
 ok_run('cache: meme constante, texte different (commande directe)', 'PRINT 1.5+1.5\rPRINT 2.5\r', ' 3 \n 2.5 ')
 ok_run('cache: CLEAR puis la meme variable', '10 A=3:CLEAR:PRINT A;:A=4:PRINT A\rRUN\r', ' 0  4 ')
+# ROM 1.6: chemins rapides (operande deja vu, indice unique, LET direct, numeros de ligne, cibles de LET)
+ok_run('cache 1.6: indice reel arrondi (CINT) par le chemin rapide',
+       '10 DIM A(5):A(2)=7:A(1)=3\r20 I=1.5:FOR K=1 TO 2:PRINT A(I);:NEXT\r30 I=1.4:PRINT A(I);\r'
+       '40 FOR K=1 TO 2:I=-.4:A(I)=9+K:NEXT:PRINT A(0)\rRUN\r', ' 7  7  3  11 ')
+has_run('cache 1.6: indice hors bornes par le chemin rapide',
+        '10 DIM A(3)\r20 FOR K=1 TO 2:I=K*3:PRINT A(I);:NEXT\rRUN\r', ' 0 ', 'Subscript out of range')
+has_run('cache 1.6: indice chaine par le chemin rapide',
+        '10 DIM A(3):I$="1"\r20 FOR K=1 TO 2:PRINT A(K);:NEXT:PRINT A(I$)\rRUN\r', ' 0  0 ', 'Type mismatch')
+ok_run('cache 1.6: cible de LET avec parentheses et chaine dans l indice',
+       '10 DIM A(5)\r20 FOR K=1 TO 3\r30 A(LEN(")")+K)=K*10\r40 NEXT\r50 PRINT A(2);A(3);A(4)\rRUN\r', ' 10  20  30 ')
+ok_run('cache 1.6: numero de GOTO modifie par POKE',
+       '10 GOTO 30\r20 END\r30 PRINT "A";:IF Q=0 THEN Q=1:POKE &HC06,52:GOTO 10\r35 END\r40 PRINT "B"\rRUN\r', 'AB')
+ok_run('cache 1.6: LET direct d une chaine', '10 FOR K=1 TO 3:A$=A$+"X":NEXT:PRINT A$\rRUN\r', 'XXX')
+ok_run('cache 1.6: LET direct avec conversion entiere', '10 FOR K=1 TO 2:A%=K*1.6:PRINT A%;:NEXT\rRUN\r', ' 2  3 ')
+ok_run('cache 1.6: membre droit qui cree une variable (tableaux deplaces)',
+       '10 DIM M(2)\r20 FOR K=1 TO 2\r30 X=K+NV:M(K)=X\r35 IF K=1 THEN NW=5\r40 NEXT\r50 PRINT M(1);M(2)\rRUN\r', ' 1  2 ')
+ok_run('cache 1.6: NEXT avec variable, imbrique',
+       '10 FOR I=1 TO 2:FOR J=1 TO 2:PRINT I*10+J;:NEXT J,I\rRUN\r', ' 11  12  21  22 ')
 
 # --- memes scenarios avec les VRAIES routines uart_* -----------------------------
 print('--- mode reel: vraies routines uart_* (arduino_send, tampon circulaire) ---')

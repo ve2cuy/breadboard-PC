@@ -1,8 +1,9 @@
-"""Banc de vitesse et profil du BASIC de Solution-01 sous Unicorn (ROM 1.5): bancs de Rugg/Feldman (BM1-BM8) + quelques autres.
+"""Banc de vitesse et profil du BASIC de Solution-01 sous Unicorn (ROM 1.5, 1.6): bancs de Rugg/Feldman (BM1-BM8) + quelques autres.
 Compte, par routine (libelle non local du listing), les instructions executees et les octets d'instruction
 (le 8088 est limite par son bus: ~4 cycles par octet lu). Usage (depuis Solution-01): python tests/basic_bench.py [bm1 ... prt] [--top N] [--build]
 Variable S01: autre copie de Solution-01 a mesurer (git worktree d'une version precedente).
-Estimation du temps: 4 cycles par octet de bus (code + donnees), le 8088 etant limite par son bus."""
+Estimation du temps: 4 cycles par octet de bus (code + donnees), le 8088 etant limite par son bus, plus les
+cycles internes des MUL/DIV (ROM 1.6)."""
 import collections, os, sys
 S01 = os.environ.get('S01', os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(S01, 'tests'))
@@ -39,6 +40,10 @@ import bisect
 counts = collections.Counter()
 nbytes = collections.Counter()
 data = [0]
+extra = [0]
+# cycles du 8088 au-dela de l'acces au bus (moyennes de la doc Intel): MUL/IMUL/DIV/IDIV 8 et 16 bits
+MULDIV = {}
+MDPEN = {(0, 4): 70, (0, 5): 90, (0, 6): 85, (0, 7): 105, (1, 4): 125, (1, 5): 145, (1, 6): 155, (1, 7): 175}
 
 
 _RealUc = unicorn.Uc
@@ -50,6 +55,15 @@ def ProfUc(*a, **k):
         off = addr - 0xC0000
         counts[off] += 1
         nbytes[off] += size
+        p = MULDIV.get(addr)
+        if p is None:
+            b = bytes(uc.mem_read(addr, 2))
+            p = 0
+            if b[0] in (0xF6, 0xF7) and (b[1] >> 3) & 7 >= 4:      # MUL, IMUL, DIV, IDIV
+                p = MDPEN[(b[0] & 1, (b[1] >> 3) & 7)]
+            MULDIV[addr] = p
+        if p:
+            extra[0] += p
     uc.hook_add(unicorn.UC_HOOK_CODE, hook, None, 0xC0000, 0xFFFFF)
     def mem(uc, access, addr, size, value, ud):
         data[0] += size
@@ -60,7 +74,7 @@ def ProfUc(*a, **k):
 H.Uc = ProfUc
 total = {}
 for name in (args or list(BENCH)):
-    counts.clear(); nbytes.clear(); data[0] = 0
+    counts.clear(); nbytes.clear(); data[0] = 0; extra[0] = 0
     out, st, _ = H.run(BENCH[name] + SUFFIX, max_insns=400_000_000, max_idle=3000)
     ok = 'FIN' in out
     byfn = collections.Counter(); byb = collections.Counter()
@@ -70,11 +84,14 @@ for name in (args or list(BENCH)):
         byfn[fn] += c
         byb[fn] += nbytes[off]
     ins = sum(counts.values()); by = sum(nbytes.values())
-    total[name] = (ins, by, data[0])
+    total[name] = (ins, by, data[0], extra[0])
     print('== %s: %s, %d instructions, %d octets lus (~%.2f s a 4,77 MHz, estimation 4 cycles/octet + 2/instr)' % (
         name, 'OK' if ok else 'ECHEC ' + st['stopped'] + ' ' + out[-80:], ins, by, (by * 4 + ins * 2) / 4.77e6))
+    entry = {n: counts.get(a, 0) for a, n in glob}
     for fn, c in byfn.most_common(top):
-        print('   %-28s %9d  %5.1f%%  %9d o' % (fn, c, 100.0 * c / ins, byb[fn]))
+        print('   %-28s %9d  %5.1f%%  %9d o  %7d appels' % (fn, c, 100.0 * c / ins, byb[fn], entry.get(fn, 0)))
 print()
-for n, (i, b, dd) in total.items():
-    print('%-5s %10d instr %10d octets code %10d octets donnees  ~%.2f s a 4,77 MHz (4 cycles/octet de bus)' % (n, i, b, dd, (b + dd) * 4 / 4.77e6))
+for n, (i, b, dd, x) in total.items():
+    print('%-5s %10d instr %10d octets code %10d octets donnees %9d cycles MUL/DIV  ~%.2f s a 4,77 MHz' % (
+        n, i, b, dd, x, ((b + dd) * 4 + x) / 4.77e6))
+print('(temps estime: 4 cycles par octet de bus + cycles internes des MUL/DIV)')
