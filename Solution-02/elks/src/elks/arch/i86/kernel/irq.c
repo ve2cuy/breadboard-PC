@@ -155,6 +155,11 @@ void INITPROC irq_init(void)
     unsigned long __far *vec1C = _MK_FP(0, 0x1C << 2);  /* BIOS user timer callout */
     unsigned long __far *vec0F = _MK_FP(0, 0x0F << 2);  /* IRQ 7 vector (INT 0Fh) */
     *vec1C = *vec0F;            /* point INT 1C to INT 0F vector */
+#ifdef CONFIG_HW_SOLUTION01
+    /* Solution-01: no 8253, the bridge sends the tick that the ROM BIOS turns into INT 1Ch.
+     * INT 1Ah AH=E0h AL=1 asks for 100 Hz (HZ) instead of the 18.2 Hz used for DOS. */
+    __asm__ volatile ("int $0x1a" : : "a" (0xE001) : "cc", "memory");
+#endif
 #endif
 
 #else /* normal IRQ 0 timer */

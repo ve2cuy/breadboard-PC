@@ -115,6 +115,7 @@ class BridgeModel:
         self.cfg = bytearray(cfg if cfg is not None else [1, 0, 0, 1, 0xD0, 0xC8, 0x48, 0] + [0] * 8)
         self.cfg_ok = cfg_ok     # False: pont < 2.2 (2Eh sans reponse)
         self.cfg_writes = 0
+        self.tick_on = False     # pont 2.3: tic d'horloge (30h marche, 31h arret) - injecte par rom_sim.py
 
     def _need(self):
         c = self.cmd
@@ -165,6 +166,10 @@ class BridgeModel:
     def _exec(self, c):
         op = c[0]
         self.log.append((op, bytes(c[1:])))
+        if op in (0x30, 0x31, 0x32):
+            self.tick_on = op != 0x31
+            self.tick_fast = op == 0x32          # pont 2.4: 100 Hz
+            return []
         if op == 0x00:
             return [0xB1, 3, 0x1F]
         if op == 0x01:
@@ -412,6 +417,8 @@ def run(text, max_idle=3000, max_insns=30_000_000, real=False, trace=0, stop_at=
     lab = labels()
     chk_lo = [x for x, n in lab if n == 'bas_chkbrk'][0]
     chk_hi = [x for x, n in lab if n == 'bas_break'][0]
+    hw = [(x, n) for x, n in lab if n in ('bas_hwkey', 'bas_arrows')]      # ROM 1.8: chkbrk -> bas_hwkey -> uart
+    hw_lo, hw_hi = (hw[0][0], hw[1][0]) if len(hw) == 2 else (0, 0)
 
     if bridge is None:
         bridge = BridgeModel()
@@ -427,6 +434,8 @@ def run(text, max_idle=3000, max_insns=30_000_000, real=False, trace=0, stop_at=
             # saisies ne sont livrees que lorsque l'interpreteur ATTEND une ligne)
             sp = uc.reg_read(UC_X86_REG_SP)
             ret = int.from_bytes(uc.mem_read(uc.reg_read(UC_X86_REG_SS) * 16 + sp, 2), 'little')
+            if hw_lo <= ret < hw_hi:                     # appele par bas_hwkey: son appelant
+                ret = int.from_bytes(uc.mem_read(uc.reg_read(UC_X86_REG_SS) * 16 + sp + 2, 2), 'little')
             busy = chk_lo <= ret < chk_hi
             if not st['rem'] and chunks:
                 st['polls'] += 1

@@ -62,8 +62,9 @@ class Machine:
     """8088 + RAM + ROM + 8255 + 8259 + pont simule. st: etat observable apres run()."""
 
     def __init__(self, binary, bridge=None, mem=None, script=(), gap=300, tail_blocks=3_000_000,
-                 stop_on=None, verbose=False):
+                 stop_on=None, verbose=False, tick_blocks=4000):
         self.bridge = bridge or H.BridgeModel()
+        self.tick_blocks = tick_blocks   # pont 2.3: un tic (9Ch, etiquette PS/2) tous les tick_blocks blocs, si 30h
         self.uc = uc = Uc(UC_ARCH_X86, UC_MODE_16)
         uc.mem_map(0, 0x80000)                          # RAM (le materiel n'en a que 128 Ko)
         uc.mem_map(ROM, 0x40000)
@@ -110,6 +111,8 @@ class Machine:
         st, value = self.st, value & 0xFF
         if port not in (PIC_CMD, PIC_DATA, PORTA, PORTB, PORTC, PIO, 0xFF):
             st['badports'].add(port)
+        elif port in (PORTA, PORTB, PORTC, PIO) and uc.reg_read(UC_X86_REG_CS) < ROM >> 4:
+            st['etranger8255'] = st.get('etranger8255', 0) + 1                # ecriture au 8255 hors de la ROM
         if port == PORTB:
             st['chan'] = value
         elif port == PORTA:
@@ -119,6 +122,7 @@ class Machine:
                 if self.verbose:
                     sys.stdout.write(chr(value)); sys.stdout.flush()
                 if self.stop_on and st['uart'].endswith(self.stop_on):
+                    self.stopped = True
                     uc.emu_stop()
             elif st['chan'] == CHAN_CMD:
                 st['q'].extend((PC_TAG_REPLY, b) for b in self.bridge.feed(value))
@@ -131,6 +135,7 @@ class Machine:
             st['mask'] = value
             st['masks'][value] = st['masks'].get(value, 0) + 1
         elif port == 0xFF:                                             # fin (bios_test.asm)
+            self.stopped = True
             uc.emu_stop()
 
     def _block(self, uc, addr, size, ud):
@@ -150,6 +155,12 @@ class Machine:
             k = st['keys'].pop(0)                                      # une frappe au terminal, ou
             st['q'].append(k if isinstance(k, tuple) else (PC_TAG_UART, k))   # (PC_TAG_PS2, scan code)
             st['nextkey'] = st['blocks'] + self.gap
+        if getattr(self.bridge, 'tick_on', False) and st['blocks'] >= st.get('nexttick', 0):
+            st['nexttick'] = st['blocks'] + (self.tick_blocks * 2 // 11 if getattr(self.bridge, 'tick_fast', False)
+                                             else self.tick_blocks)   # 100 Hz: 5,5 fois plus souvent
+            if not any(t == PC_TAG_PS2 and b == 0x9C for t, b in st['q']):
+                st['q'].append((PC_TAG_PS2, 0x9C))                     # tic d'horloge (pont 2.3)
+            st['ticks'] = st.get('ticks', 0) + 1
         if st['q'] and not (st['portc'] & PC_IBF):                    # le pont depose l'octet suivant
             tag, b = st['q'].pop(0)
             st['portc'], st['porta'], st['pend'] = 0x80 | PC_IBF | tag, b, True
@@ -161,12 +172,35 @@ class Machine:
         if not st['script'] and not st['keys'] and st['end'] is None:
             st['end'] = st['blocks'] + self.tail_blocks               # scenario fini: encore un peu
         if st['end'] is not None and st['blocks'] > st['end']:
+            self.stopped = True
             uc.emu_stop()
 
     def run(self, count=3_000_000_000):
+        # HLT (ELKS, au repos: idle_halt) arrete Unicorn: comme le 8088, on attend l'interruption suivante -
+        # le temps passe (blocs comptes sans instruction: tics du pont, frappes du scenario), l'IRQ1 est
+        # livree, puis l'execution reprend apres le HLT.
+        uc = self.uc
+        self.stopped = False
         try:
-            self.uc.reg_write(UC_X86_REG_CS, ROM >> 4)
-            self.uc.emu_start(ROM, 0, count=count)
+            uc.reg_write(UC_X86_REG_CS, ROM >> 4)
+            uc.emu_start(ROM, 0, count=count)
+            for _ in range(200_000):
+                if self.stopped:
+                    break
+                cs, ip = uc.reg_read(UC_X86_REG_CS), uc.reg_read(UC_X86_REG_IP)
+                if uc.mem_read((cs * 16 + ip - 1) & 0xFFFFF, 1)[0] != 0xF4:
+                    break                                              # fin du compte d'instructions
+                if not uc.reg_read(UC_X86_REG_EFLAGS) & 0x200:
+                    break                                              # HLT avec IF = 0: arret definitif
+                self.st['halts'] = self.st.get('halts', 0) + 1
+                irqs = self.st['irqs']
+                for _ in range(1_000_000):
+                    self._block(uc, 0, 0, None)                        # le temps passe jusqu'a une IRQ1
+                    if self.st['irqs'] != irqs or self.stopped:
+                        break
+                if self.stopped:
+                    break
+                uc.emu_start((uc.reg_read(UC_X86_REG_CS) * 16 + uc.reg_read(UC_X86_REG_IP)) & 0xFFFFF, 0, count=count)
         except UcError as e:
             self.st['err'] = str(e)
         st = self.st

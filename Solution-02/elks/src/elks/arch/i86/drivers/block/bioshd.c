@@ -380,7 +380,9 @@ struct gendisk * INITPROC bioshd_init(void)
         return NULL;
 
     /* FIXME perhaps remove for speed on floppy boot*/
+#ifndef CONFIG_HW_SOLUTION01      /* Solution-01: 3F2h reaches the 8255 (decoded by A7 alone) */
     outb_p(0x0C, FDC_DOR);      /* FD motors off, enable IRQ and DMA*/
+#endif
 
 #ifdef PER_DRIVE_INFO
     {

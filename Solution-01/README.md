@@ -377,9 +377,16 @@ breadboard-PC/                  (racine du dépôt Git)
     │   ├── basic_harness.py  émulateur, E/S UART simulées, garde d'écritures
     │   ├── basic_test.py   scénarios du BASIC (make test)
     │   ├── rom_sim.py      ROM complète / BIOS avec IRQ1 asynchrones (8255, 8259, ISR)
-    │   ├── rom_test.py     scénarios DOS, trace, Ctrl-\, clavier PS/2, collage (make test-rom)
+    │   ├── rom_test.py     scénarios DOS, trace, Ctrl-\, clavier PS/2, collage, SETTIME (make test-rom)
+    │   ├── gen_dos21_rom.py  disquette PC-DOS 2.1 de la ROM (build/dos21_rom.bin)
+    │   ├── gen_settime.py  dos/SETTIME.EXE fait par MASM 1.00 et LINK 1.08 du DOS de la ROM (simulateur)
     │   └── scenario_dos21.txt  exemple de scénario pour rom_sim.py en ligne de commande
     ├── check_rom.py        Validation structurelle du .bin assemblé
+    ├── elks/               ELKS (Minix) pour Solution-01 : solution01.config, construire.ps1/.sh (Docker,
+    │                       sources de Solution-02/elks/src), README.md / README_fr.md ; sortie/ hors de git
+    ├── dos/                Programmes DOS de la disquette de la ROM : SETTIME.ASM (source MASM 1.00)
+    │                       et SETTIME.EXE (date et heure du DOS d'après la RTC de la Black Pill) ;
+    │                       EDIT.ASM (source NASM) et EDIT.COM (éditeur de texte plein écran)
     ├── .gitignore          Ignore build/ (fichiers jetables de check-modules)
     ├── include/
     │   ├── hardware.inc    Constantes matérielles (8255 mode 2, 8259,
@@ -397,6 +404,8 @@ breadboard-PC/                  (racine du dépôt Git)
         ├── utils.asm       delay_ms_proc (routine derrière la macro)
         ├── lcd_i2c.asm     LCD I2C via le pont (commande/donnée HD44780)
         ├── ps2.asm         Clavier PS/2 + terminal UART : ps2_get_char, ps2_poll_char
+        ├── kbd.asm         Clavier PS/2 complet (ROM 1.8) : kbd_poll pour le BASIC, le Tiny BASIC et INT 16h
+        ├── setup.asm       BIOS de réglages (ROM 1.7)
         ├── tiny_basic.asm  Interpréteur Tiny BASIC (sous-menu Basic, option 1)
         ├── basic.asm       BASIC « GW-BASIC-like » (sous-menu Basic, option 2) : cœur, tokeniseur ;
         │   basic_tokens.inc, basic_float.asm, basic_fmath.asm, basic_eval.asm,
@@ -524,6 +533,20 @@ conditionnel via `%ifdef TEST_I2C_DUMP`) est devenu l'affichage LCD
 parallèle au LCD I2C — la directive `TEST_I2C_DUMP` a été retirée.
 
 ## Fonctions d'accès au clavier PS/2 et au terminal UART (`lib/ps2.asm`)
+
+> **ROM 1.8 : clavier PS/2 complet dans le BASIC et le DOS** (`lib/kbd.asm`). Avant, le BASIC, le Tiny
+> BASIC et `INT 16h` ne lisaient que le terminal : au clavier PS/2, seuls Maj + flèches (traités par le
+> pont) agissaient. `kbd_poll` traduit maintenant les scan codes (Set 2) en touches de `INT 16h`
+> (`AH` = scan code du jeu 1 de l'XT, `AL` = ASCII) :
+> - disposition **QWERTY US** ; Maj gauche et droite, Ctrl (Ctrl-C, Ctrl-X…), Alt (`AL` = 0), Verr. Maj ;
+>   pavé numérique = chiffres (Verr. Num toujours active) ; flèches, Début, Fin, PgPréc, PgSuiv, Inser,
+>   Suppr, F1-F12 (`AL` = 0) ;
+> - `INT 16h AH = 02h` rend l'état de Maj, Ctrl, Alt et Verr. Maj ;
+> - dans le BASIC, les flèches deviennent `ESC [ A`… comme celles du terminal (flèche haut : rappel de la
+>   dernière commande).
+>
+> Le menu garde `ps2_get_char` et sa liste blanche (ci-dessous). Essais : `tests/bios_test.py` (`INT 16h`
+> au clavier PS/2), `tests/rom_test.py` (`print 6*7` tapé au BASIC, `VER` tapé au DOS de la ROM).
 
 Le clavier PS/2 est décodé par le **pont** (trame de 11 bits : start,
 8 données, parité impaire, stop — voir [Pont STM32](#pont-stm32-8255-en-mode-2)),
@@ -769,7 +792,8 @@ ligne comme le ferait un utilisateur. Ce n'est **pas** un test sur le matériel.
 
 Second interpréteur, **beaucoup plus riche que Tiny BASIC** : lancé par
 `2) BASIC` du sous-menu Basic, piloté par le **terminal UART** du PC (port série USB du pont,
-écho local désactivé, Entrée = `CR`), il offre des **chaînes de caractères**, des
+écho local désactivé, Entrée = `CR`) **ou par le clavier PS/2** (version 1.1 du BASIC, ROM 1.8 :
+voir `lib/kbd.asm`), il offre des **chaînes de caractères**, des
 **nombres à virgule flottante**, `RND`/`RANDOMIZE`, `PEEK`/`POKE`, les
 fonctions mathématiques, les tableaux, `DEF FN`, `WHILE`/`WEND`, `DATA`/`READ`…
 L'écran LCD affiche « BASIC (type GW) / Terminal UART / SYSTEM/Ctrl-X: menu ».
@@ -1195,10 +1219,11 @@ sous-menu **USB Disk → 4) DOS 2.1 (ROM)**, ou touche **0** de la liste des ima
 
 | Lecteur | Contenu |
 |---|---|
-| `A:` (ROM, protégée en écriture) | `IBMBIO.COM`, `IBMDOS.COM`, `COMMAND.COM`, `EDLIN.COM` (PC-DOS 2.1), `MASM.EXE` (Microsoft MACRO Assembler 1.00), `LINK.EXE` (Object Linker 1.08), `HELLO.ASM` (exemple), `AUTOEXEC.BAT` |
+| `A:` (ROM, protégée en écriture) | `IBMBIO.COM`, `IBMDOS.COM`, `COMMAND.COM`, `EDLIN.COM` (PC-DOS 2.1), `MASM.EXE` (Microsoft MACRO Assembler 1.00), `LINK.EXE` (Object Linker 1.08), `HELLO.ASM` (exemple), `SETTIME.ASM` et `SETTIME.EXE` (ROM 1.8, voir plus bas), `EDIT.COM` (ROM 1.9, éditeur plein écran, voir plus bas), `AUTOEXEC.BAT` |
 | `B:` (disque en RAM de 180 Ko) | vide, formaté à chaque démarrage ; MASM et LINK y écrivent. **Contenu perdu au redémarrage** (la RAM est effacée) |
 
-`AUTOEXEC.BAT` demande la date et l'heure, fait `PATH A:\`, copie `HELLO.ASM` sur `B:` et passe sur `B:` :
+`AUTOEXEC.BAT` lance `SETTIME` (date et heure d'après la RTC du pont ; s'il échoue, `DATE` et `TIME` les
+demandent), fait `PATH A:\`, copie `HELLO.ASM` sur `B:` et passe sur `B:` :
 
 ```
 B>masm hello;
@@ -1207,14 +1232,78 @@ B>hello
 Hello, world! (8088, VE2CUY)
 ```
 
-- Image : `tests/gen_dos21_rom.py` (règle `build/dos21_rom.bin` du Makefile) ; seuls les 314 secteurs
-  utilisés sont dans la ROM, en `D800:0000` (physique D8000h-FF3FFh) ; les amas libres se lisent comme des
-  zéros. La disquette complète est aussi écrite dans `PC-DOS/pcdos2_1_s01.img`.
+- Image : `tests/gen_dos21_rom.py` (règle `build/dos21_rom.bin` du Makefile) ; seuls les 330 secteurs
+  utilisés sont dans la ROM, en `D600:0000` (physique D6000h-FDFFFh ; `D800:0000` avant la ROM 1.8, où
+  SETTIME ne tenait plus) ; les amas libres se lisent comme des zéros. La disquette complète est aussi
+  écrite dans `PC-DOS/pcdos2_1_s01.img`.
 - `B:` occupe 52800h-7F7FFh : le DOS dispose alors de 330 Ko (`INT 12h` lit `0040:0013`) ; `INT 11h`
   annonce deux lecteurs de disquette. Monter une image (`AH = F0h`) supprime `B:`. Avec 128 Ko de RAM, pas de `B:`.
 - PC-DOS 2.1 ne connaît pas le FAT16 : le disque `C:` de la flash n'est pas visible sous ce DOS.
 - Pas de `DEBUG` : aucune version compatible avec DOS 2.1 dans le dépôt.
 - Le LCD montre la console du DOS (pont 2.1, voir ci-dessous).
+
+### SETTIME : date et heure du DOS d'après la RTC (ROM 1.8)
+
+La Black Pill a une **horloge temps réel** (RTC du STM32, gardée par la pile VBAT). Le BIOS la lit par
+`INT 1Ah` (`AH = 02h` heure, `04h` date, en BCD comme le BIOS de l'AT ; `03h`/`05h` la règlent). Mais
+aucun DOS ne la consulte sur un PC/XT (octet de modèle `FEh`) : il démarre au 1-01-1980, ou demande la
+date. **`SETTIME`** fait le lien :
+
+```
+B>settime
+SETTIME: 27-11-2026 14:03:05 (RTC)
+```
+
+- Il lit la RTC par `INT 1Ah` puis règle le DOS par `INT 21h AH = 2Bh` (date) et `2Dh` (heure), des
+  fonctions présentes depuis DOS 1.0. Fin par retour lointain vers `PSP:0000` sous DOS 1 ; `AH = 4Ch` à
+  partir de DOS 2, avec `ERRORLEVEL` 0 (réglé) ou 1 (pas de RTC, message `pas de RTC / no RTC`).
+- Source : `dos/SETTIME.ASM`, en syntaxe **MASM 1.00** ; il s'assemble sur la machine même :
+  `COPY A:SETTIME.ASM B:`, `MASM SETTIME;`, `LINK SETTIME;`. L'exécutable du dépôt,
+  `dos/SETTIME.EXE` (896 octets), est produit exactement ainsi par `tests/gen_settime.py`, au simulateur,
+  avec le MASM et le LINK de la disquette de la ROM.
+- Les deux fichiers sont sur `A:` ; l'`AUTOEXEC.BAT` de la ROM le lance à chaque démarrage. Pour un autre
+  DOS, copier `SETTIME.EXE` sur sa disquette ou sur `C:`.
+- Essayé au simulateur sous **PC-DOS 2.1** (ROM et disquette d'origine) et **MS-DOS 3.30** : `DATE` et
+  `TIME` donnent ensuite la date et l'heure de la RTC.
+- Corrigé dans le BIOS du même coup (`INT 1Ah AH = 00h/01h`) : le compteur de ticks comptait 18,2 ticks
+  par seconde au lieu de 18,2065 (l'heure du DOS retardait de 16 s à midi), et un simple recul de
+  l'horloge passait pour minuit : le DOS ajoutait un jour.
+
+### EDIT : éditeur de texte plein écran (ROM 1.9)
+
+Pour modifier `CONFIG.SYS`, `AUTOEXEC.BAT`, un `.ASM`… sans passer par EDLIN :
+
+```
+B>edit hello.asm
+```
+
+| Touche | Effet |
+|---|---|
+| Flèches | Déplacement ; haut et bas gardent la colonne |
+| Début, Fin | Début, fin de la ligne |
+| PgPréc, PgSuiv | Page de 23 lignes plus haut, plus bas |
+| Retour arrière, Suppr | Effacer avant, sous le curseur (en fin de ligne : joindre la suivante) |
+| Entrée, Tab | Couper la ligne, tabulation (caractère 09h, affiché jusqu'au multiple de 8 suivant) |
+| **F2** ou **Ctrl-S** | **Enregistrer et quitter** |
+| **Échap** | **Quitter**. Si le texte a changé : « Enregistrer les changements ? (O/N, Echap = continuer) » : `O` enregistre et quitte, `N` quitte sans enregistrer, Échap revient au texte |
+
+- Écran : 24 lignes de texte et une ligne d'état (nom, `*` si modifié, ligne, colonne). Séquences ANSI
+  (`ESC [ l;c H`, `ESC [ K`) envoyées par `INT 10h AH = 0Eh` : le terminal du PC et la console au LCD du
+  pont les comprennent. Lignes plus larges que 79 colonnes : défilement horizontal par 40 colonnes.
+- Clavier par `INT 16h` : terminal ou clavier PS/2 (ROM 1.8). Au terminal, F2 = `ESC O Q` (xterm) ou
+  `ESC [ 12~` (PuTTY, VT220 : reconnu à partir de la ROM 2.0, avant elle devenait Inser). Ctrl-S fait la
+  même chose, sauf si le terminal s'en sert pour le contrôle de flux XON/XOFF (PuTTY sur un port série).
+- Fichiers jusqu'à ~ 52 Ko, dans un tampon à trou (insertion et suppression immédiates). Les CR sont
+  retirés à la lecture (arrêt au Ctrl-Z) et remis à l'écriture (CR LF), suivi d'un Ctrl-Z comme EDLIN.
+  Un fichier absent est créé à l'enregistrement.
+- **Tous les DOS** : à partir de DOS 2.0, fonctions à numéro de fichier (chemins permis :
+  `EDIT C:\CONFIG.SYS`) ; sous DOS 1.x, FCB (lecteur et nom seulement). Fin par `INT 20h`.
+- Une erreur d'écriture (disque plein, ou `A:` qui est en ROM, donc protégé) est signalée sur la ligne
+  d'état et l'édition continue : `INT 24h` est détourné pendant l'enregistrement, sinon le « Abort » du
+  DOS faisait perdre le texte.
+- Source `dos/EDIT.ASM` (NASM ; `make` produit `dos/EDIT.COM`, 2,5 Ko, mis sur `A:`). Essais :
+  `tests/rom_test.py` (au DOS de la ROM, puis sous PC-DOS 2.1 et MS-DOS 3.30, par numéros de fichier et
+  par FCB, ce dernier forcé par `-dFORCE_FCB` faute d'image DOS 1.x).
 
 ### Le DOS sur le LCD (pont 2.1)
 
@@ -1259,7 +1348,7 @@ accessible par `Configuration → 5) BIOS (reglages)`.
 | Horloge au démarrage | 1, 2, 2,34, 4,77, 5, 7,2, 8, 10 MHz | Fréquence que le **pont** donne au 8088 à sa mise sous tension |
 | Écran d'accueil | 1 à 5 s | Durée du message « Appuyer sur ESC… » |
 | Témoin du disque | Oui / Non | LED de la Black Pill à chaque accès au disque |
-| Date et heure | — | L'écran `Configuration → 3) Heure et date` |
+| Date et heure | — | L'écran `Configuration → 3) Heure et date` (voir ci-dessous) |
 
 - **Touches** : `1`-`8` changent la ligne (valeur suivante) ; `D` remet les valeurs par défaut ; **Entrée**
   enregistre et quitte ; **Échap** quitte sans rien changer. Au LCD, une ligne à la fois : flèches haut/bas
@@ -1276,6 +1365,43 @@ accessible par `Configuration → 5) BIOS (reglages)`.
     session seulement (message en jaune).
 - Code : `lib/setup.asm`. Essais : `tests/rom_test.py` (Échap au démarrage, enregistrement, démarrage dans
   le BASIC, ancien pont) ; le stockage du pont a été essayé sur le PC avec une flash simulée.
+
+### Tic d'horloge et ELKS / Minix (ROM 2.0, pont 2.3)
+
+Solution-01 n'a pas de minuterie 8253 (IRQ 0 = bouton). À l'amorçage d'un système (`INT 19h`), le BIOS
+demande au pont 2.3 un **tic toutes les 54,9 ms** (commande `30h` ; `31h` l'arrête au démarrage de la
+ROM). Le tic arrive comme un octet du clavier PS/2, `9Ch` (absent du jeu 2) ; `irq1_dispatch` le
+reconnaît et `bios_tick` (`lib/isr.asm`) fait ce que fait l'INT 08h du PC : `0040:006C` (et `0040:0070`
+à minuit), puis **INT 1Ch** (vecteur par défaut : `IRET`). L'EOI part avant l'INT 1Ch, le gestionnaire
+pouvant changer de tâche. Pas d'INT 1Ch quand le tic interrompt un service du BIOS (SS = VAR_SEG : sa
+pile privée n'est pas réentrante) : le compteur seulement.
+
+**ELKS (Minix)** s'en sert (`CONFIG_TIMER_INT1C`) : image et construction dans [`elks/`](elks/README_fr.md)
+(Docker, sources d'ELKS de Solution-02). Son noyau et ses programmes ont été adaptés au décodage minimal
+des E/S de Solution-01 (8255 = tout port où A7 = 1, 8259 = tout port où A5 = 1) : sans 8250, IDE, pilote
+direct de disquette ni haut-parleur, pause d'E/S en 4Fh au lieu de 80h, `clock` par l'INT 1Ah (RTC du
+pont). Avec l'image de Solution-02, le sondage des ports série reprogrammait le 8255 : curseur bloqué en
+0,0. Essai : `tests/rom_test.py` (connexion `root`, `ls`, `date`, aucun accès au 8255/8259 hors du BIOS
+— le simulateur compte maintenant ces accès, et attend une interruption sur `HLT` comme le 8088).
+
+Sans le pont 2.3, la ROM 2.0 marche comme avant (le pont ignore `30h`/`31h`), mais ELKS reste figé.
+
+**Date et heure** (ROM 1.8) : l'écran affiche le format et part de l'heure actuelle du pont.
+
+```
+Format: date JJ-MM-AAAA, heure HH:MM:SS. Entree = valeur actuelle, Echap = annuler.
+Date (JJ-MM-AAAA): 31-02-2026
+Date invalide, recommencer.
+Date (JJ-MM-AAAA): 27-11-26
+Heure (HH:MM:SS): 14:03:05
+Heure et date envoyees au pont.
+```
+
+- Chaque champ se termine seul à son dernier chiffre, ou par **Entrée** ; Entrée sans chiffre garde la
+  valeur actuelle. Année sur 2 chiffres : 26 = 2026. **Échap** annule tout, rien n'est envoyé au pont.
+- Une date impossible (31-02, 29-02 hors année bissextile, mois 13…) ou une heure impossible est signalée
+  et redemandée. Avant la ROM 1.8, le pont l'ignorait sans rien dire, et la saisie ne connaissait ni
+  Entrée ni Échap : elle restait en attente.
 
 ## RAM de 512 Ko
 
@@ -1353,7 +1479,7 @@ ligne). Remplace le POST automatique des versions précédentes : chaque
 action est déclenchée par une touche — **clavier PS/2 ou terminal UART**,
 indifféremment — et le menu se redessine après chaque action.
 
-**Menu principal** (4 options, chacune un **sous-menu** — l'ancien
+**Menu principal** (5 options, les 4 premières sont des **sous-menus** — l'ancien
 chenillard « LED Show on PC » a été retiré avec la réaffectation du
 8255) :
 
@@ -1362,7 +1488,12 @@ chenillard « LED Show on PC » a été retiré avec la réaffectation du
 2) Memory functions
 3) USB Disk
 4) Configuration
+5) Boot from disk
 ```
+
+**5) Boot from disk** (ROM 2.3) : la liste des images de disquette, la même que *USB Disk →
+3) Boot disk image* (`0` = PC-DOS 2.1 de la ROM, puis les `.IMG` de la flash), puis l'amorçage de
+l'image choisie ; Échap revient au menu. Au LCD, la ligne 4 devient `4) Config  5) Boot`.
 
 Chaque sous-menu se redessine (UART+LCD) après chaque action, et la
 touche **Échap** (non affichée à l'écran) y retourne directement au

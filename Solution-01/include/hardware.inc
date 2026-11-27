@@ -307,6 +307,12 @@ BIOS_GH_OFF         equ 0FCD4h  ; (mot) tetes de la geometrie courante (disque d
 BIOS_GS_OFF         equ 0FCD6h  ; (mot) secteurs par piste de la geometrie courante (disque dur: 63)
 BIOS_NAME_OFF       equ 0FCD8h  ; (16 octets) nom de l'image a monter (copie du nom de l'appelant)
 BIOS_RAMB_OFF       equ 0FC58h  ; (octet) ROM 1.4: 1 = B: = disque en RAM du DOS de la ROM (lib/bios.asm)
+TICK_FAST           equ 0FC5Bh  ; (octet) ROM 2.2: 1 = tic a 100 Hz (INT 1Ah AH=E0h AL=1, ELKS), 0 = 18,2 Hz
+TICK_PEND           equ 0FC5Ch  ; (octet) ROM 2.2: tics arrives pendant un service du BIOS, INT 1Ch a rendre
+TICK_FRAC           equ 0FC5Dh  ; (mot) ROM 2.2: a 100 Hz, fraction de tic de 0040:006C (11932/65536 par tic)
+TICK_EOI            equ 0FC5Ah  ; (octet) ROM 2.0: 1 = l'EOI de l'IRQ1 en cours est deja envoye (tic -> INT 1Ch, lib/isr.asm)
+KBD_STATE           equ 0FC59h  ; (octet) ROM 1.8, lib/kbd.asm: Maj, Ctrl, Alt, Verr. Maj du clavier PS/2
+                                ; (format des indicateurs de INT 16h AH=02h)
 BIOS_TICK_CNT       equ 0FC57h  ; (octet) INT 16h AH=01h/02h: appels avant la prochaine mise a jour de 0040:006C
 BIOS_LASTTICK       equ 0FCECh  ; (double mot) dernier compteur de ticks rendu par INT 1Ah AH=00h
 BIOS_USB_STATE      equ 0FCE8h  ; (octet) sous-menu USB Disk: 0 = OFF (par defaut, comme au demarrage), 1 = ON

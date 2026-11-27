@@ -46,9 +46,13 @@ CHECK_DIR   = build/check
 
 # PC-DOS 2.1 de la ROM (lecteur A:, ROM 1.4): secteurs utilises de la disquette faite par tests/gen_dos21_rom.py
 # (IBMBIO, IBMDOS, COMMAND, EDLIN de PC-DOS 2.1, MASM 1.00, LINK 1.08, HELLO.ASM, AUTOEXEC.BAT), inclus par
-# solution-01.asm en D800:0000. Ecrit aussi ../PC-DOS/pcdos2_1_s01.img (la disquette complete de 180 Ko).
+# solution-01.asm en D600:0000. Ecrit aussi ../PC-DOS/pcdos2_1_s01.img (la disquette complete de 180 Ko).
 DOS_IMG     = build/dos21_rom.bin
-$(DOS_IMG): tests/gen_dos21_rom.py ../PC-DOS/pcdos2_1.img ../PC-DOS/MASM/MASM1.EXE ../PC-DOS/MASM/LINK1.EXE
+# EDIT.COM (ROM 1.9): editeur plein ecran du DOS de la ROM, source NASM
+dos/EDIT.COM: dos/EDIT.ASM
+	$(NASM) -f bin dos/EDIT.ASM -o dos/EDIT.COM
+$(DOS_IMG): tests/gen_dos21_rom.py ../PC-DOS/pcdos2_1.img ../PC-DOS/MASM/MASM1.EXE ../PC-DOS/MASM/LINK1.EXE \
+             dos/SETTIME.ASM $(wildcard dos/SETTIME.EXE) dos/EDIT.COM
 	python3 tests/gen_dos21_rom.py
 
 .PHONY: all rom rom-fr rom-en rom-128 rom-128-en rom-pause ramtest test-ramtest lib check clean check-modules test test-rom test-rom-complet map trace trace-nohd

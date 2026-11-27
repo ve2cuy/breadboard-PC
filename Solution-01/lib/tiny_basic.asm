@@ -92,6 +92,17 @@
 %ifndef TB_TEST                         ; le banc d'essai (tests/) fournit ses propres
 %include "lib/uart.asm"                 ; uart_tx_byte / uart_rx_available / uart_rx_byte
 %endif
+%ifdef TB_TEST
+%ifndef KBD_ASM
+kbd_poll:                               ; banc d'essai: pas de clavier PS/2
+        stc
+        ret
+kbd_reset:
+        ret
+%endif
+%else
+%include "lib/kbd.asm"                  ; clavier PS/2 -> caracteres (ROM 1.8)
+%endif
 
 %define TB_GOOD_RND 1                   ; generateur suggere par Trixter (voir tb_rnd)
 
@@ -147,6 +158,7 @@ tiny_basic:
     rep movsb
 
     mov ds, ax                  ; DS = ES = SS = TB_SEG des maintenant
+    call kbd_reset              ; Maj/Ctrl/Alt relaches (le menu ne les suit pas)
     mov [tb_savsp], sp          ; SP de l'appelant (SS est deja TB_SEG)
     mov sp, tb_stack
 
@@ -1600,9 +1612,16 @@ tb_outch:
 ; Tiny BASIC for the menu (tb_exit, does not return). Only ax and flags may
 ; change at return.
 tb_chkio:
+    call kbd_poll               ; clavier PS/2 d'abord (ROM 1.8; AL = 0: touche sans caractere)
+    jc .uart
+    or al, al
+    jnz .got
+    jmp short tb_chkio          ; fleche, F1...: ignoree
+.uart:
     call uart_rx_available      ; CF=0 si un octet UART attend (detruit AX)
     jc .none
     call uart_rx_byte           ; AL = octet du terminal
+.got:
 
     cmp al, 18h                 ; Is it Control-X ?
     je tb_exit

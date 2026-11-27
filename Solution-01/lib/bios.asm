@@ -26,6 +26,8 @@
 %ifndef BIOS_ASM
 %define BIOS_ASM
 
+%include "lib/kbd.asm"                  ; ROM 1.8: clavier PS/2 -> touches de INT 16h
+
 %ifdef RAM_512K
 BIOS_MEM_KB     equ     510             ; RAM annoncee: 0000:0000-7000:F7FF (510 Ko)
 %else
@@ -46,7 +48,7 @@ BIOS_TRACE      equ     0                       ; 1 (`make trace`): trace ACTIVE
 ; protegee en ecriture (AH = 03h). Avec 512 Ko de RAM, B: = disque en RAM de 180 Ko (meme format), formate a
 ; neuf a chaque demarrage de ce DOS, sous la memoire du DOS: RAMB_SEG:0000-VAR_SEG:F7FF (2D000h octets);
 ; INT 12h annonce alors RAMB_KB. Le contenu de B: est perdu au redemarrage (la RAM est effacee).
-DOS_ROM_SEG     equ     0D800h          ; = physique D8000h (decalage 18000h de la ROM)
+DOS_ROM_SEG     equ     0D600h          ; = physique D6000h (decalage 16000h de la ROM; D8000h avant la ROM 1.8)
 DOS_ROM_TOTAL   equ     360             ; secteurs de la disquette
 %ifdef RAM_512K
 RAMB_SEG        equ     VAR_SEG + 0F80h - 2D00h ; 5280h: 52800h-7F7FFh
@@ -1393,11 +1395,38 @@ int1ah_handler:
         je      .settime
         cmp     ah, 05h
         je      .setdate
-        cmp     ah, 01h                 ; regler le compteur de ticks: sans objet (l'heure vient de la RTC)
-        je      .okret
+        cmp     ah, 01h                 ; regler le compteur de ticks (l'heure, elle, vient de la RTC)
+        je      .setticks
+        cmp     ah, 0E0h                ; ROM 2.2: frequence du tic du pont (Solution-01)
+        je      .tickrate
         mov     byte [BIOS_RETF_OFF], 1
         jmp     bios_return
 .okret:
+        jmp     bios_return
+
+; AH=01h (ROM 1.8): le DOS regle l'heure (TIME, INT 21h AH=2Dh, SETTIME). Le compteur CX:DX devient la
+; reference de .ticks: sans cela, une heure reculee (meme de quelques centiemes: SETTIME les met a 0)
+; donnait a la lecture suivante un compteur PLUS PETIT, pris pour un passage de minuit (le DOS ajoutait
+; un jour). Comme le BIOS du PC: regler le compteur efface l'indicateur de minuit.
+; AH=E0h (ROM 2.2, propre a Solution-01): AL = 0 -> tic a 18,2 Hz (pont 2.3, commande 30h; celui de
+; l'amorcage), AL = 1 -> 100 Hz (pont 2.4, 32h): ELKS (HZ = 100) le demande en branchant son tic sur
+; l'INT 1Ch. Un pont plus ancien ignore 32h et garde le tic precedent.
+.tickrate:
+        mov     al, FS_TICK_ON
+        mov     byte [TICK_FAST], 0
+        cmp     byte [bp + FR_AX], 1
+        jne     .tr
+        mov     al, FS_TICK_100
+        mov     byte [TICK_FAST], 1
+.tr:
+        call    bridge_tx
+        jmp     bios_return
+
+.setticks:
+        mov     ax, [bp + FR_DX]
+        mov     [BIOS_LASTTICK], ax
+        mov     ax, [bp + FR_CX]
+        mov     [BIOS_LASTTICK + 2], ax
         jmp     bios_return
 
 ; lit l'heure du pont dans BIOS_RTC_OFF (8 octets); CF = 1 si muet
@@ -1420,13 +1449,10 @@ int1ah_handler:
         mov     [bp + FR_DX], ax        ; DX = ticks bas
         mov     [bp + FR_CX], cx        ; CX = ticks haut
         mov     byte [bp + FR_AX], 0    ; AL = 0: pas de passage de minuit
-        mov     bx, [BIOS_LASTTICK + 2] ; un compteur PLUS PETIT que la lecture precedente = minuit est passe
-        cmp     cx, bx
-        ja      .noroll
-        jb      .roll
-        cmp     ax, [BIOS_LASTTICK]
-        jae     .noroll
-.roll:
+        mov     bx, [BIOS_LASTTICK + 2] ; un compteur PLUS PETIT de 8 x 65536 ticks (7 h 40) ou plus que la
+        sub     bx, cx                  ; lecture precedente = minuit est passe (ROM 1.8: un simple recul de
+        cmp     bx, 8                   ; l'horloge - heure reglee au pont, centiemes remis a 0 - n'ajoute
+        jl      .noroll                 ; plus un jour)
         mov     byte [bp + FR_AX], 1    ; AL = 1: le DOS incremente la date
 .noroll:
         mov     [BIOS_LASTTICK], ax
@@ -1515,7 +1541,7 @@ bios_rtc_ticks:
         call    rtc_get
         pop     es
         jc      .r
-        ; secondes du jour * 100 + centiemes -> DX:AX, puis * 91 / 500 (= 18,2 ticks/s)
+        ; secondes du jour * 100 + centiemes -> DX:AX, puis * 11931,7994 / 65536 (18,2065 ticks/s, comme le 8253 du PC)
         mov     al, [BIOS_RTC_OFF + 4]  ; heures
         xor     ah, ah
         mov     cx, 3600
@@ -1547,23 +1573,36 @@ bios_rtc_ticks:
         xor     bh, bh
         add     ax, bx
         adc     dx, 0                   ; DX:AX = centiemes du jour
-        ; * 91
-        mov     cx, 91
+        ; ticks = (cs * 11931 + (cs * 52390) >> 16) >> 16 = cs * 1 193 180 / 6 553 600 au tick pres (ROM 1.8;
+        ; avant: * 91 / 500 = 18,2 ticks/s, et l'heure du DOS retardait de 0,036 %: 16 s a midi - puis, une
+        ; fois l'heure reglee par le DOS a sa propre echelle, la RTC relue paraissait reculer: faux passage
+        ; de minuit, un jour de trop)
+        mov     bx, ax                  ; BX = centiemes, poids faible
+        mov     si, dx                  ; SI = centiemes, poids fort
+        mov     cx, 52390               ; B = (cs * 52390) >> 16 (la partie 0,7994 du facteur)
+        mul     cx
+        mov     di, dx
+        mov     ax, si
+        mul     cx
+        add     ax, di
+        adc     dx, 0                   ; DX:AX = B
+        push    dx
         push    ax
-        mov     ax, dx
-        mul     cx
-        mov     si, ax
-        pop     ax
-        mul     cx
-        add     dx, si                  ; DX:AX = centiemes * 91
-        ; / 500
-        mov     bx, 500
-        mov     cx, ax
-        mov     ax, dx
-        xor     dx, dx
-        div     bx                      ; AX = quotient haut, DX = reste
-        xchg    ax, cx                  ; CX = quotient haut, AX = poids faible
-        div     bx                      ; AX = quotient bas -> CX:AX = ticks
+        mov     cx, 11931               ; cs * 11931 + B, sur 48 bits; on garde les bits 16-47
+        mov     ax, bx
+        mul     cx                      ; DX:AX = poids faible * 11931
+        pop     di
+        add     ax, di                  ; (bits 0-15: retenue seulement)
+        pop     di
+        adc     dx, di                  ; DX = bits 16-31 partiels, CF = retenue vers les bits 32-47
+        mov     bx, dx
+        mov     di, 0
+        adc     di, 0                   ; DI = cette retenue
+        mov     ax, si
+        mul     cx                      ; DX:AX = poids fort * 11931 (decale de 16 bits)
+        add     ax, bx
+        adc     dx, di
+        mov     cx, dx                  ; CX:AX = ticks
         push    ds
         xor     bx, bx
         mov     ds, bx
@@ -1623,9 +1662,10 @@ bios_frombcd:
 
 ; ------------------------------------------------------------
 ; INT 16h - clavier: AH=00h/10h lire (bloquant), 01h/11h consulter (ZF = 1: rien), 02h/12h
-; indicateurs. La source est le TERMINAL UART (octets bruts: minuscules, ponctuation, Ctrl-lettre;
-; DEL = retour arriere; sequences ESC [ ... / ESC O ... = touches etendues, AL = 0). Le clavier PS/2
-; n'est pas gere (le BASIC ne l'utilise pas non plus). La touche en attente (AH = scan code, AL = ASCII)
+; indicateurs. Sources: le clavier PS/2 (ROM 1.8, kbd_poll de lib/kbd.asm: QWERTY US, Maj, Ctrl, Alt,
+; Verr. Maj; AH=02h rend leur etat) puis le TERMINAL UART (octets bruts: minuscules, ponctuation,
+; Ctrl-lettre; DEL = retour arriere; sequences ESC [ ... / ESC O ... = touches etendues, AL = 0). La
+; touche en attente (AH = scan code, AL = ASCII)
 ; est gardee dans BIOS_KEY_OFF/BIOS_KEYF_OFF pour que la consultation ne la consomme pas.
 ; ------------------------------------------------------------
 int16h_handler:
@@ -1654,7 +1694,9 @@ int16h_handler:
         jmp     bios_return
 .flags:
         call    bios_tick_poll
-        mov     byte [bp + FR_AX], 0    ; AL = indicateurs: aucun
+        mov     al, [KBD_STATE]         ; AL = indicateurs du clavier PS/2 (Maj, Ctrl, Alt, Verr. Maj)
+        or      al, 20h                 ; Verr. Num: toujours active (pave numerique = chiffres)
+        mov     [bp + FR_AX], al
         jmp     bios_return
 .bad:
         mov     byte [BIOS_RETF_OFF], 1
@@ -1664,6 +1706,8 @@ int16h_handler:
 bios_trykey:
         cmp     byte [BIOS_KEYF_OFF], 0
         jne     .have
+        call    kbd_poll                ; clavier PS/2 (ROM 1.8): AX = scan code : ASCII
+        jnc     .store
 .uart:
         call    uart_rx_available       ; CF = 1: rien
         jc      .none
@@ -1698,18 +1742,28 @@ bios_trykey:
         mov     ax, 011Bh
         jmp     .store
 .csi:
-        xor     bx, bx                  ; BL = premier parametre numerique
+        xor     bx, bx                  ; BL = premier parametre numerique, BH = 1 apres ';'
 .csil:
         call    uart_wait_byte
         jc      .ignore
         cmp     al, 40h
         jae     .final
+        cmp     al, ';'
+        jne     .chiffre
+        mov     bh, 1                   ; parametres suivants (Ctrl, Maj...): ignores
+        jmp     .csil
+.chiffre:
         cmp     al, '0'
         jb      .csil
         cmp     al, '9'
         ja      .csil
-        sub     al, '0'
-        mov     bl, al                  ; (un seul chiffre suffit: 1-6)
+        or      bh, bh
+        jnz     .csil
+        sub     al, '0'                 ; ROM 2.0: nombre entier (F1-F12 de PuTTY: ESC [ 11~ ... 24~;
+        xchg    al, bl                  ; avant: dernier chiffre seulement, F2 = ESC [ 12~ devenait Inser)
+        mov     ah, 10
+        mul     ah
+        add     bl, al
         jmp     .csil
 .ss3:
         call    uart_wait_byte
@@ -1754,6 +1808,18 @@ bios_ext_keys:
         db      '~', 4, 4Fh             ; fin
         db      '~', 5, 49h             ; page haut
         db      '~', 6, 51h             ; page bas
+        db      '~', 11, 3Bh            ; F1-F5 (PuTTY, VT220: ESC [ 11~ ... 15~)
+        db      '~', 12, 3Ch
+        db      '~', 13, 3Dh
+        db      '~', 14, 3Eh
+        db      '~', 15, 3Fh
+        db      '~', 17, 40h            ; F6-F10 (ESC [ 17~ ... 21~)
+        db      '~', 18, 41h
+        db      '~', 19, 42h
+        db      '~', 20, 43h
+        db      '~', 21, 44h
+        db      '~', 23, 85h            ; F11, F12
+        db      '~', 24, 86h
         db      'P', 0FFh, 3Bh          ; F1 (ESC O P)
         db      'Q', 0FFh, 3Ch          ; F2
         db      'R', 0FFh, 3Dh          ; F3
@@ -1910,6 +1976,11 @@ int19h_handler:
         mov     al, FS_LCD_CON          ; pont 2.1: le LCD montre la console (fenetre 20x4, Maj + fleches)
         call    bridge_tx
 .sans_con:
+        call    kbd_reset               ; Maj/Ctrl/Alt relaches (le menu ne les suit pas)
+        mov     al, FS_TICK_ON          ; ROM 2.0, pont 2.3: tic d'horloge -> INT 1Ch (ELKS, DOS)
+        mov     byte [TICK_FAST], 0     ; (18,2 Hz; ELKS demande 100 Hz par INT 1Ah AH=E0h)
+        mov     byte [TICK_PEND], 0
+        call    bridge_tx
         cli
         xor     ax, ax
         mov     ds, ax
@@ -2550,6 +2621,9 @@ bios_init:
         mov     di, 1Ah * 4
         mov     bx, int1ah_handler
         call    .vec
+        mov     di, 1Ch * 4                     ; ROM 2.0: tic du pont (lib/isr.asm, bios_tick) -> INT 1Ch
+        mov     bx, bios_int1c
+        call    .vec
         mov     di, 1Eh * 4                     ; table des parametres de disquette (en ROM)
         mov     bx, bios_dpt
         call    .vec
@@ -2587,5 +2661,9 @@ bios_init:
         mov     [es:di], bx
         mov     [es:di + 2], cs
         ret
+
+; INT 1Ch (tic de l'utilisateur): rien, comme le BIOS du PC; un DOS ou ELKS le detourne.
+bios_int1c:
+        iret
 
 %endif ; BIOS_ASM

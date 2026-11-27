@@ -54,8 +54,12 @@ irq1_arduino_handler:
         jz      .fin                    ; rien a lire: interruption parasite
         call    irq1_dispatch
 .fin:
+        cmp     byte [TICK_EOI], 0      ; tic: EOI deja envoye avant l'INT 1Ch (bios_tick)
+        mov     byte [TICK_EOI], 0
+        jne     .sans_eoi
         mov     al, 20h                 ; OCW2: EOI non specifique
         out     PIC_CMD, al
+.sans_eoi:
 
         pop     ds
         pop     ax
@@ -75,6 +79,8 @@ irq1_dispatch:
         test    al, PC_TAG_UART
         jnz     .uart
         in      al, PORTA               ; scan code clavier brut
+        cmp     al, TICK_CODE           ; pont 2.3: le tic d'horloge (18,2 Hz), pas une touche
+        je      bios_tick
         call    ps2_hotkey              ; Ctrl-Echap: bascule la trace, scan code non range (CF = 1)
         jc      .r
         jmp     ps2_rx_push
@@ -96,6 +102,58 @@ irq1_dispatch:
 .reply:
         in      al, PORTA               ; reponse du pont (horloge RTC, disque...)
         jmp     bridge_rx_push
+
+; bios_tick (ROM 2.0): tic d'horloge du pont 2.3 (FS_TICK_ON, toutes les 54,9 ms, comme l'IRQ0 du 8253
+; d'un PC: Solution-01 n'a pas de minuterie). Comme l'INT 08h du BIOS du PC: compteur 0040:006C (passage
+; de minuit: 0040:0070), puis INT 1Ch - ELKS (CONFIG_TIMER_INT1C) y prend son tic; le DOS et ses programmes
+; aussi. L'EOI part AVANT l'INT 1Ch: le gestionnaire peut changer de tache (ELKS) et l'IRQ1 ne doit pas
+; rester en service (plus aucun octet du pont, donc plus de tic). PAS d'INT 1Ch dans un service du BIOS
+; (SS = VAR_SEG: sa pile privee n'est pas reentrante, et la scrutation de bridge_rx_get_t arrive ici),
+; ni au moniteur ou dans les BASIC (SS = VAR_SEG aussi; le pont n'y envoie pas de tic): compteur seulement.
+; DS = VAR_SEG. Detruit AL.
+bios_tick:
+        cmp     byte [TICK_FAST], 0     ; ROM 2.2: a 100 Hz (ELKS), 0040:006C garde le rythme du PC (18,2065 Hz):
+        je      .plein                  ; 11932/65536 de tic par tic
+        add     word [TICK_FRAC], 11932
+        jnc     .compte
+.plein:
+        push    ds
+        push    ax
+        xor     ax, ax
+        mov     ds, ax
+        add     word [046Ch], 1
+        adc     word [046Eh], 0
+        cmp     word [046Eh], 18h       ; 1 573 040 = 1800B0h ticks par jour
+        jb      .compte0
+        cmp     word [046Ch], 00B0h
+        jb      .compte0
+        mov     word [046Ch], 0
+        mov     word [046Eh], 0
+        mov     byte [0470h], 1         ; minuit est passe
+.compte0:
+        pop     ax
+        pop     ds
+.compte:
+        push    ax
+        mov     ax, ss
+        cmp     ax, VAR_SEG
+        pop     ax
+        je      .attente
+        mov     byte [TICK_EOI], 1
+        mov     al, 20h                 ; EOI tout de suite (voir plus haut)
+        out     PIC_CMD, al
+.int1c:
+        int     1Ch
+        cmp     byte [TICK_PEND], 0     ; ROM 2.2: les tics arrives pendant un service du BIOS (disque: plusieurs
+        je      .r                      ; a 100 Hz) sont rendus ici, sinon l'horloge d'ELKS retardait
+        dec     byte [TICK_PEND]
+        jmp     .int1c
+.attente:
+        cmp     byte [TICK_PEND], 100   ; (1 s a 100 Hz au plus)
+        jae     .r
+        inc     byte [TICK_PEND]
+.r:
+        ret
 
 ; ps2_hotkey: suit Ctrl (make 14h / relachement F0 14, E0 ignore: Ctrl droit = Ctrl gauche) dans les scan
 ; codes bruts du clavier PS/2 et detecte Ctrl-Echap (76h avec Ctrl enfonce) -> trace_toggle. Entree: AL =

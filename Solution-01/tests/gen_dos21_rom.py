@@ -8,7 +8,9 @@
 
 Contenu (minimal): demarrage (IBMBIO.COM, IBMDOS.COM, COMMAND.COM de PC-DOS 2.1), EDLIN.COM (editeur),
 MASM.EXE = MASM1.EXE (Microsoft MACRO Assembler 1.00) et LINK.EXE = LINK1.EXE (Object Linker 1.08),
-compatibles DOS 2.1 (essayes sur Solution-02), HELLO.ASM (exemple) et AUTOEXEC.BAT (date, heure,
+compatibles DOS 2.1 (essayes sur Solution-02), HELLO.ASM (exemple), SETTIME.ASM et SETTIME.EXE (ROM 1.8:
+date et heure du DOS d'apres la RTC de la Black Pill, dos/; l'executable est fait par MASM et LINK de cette
+disquette meme, au simulateur: tests/gen_settime.py), EDIT.COM (ROM 1.9: editeur plein ecran, dos/EDIT.ASM) et AUTOEXEC.BAT (SETTIME, sinon DATE et TIME;
 PATH A:\\, copie de HELLO.ASM sur B: et passage sur B:, le disque en RAM ou MASM et LINK ecrivent).
 Meme methode que Solution-02/bios/tests/gen_dos_rom.py: secteur d'amorce de PC-DOS 2.1 garde, IBMBIO et
 IBMDOS aux amas 2 et suivants (debut de la zone de donnees, comme l'exige l'amorce), fichiers d'un seul
@@ -47,8 +49,13 @@ STACK   ENDS
         END     START
 """
 
-AUTOEXEC = r"""DATE
-TIME
+SETTIME_ASM = os.path.join(S01, 'dos', 'SETTIME.ASM')
+SETTIME_EXE = os.path.join(S01, 'dos', 'SETTIME.EXE')     # absent au tout premier passage (gen_settime.py)
+EDIT_COM = os.path.join(S01, 'dos', 'EDIT.COM')           # editeur plein ecran (dos/EDIT.ASM, NASM; Makefile)
+
+AUTOEXEC = r"""SETTIME
+IF ERRORLEVEL 1 DATE
+IF ERRORLEVEL 1 TIME
 PATH A:\
 COPY A:HELLO.ASM B:
 B:
@@ -106,6 +113,11 @@ def main():
     for nom, chemin in AJOUTS:
         fichiers.append(entree(nom, open(chemin, 'rb').read()))
     fichiers.append(entree('HELLO.ASM', texte_dos(HELLO)))
+    asm = open(SETTIME_ASM, 'rb').read().replace(b'\r\n', b'\n').replace(b'\n', b'\r\n')
+    fichiers.append(entree('SETTIME.ASM', asm + b'\x1a'))
+    if os.path.exists(SETTIME_EXE):
+        fichiers.append(entree('SETTIME.EXE', open(SETTIME_EXE, 'rb').read()))
+    fichiers.append(entree('EDIT.COM', open(EDIT_COM, 'rb').read()))
     fichiers.append(entree('AUTOEXEC.BAT', texte_dos(AUTOEXEC)))
 
     out = bytearray(tot * bps)

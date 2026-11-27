@@ -275,7 +275,19 @@ start:
         ; plutot que i2c_lcd_goto/i2c_lcd_print directement - premier usage
         ; reel de l'interface "esprit BIOS" (voir int10h_handler,
         ; README.md) ---
+        mov     al, FS_TICK_OFF         ; ROM 2.0: pas de tic au moniteur (Ctrl-\ depuis un systeme qui les recevait)
+        call    bridge_tx
         call    cfg_load                ; ROM 1.7: reglages du BIOS gardes par le pont (defauts sans reponse)
+        mov     dl, 0                   ; ROM 2.0: frequence REELLE de l'horloge, pour le menu principal (le pont
+        call    fs_clock_cmd            ; applique celle des reglages a son demarrage: 4,77 MHz n'est qu'un defaut)
+        jc      .horloge_lue            ; (pont muet: le defaut 4,77 MHz reste)
+        push    es
+        mov     bx, VAR_SEG
+        mov     es, bx
+        mov     [es:CLOCK_FREQ_HZ_OFF], ax
+        mov     [es:CLOCK_FREQ_HZ_OFF+2], dx
+        pop     es
+.horloge_lue:
         call    i2c_lcd_init
         gotoxy  0, 0, LCDI2C
         print   lcd_txt_splash_l1, LCDI2C
@@ -321,7 +333,7 @@ start:
                                              ; meme ligne, voir clock_main_speed_print
         mov     bp, 1                       ; UART seul (le LCD n'est pas encore dessine)
         call    clock_main_speed_print      ; "   N.NN MHz" + CRLF
-        print   txt_menu_main_rest, UART    ; options 2-4 + ligne vide
+        print   txt_menu_main_rest, UART    ; options 2-5 + ligne vide
         gotoxy  0, 0, LCDI2C
         print   lcd_txt_menu_main_l1, LCDI2C
         gotoxy  1, 0, LCDI2C
@@ -348,8 +360,13 @@ start:
         jmp     .usb_menu
 .main_4:
         cmp     al, '4'
-        jne     .main_menu              ; touche non reconnue - redessine le menu
+        jne     .main_5
         jmp     .config_menu
+.main_5:
+        cmp     al, '5'                 ; ROM 2.3: "Boot from disk" = la liste des images (comme USB Disk ->
+        jne     .main_menu              ; 3) Boot disk image; 0 = DOS 2.1 de la ROM). Ne revient que si on annule
+        call    dos_menu                ; ou en cas d'echec - touche non reconnue: le menu est redessine
+        jmp     .main_menu
 
 ; --- Sous-menu Basic: 2 options, tiennent sur le LCD sans pagination
 ; (les lignes 3/4 restent vides - i2c_lcd_init les a deja effacees). ---
@@ -4831,9 +4848,9 @@ cpu_test_show_result:
         ret
 
 ; --- constantes pour clock_datetime_action/information_action, plus bas ---
-BIOS_VERSION_MAJOR equ 1                ; version du BIOS/ROM affichee par
-BIOS_VERSION_MINOR equ 7                ; "4) Information" - correspond a
-                                         ; "Version 1.7" du splash (lcd_txt_splash_l2,
+BIOS_VERSION_MAJOR equ 2                ; version du BIOS/ROM affichee par
+BIOS_VERSION_MINOR equ 3                ; "4) Information" - correspond a
+                                         ; "Version 2.3" du splash (lcd_txt_splash_l2,
                                          ; plus bas) - A MAINTENIR MANUELLEMENT en
                                          ; phase avec lui si l'un des 2 change
 DISK_TOTAL_KB       equ 8192            ; capacite NOMINALE de la flash SPI du pont
@@ -4880,6 +4897,12 @@ INFO_RTC_THROTTLE   equ 3000            ; information_action, .loop plus bas: no
 ; reste du projet: saisie simple, sans confirmation, comme Edit RAM).
 ; rtc_set n'attend AUCUNE reponse du pont (fire-and-forget) - rien a
 ; verifier apres l'envoi.
+; ROM 1.8 (la saisie restait bloquee: pas d'Entree ni d'Echap, aucun
+; indice du format): le format est affiche ("Date (JJ-MM-AAAA): "),
+; chaque champ part de la valeur actuelle du pont (Entree sans chiffre la
+; garde), Entree termine un champ plus tot (annee sur 2 chiffres: 26 =
+; 2026), Echap annule tout, et une date ou une heure impossible est
+; signalee puis redemandee (dt_check_date) au lieu d'etre ignoree par le pont.
 ; ============================================================
 clock_datetime_action:
         push    ax
@@ -4888,106 +4911,112 @@ clock_datetime_action:
         push    dx
         push    si
         push    di
+        push    bp
         push    es
 
         call    i2c_lcd_init
+        mov     ax, VAR_SEG
+        mov     es, ax
+        mov     di, BIOS_RTC_OFF                ; ROM 1.8: valeurs actuelles du pont = valeurs par defaut
+        call    rtc_get                         ; (Entree sur un champ vide les garde)
+        jnc     .cur
+        mov     word [es:BIOS_RTC_OFF], 2026    ; pont muet: 01-01-2026 00:00:00
+        mov     word [es:BIOS_RTC_OFF + 2], 0101h
+        mov     word [es:BIOS_RTC_OFF + 4], 0
+        mov     byte [es:BIOS_RTC_OFF + 6], 0
+.cur:
+        mov     si, txt_dt_help                 ; format, Entree, Echap
+        call    bios_puts
 
-        mov     si, txt_datetime_date_prefix    ; "Date: "
+.date:
+        mov     si, txt_dt_date_q               ; "Date (JJ-MM-AAAA): "
         call    bios_puts
         mov     si, txt_datetime_date_prefix
         i2c_lcd_show LCD_LINE1
-
+        mov     di, BIOS_RTC_OFF + 3            ; jour (ordre de rtc_get/rtc_set: annee(2)/mois/jour/h/min/s)
         mov     cl, 2
         mov     ah, (LCD_LINE1 & 07Fh) + 6      ; 6 = long. de "Date: "
-        call    ps2_read_dec_editable            ; BX = jour
-        mov     ax, VAR_SEG
-        mov     es, ax
-        mov     di, BIOS_RTC_OFF + 3             ; jour (meme ordre que rtc_get/rtc_set:
-        mov     [es:di], bl                       ; annee(2)/mois/jour/h/min/s/cs)
-
-        mov     al, '-'
-        call    uart_tx_byte
-        call    i2c_lcd_data
-
+        call    dt_field_b
+        jc      .cancel
+        call    dt_dash
+        mov     di, BIOS_RTC_OFF + 2            ; mois
         mov     cl, 2
-        mov     ah, (LCD_LINE1 & 07Fh) + 9       ; 9 = long. de "Date: JJ-"
-        call    ps2_read_dec_editable            ; BX = mois
-        mov     ax, VAR_SEG
-        mov     es, ax
-        mov     di, BIOS_RTC_OFF + 2             ; mois
-        mov     [es:di], bl
-
-        mov     al, '-'
-        call    uart_tx_byte
-        call    i2c_lcd_data
-
+        mov     ah, (LCD_LINE1 & 07Fh) + 9      ; "Date: JJ-"
+        call    dt_field_b
+        jc      .cancel
+        call    dt_dash
+        mov     bx, [es:BIOS_RTC_OFF]           ; annee (4 chiffres, ou 2: 26 = 2026)
         mov     cl, 4
-        mov     ah, (LCD_LINE1 & 07Fh) + 12      ; 12 = long. de "Date: JJ-MM-"
-        call    ps2_read_dec_editable            ; BX = annee complete (0-9999)
-        mov     ax, VAR_SEG
-        mov     es, ax
-        mov     di, BIOS_RTC_OFF                 ; annee (mot, poids faible d'abord)
-        mov     [es:di], bx
-
+        mov     ah, (LCD_LINE1 & 07Fh) + 12     ; "Date: JJ-MM-"
+        call    dt_field
+        jc      .cancel
+        cmp     bx, 100
+        jae     .y4
+        add     bx, 2000
+.y4:
+        mov     [es:BIOS_RTC_OFF], bx
         mov     si, txt_crlf
         call    bios_puts
+        call    dt_check_date                   ; CF = 1: date impossible
+        jnc     .time
+        mov     si, txt_dt_bad_date
+        call    bios_puts
+        jmp     .date
 
-        mov     si, txt_datetime_time_prefix     ; "Heure: "/"Time: "
+.time:
+        mov     si, txt_dt_time_q               ; "Heure (HH:MM:SS): "
         call    bios_puts
         mov     si, txt_datetime_time_prefix
         i2c_lcd_show LCD_LINE2
-
+        mov     di, BIOS_RTC_OFF + 4            ; heures
         mov     cl, 2
-        mov     ah, (LCD_LINE2 & 07Fh) + 7       ; 7 = long. de "Heure: "
-        call    ps2_read_dec_editable            ; BX = heures
-        mov     ax, VAR_SEG
-        mov     es, ax
-        mov     di, BIOS_RTC_OFF + 4              ; heures
-        mov     [es:di], bl
-
-        mov     al, ':'
-        call    uart_tx_byte
-        call    i2c_lcd_data
-
+        mov     ah, (LCD_LINE2 & 07Fh) + 7      ; 7 = long. de "Heure: " / "Time:  "
+        call    dt_field_b
+        jc      .cancel
+        call    dt_colon
+        mov     di, BIOS_RTC_OFF + 5            ; minutes
         mov     cl, 2
-        mov     ah, (LCD_LINE2 & 07Fh) + 10      ; 10 = long. de "Heure: HH:"
-        call    ps2_read_dec_editable            ; BX = minutes
-        mov     ax, VAR_SEG
-        mov     es, ax
-        mov     di, BIOS_RTC_OFF + 5              ; minutes
-        mov     [es:di], bl
-
-        mov     al, ':'
-        call    uart_tx_byte
-        call    i2c_lcd_data
-
+        mov     ah, (LCD_LINE2 & 07Fh) + 10
+        call    dt_field_b
+        jc      .cancel
+        call    dt_colon
+        mov     di, BIOS_RTC_OFF + 6            ; secondes
         mov     cl, 2
-        mov     ah, (LCD_LINE2 & 07Fh) + 13      ; 13 = long. de "Heure: HH:MM:"
-        call    ps2_read_dec_editable            ; BX = secondes
-        mov     ax, VAR_SEG
-        mov     es, ax
-        mov     di, BIOS_RTC_OFF + 6              ; secondes
-        mov     [es:di], bl
-
+        mov     ah, (LCD_LINE2 & 07Fh) + 13
+        call    dt_field_b
+        jc      .cancel
         mov     si, txt_crlf
         call    bios_puts
+        cmp     byte [es:BIOS_RTC_OFF + 4], 23
+        ja      .bad_time
+        cmp     byte [es:BIOS_RTC_OFF + 5], 59
+        ja      .bad_time
+        cmp     byte [es:BIOS_RTC_OFF + 6], 59
+        jbe     .send
+.bad_time:
+        mov     si, txt_dt_bad_time
+        call    bios_puts
+        jmp     .time
 
-        ; --- envoie au pont: DS:SI = BIOS_RTC_OFF (7 premiers octets, meme
-        ; ordre que rtc_get - annee(2)/mois/jour/h/min/s), DS bascule
-        ; TEMPORAIREMENT sur VAR_SEG (rtc_set l'exige - voir son en-tete,
-        ; lib/bridge.asm) puis revient a CS aussitot apres (invariant du
-        ; reste du projet: DS = CS partout ailleurs - voir start:) ---
+.send:
+        ; --- envoi au pont: DS:SI = BIOS_RTC_OFF (rtc_set exige DS = VAR_SEG), puis DS = CS ---
         push    ds
         mov     ax, VAR_SEG
         mov     ds, ax
         mov     si, BIOS_RTC_OFF
         call    rtc_set
         pop     ds
-
         mov     si, txt_datetime_saved
+        jmp     .msg
+.cancel:
+        mov     si, txt_crlf
+        call    bios_puts
+        mov     si, txt_dt_cancel
+.msg:
         call    bios_puts
 
         pop     es
+        pop     bp
         pop     di
         pop     si
         pop     dx
@@ -4995,6 +5024,157 @@ clock_datetime_action:
         pop     bx
         pop     ax
         ret
+
+dt_dash:
+        mov     al, '-'
+        jmp     dt_sep
+dt_colon:
+        mov     al, ':'
+dt_sep:
+        call    uart_tx_byte
+        jmp     i2c_lcd_data
+
+; dt_field_b: champ d'un octet ES:DI (valeur par defaut = valeur actuelle), CL chiffres, AH = adresse
+; LCD du champ. CF = 1: Echap. Detruit AX, BX, CX, DX.
+dt_field_b:
+        xor     bh, bh
+        mov     bl, [es:di]
+        call    dt_field
+        jc      .r
+        mov     [es:di], bl
+.r:
+        ret
+
+; dt_field (ROM 1.8): lit un nombre decimal de CL chiffres au plus (UART et clavier PS/2), avec echo au
+; terminal et au LCD (AH = adresse DDRAM du champ). Entree avant le dernier chiffre: termine le champ
+; (sans chiffre: garde BX, la valeur actuelle, et l'affiche); Retour arriere: efface; Echap: CF = 1.
+; Le champ se termine seul au CL-ieme chiffre. Sortie: BX = valeur. Detruit AX, CX, DX. Preserve SI, DI, BP.
+dt_field:
+        push    si
+        push    di
+        push    bp
+        mov     bp, bx                  ; BP = valeur actuelle
+        mov     bh, ah                  ; BH = adresse LCD du champ
+        xor     si, si                  ; SI = valeur saisie
+        mov     ch, cl                  ; CH = chiffres au plus
+        xor     dh, dh                  ; DH = chiffres saisis
+.key:
+        push    bx
+        push    cx
+        push    dx
+        call    ps2_get_char
+        pop     dx
+        pop     cx
+        pop     bx
+        cmp     al, 27
+        je      .esc
+        cmp     al, 13
+        je      .enter
+        cmp     al, 8
+        je      .bs
+        cmp     al, '0'
+        jb      .key
+        cmp     al, '9'
+        ja      .key
+        cmp     dh, ch
+        jae     .key
+        push    ax
+        call    uart_tx_byte
+        call    i2c_lcd_data
+        pop     ax
+        sub     al, '0'
+        xor     ah, ah
+        push    dx
+        xchg    ax, si                  ; AX = valeur, SI = chiffre
+        mov     di, 10
+        mul     di
+        add     ax, si
+        mov     si, ax
+        pop     dx
+        inc     dh
+        cmp     dh, ch
+        jb      .key
+        jmp     .done
+.enter:
+        or      dh, dh
+        jnz     .done
+        mov     si, bp                  ; rien de tape: la valeur actuelle, affichee
+        mov     ax, bp
+        mov     cl, ch
+        mov     bp, 3                   ; terminal et LCD
+        call    print_dec_n
+.done:
+        mov     bx, si
+        clc
+        jmp     .r
+.esc:
+        stc
+.r:
+        pop     bp
+        pop     di
+        pop     si
+        ret
+.bs:
+        or      dh, dh
+        jz      .key
+        dec     dh
+        push    dx
+        mov     ax, si
+        xor     dx, dx
+        mov     di, 10
+        div     di
+        mov     si, ax
+        pop     dx
+        mov     al, 8                   ; terminal: retour, espace, retour
+        call    uart_tx_byte
+        mov     al, ' '
+        call    uart_tx_byte
+        mov     al, 8
+        call    uart_tx_byte
+        mov     al, bh                  ; LCD: efface la case et y revient
+        add     al, dh
+        or      al, 80h
+        call    i2c_lcd_command
+        mov     al, ' '
+        call    i2c_lcd_data
+        mov     al, bh
+        add     al, dh
+        or      al, 80h
+        call    i2c_lcd_command
+        jmp     .key
+
+; dt_check_date: date de ES:BIOS_RTC_OFF (annee 2000-2099, mois 1-12, jour selon le mois, 29 fevrier
+; les annees bissextiles) -> CF = 1 si impossible. Detruit AX, BX.
+dt_check_date:
+        mov     ax, [es:BIOS_RTC_OFF]
+        cmp     ax, 2000
+        jb      .bad
+        cmp     ax, 2099
+        ja      .bad
+        mov     bl, [es:BIOS_RTC_OFF + 2]
+        dec     bl
+        cmp     bl, 11
+        ja      .bad
+        xor     bh, bh
+        mov     ah, [cs:dt_mdays + bx]  ; jours du mois
+        cmp     bl, 1
+        jne     .j
+        test    byte [es:BIOS_RTC_OFF], 3
+        jnz     .j
+        inc     ah                      ; fevrier bissextile (2000-2099: annee divisible par 4)
+.j:
+        mov     al, [es:BIOS_RTC_OFF + 3]
+        or      al, al
+        jz      .bad
+        cmp     al, ah
+        ja      .bad
+        clc
+        ret
+.bad:
+        stc
+        ret
+
+dt_mdays:       db      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
 
 ; ============================================================
 ; information_action
@@ -6583,9 +6763,9 @@ txt_lu:                 db      '  read=',0
 txt_defaut_detail:      db      '  >> MEMORY FAULT @ ',0
 
 %ifdef RAM_512K
-txt_banniere1:          db      27,'[0m','=== RAM Test 512K (VE2CUY, UART report 9600 8N1, PA7) ===',27,'[0m',13,10,0
+txt_banniere1:          db      27,'[0m','=== Testing 512K ===',27,'[0m',13,10,0
 %else
-txt_banniere1:          db      27,'[0m','=== RAM Test 128K (VE2CUY, UART report 9600 8N1, PA7) ===',27,'[0m',13,10,0
+txt_banniere1:          db      27,'[0m','=== Testing 126K ===',27,'[0m',13,10,0
 %endif
 %ifdef RAM_512K
 txt_banniere2:          db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocks) + seg 7000h (70000h-7F7FFh, 62 blocks),',13,10,'then the last 2 KB (firmware stack and variables, 7F800h-7FFFFh) with the stack moved to low RAM',13,10,13,10,0
@@ -6664,7 +6844,8 @@ txt_menu_main_head:     db      27,'[36m','=== VE2CUY PCx86 ===',27,'[0m',13,10
                         db      '1) Basic', 0
 txt_menu_main_rest:     db      '2) Memory functions',13,10
                         db      '3) USB Disk',13,10
-                        db      '4) Configuration',13,10,13,10,0
+                        db      '4) Configuration',13,10
+                        db      '5) Boot from disk',13,10,13,10,0
 
 txt_menu_basic:         db      27,'[36m','--- Basic Submenu ---',27,'[0m',13,10
                         db      '1) Tiny Basic',13,10
@@ -6728,8 +6909,14 @@ txt_cpu_test_estimated:   db      'Estimated speed: ', 0
 
 ; ---- option "3) Set date and time" du sous-menu Configuration
 ; ---- (clock_datetime_action, plus haut) ----
-txt_datetime_time_prefix: db      'Time: ', 0
+txt_datetime_time_prefix: db      'Time:  ', 0            ; 7 caracteres, comme 'Heure: ' (colonnes du LCD)
 txt_datetime_saved:       db      'Date and time sent to the bridge.', 13, 10, 0
+txt_dt_help:              db      'Format: date DD-MM-YYYY, time HH:MM:SS. Enter = current value, Esc = cancel.', 13, 10, 0
+txt_dt_date_q:            db      'Date (DD-MM-YYYY): ', 0
+txt_dt_time_q:            db      'Time (HH:MM:SS): ', 0
+txt_dt_bad_date:          db      'Invalid date, try again.', 13, 10, 0
+txt_dt_bad_time:          db      'Invalid time, try again.', 13, 10, 0
+txt_dt_cancel:            db      'Cancelled: nothing changed.', 13, 10, 0
 
 ; ---- option "4) Information" du sous-menu Configuration
 ; ---- (information_action, plus haut) - PAS "lcd_text" (pas de padding a
@@ -6804,9 +6991,9 @@ txt_lu:                 db      '  lu=',0
 txt_defaut_detail:      db      '  >> DEFAUT memoire @ ',0
 
 %ifdef RAM_512K
-txt_banniere1:          db      27,'[0m','=== Test RAM 512K (VE2CUY, rapport UART 9600 8N1, PA7) ===',27,'[0m',13,10,0
+txt_banniere1:          db      27,'[0m','=== Testing 512K ===',27,'[0m',13,10,0
 %else
-txt_banniere1:          db      27,'[0m','=== Test RAM 128K (VE2CUY, rapport UART 9600 8N1, PA7) ===',27,'[0m',13,10,0
+txt_banniere1:          db      27,'[0m','=== Testing 126K ===',27,'[0m',13,10,0
 %endif
 %ifdef RAM_512K
 txt_banniere2:          db      'Plan: seg 0000h-6000h (00000h-6FFFFh, 448 blocs) + seg 7000h (70000h-7F7FFh, 62 blocs),',13,10,'puis les 2 derniers Ko (pile et variables du micrologiciel, 7F800h-7FFFFh), pile deplacee en bas de la RAM',13,10,13,10,0
@@ -6901,7 +7088,8 @@ txt_menu_main_head:     db      27,'[36m','=== VE2CUY PCx86 ===',27,'[0m',13,10
                         db      '1) Basic', 0
 txt_menu_main_rest:     db      '2) Memory functions',13,10
                         db      '3) USB Disk',13,10
-                        db      '4) Configuration',13,10,13,10,0
+                        db      '4) Configuration',13,10
+                        db      '5) Boot from disk',13,10,13,10,0
 
 txt_menu_basic:         db      27,'[36m','--- Sous-menu Basic ---',27,'[0m',13,10
                         db      '1) Tiny Basic',13,10
@@ -6980,6 +7168,12 @@ txt_cpu_test_estimated:   db      'Vitesse estimee: ', 0
 ; ---- (clock_datetime_action, plus haut) ----
 txt_datetime_time_prefix: db      'Heure: ', 0
 txt_datetime_saved:       db      'Heure et date envoyees au pont.', 13, 10, 0
+txt_dt_help:              db      'Format: date JJ-MM-AAAA, heure HH:MM:SS. Entree = valeur actuelle, Echap = annuler.', 13, 10, 0
+txt_dt_date_q:            db      'Date (JJ-MM-AAAA): ', 0
+txt_dt_time_q:            db      'Heure (HH:MM:SS): ', 0
+txt_dt_bad_date:          db      'Date invalide, recommencer.', 13, 10, 0
+txt_dt_bad_time:          db      'Heure invalide, recommencer.', 13, 10, 0
+txt_dt_cancel:            db      'Annule: rien n', 27h, 'a change.', 13, 10, 0
 
 ; ---- option "4) Information" du sous-menu Configuration
 ; ---- (information_action, plus haut) - PAS "lcd_text", voir la remarque
@@ -7145,7 +7339,7 @@ txt_dump_seg_off_sep:   db      ':0x', 0
 
 ; ---- ecran de demarrage (3 secondes, une seule fois - voir start:) ----
 lcd_text lcd_txt_splash_l1, 'Breadboard 8088', 20
-lcd_text lcd_txt_splash_l2, 'Version 1.7', 20
+lcd_text lcd_txt_splash_l2, 'Version 2.3', 20
 lcd_txt_splash_l3:      times   20 db '-'       ; remplissage '-' (pas ' ') - hors macro
                         db      0
 lcd_text lcd_txt_splash_l4, '(c) VE2CUY 2026', 20
@@ -7158,7 +7352,7 @@ lcd_text lcd_txt_splash_l4, '(c) VE2CUY 2026', 20
 lcd_text lcd_txt_menu_main_l1, '1) Basic', 20
 lcd_text lcd_txt_menu_main_l2, '2) Memory functions', 20
 lcd_text lcd_txt_menu_main_l3, '3) USB Disk', 20
-lcd_text lcd_txt_menu_main_l4, '4) Configuration', 20
+lcd_text lcd_txt_menu_main_l4, '4) Config  5) Boot', 20
 
 ; ---- sous-menu Basic (voir .basic_menu, start:) - 2 options,
 ; ---- tiennent sur le LCD sans pagination ----
@@ -7268,9 +7462,10 @@ lcd_text lcd_txt_run_ram_l1, 'Test RAM 128K', 20
 ; ---- calcul en fonction de la taille de la ROM (256K) ----
 ; ---- A ajuster si la taille de la ROM change          ----
 ; --- PC-DOS 2.1 de la ROM (lecteur A:, lib/bios.asm): secteurs utilises de la disquette de 180 Ko faite par
-; --- tests/gen_dos21_rom.py (build/dos21_rom.bin, regle du Makefile), en D800:0000 (physique D8000h). Le code
-; --- et les donnees ci-dessus restent sous le decalage 10000h (un seul segment, CS = C000h); D0000h-D7FFFh libre.
-        times   018000h - ($-$$) db 0FFh
+; --- tests/gen_dos21_rom.py (build/dos21_rom.bin, regle du Makefile), en D600:0000 (physique D6000h; D8000h
+; --- avant la ROM 1.8: SETTIME n'y tenait plus). Le code et les donnees ci-dessus restent sous le decalage 10000h
+; --- (un seul segment, CS = C000h); D0000h-D5FFFh libre.
+        times   016000h - ($-$$) db 0FFh
 dos_rom_img:
         incbin  "build/dos21_rom.bin"
 dos_rom_img_end:

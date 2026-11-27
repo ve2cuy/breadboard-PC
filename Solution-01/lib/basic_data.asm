@@ -59,11 +59,11 @@ ansi_colors:                            ; couleur GW-BASIC (0-7) -> couleur ANSI
         db      0, 4, 2, 6, 1, 5, 3, 7
 
 msg_banner:
-        db      13, 10, 'VE2CUY 86 BASIC Version 1.0 (inspired by GW-BASIC)', 13, 10
+        db      13, 10, 'VE2CUY 86 BASIC Version 1.1 (inspired by GW-BASIC)', 13, 10
         db      'HELP: help, Ctrl-C: Break, Ctrl-X: menu, USB ON/OFF', 13, 10
         db      'Edit last command: UP arrow', 13, 10, 0
 msg_help:
-        db      13, 10, '--- VE2CUY 86 BASIC, V1.0: command summary (HELP) ---', 13, 10
+        db      13, 10, '--- VE2CUY 86 BASIC, V1.1: command summary (HELP) ---', 13, 10
         db      'Program   : LIST [n[-m]]  RUN [n]  NEW  CONT  DELETE n-m  CLEAR', 13, 10
         db      '            TRON  TROFF  EDIT n|.  SYSTEM/BYE  Ctrl-C  Ctrl-X  Up: last cmd', 13, 10
         db      'Flow      : IF..THEN..ELSE  GOTO  GOSUB/RETURN  ON n GOTO|GOSUB', 13, 10

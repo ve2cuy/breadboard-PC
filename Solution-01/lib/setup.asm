@@ -159,12 +159,21 @@ boot_auto:
         cmp     al, 3
         jne     .r
         print   txt_setup_bootc, UART
+        call    boot_disk
+.r:
+        pop     ax
+        ret
+
+; boot_disk (ROM 2.2, aussi "5) Boot from disk" du menu principal): INT 19h - l'image de disquette montee
+; s'il y en a une, sinon le disque C: de la flash. Ne revient qu'en cas d'echec (message du BIOS). Preserve
+; tout sauf les drapeaux.
+boot_disk:
+        push    ax
         push    ds
         mov     ax, VAR_SEG
         mov     ds, ax
-        int     19h                     ; disque C: (aucune image montee au demarrage) - revient si echec
+        int     19h
         pop     ds
-.r:
         pop     ax
         ret
 

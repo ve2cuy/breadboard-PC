@@ -129,6 +129,14 @@ l'amorçage d'un DOS), le LCD montre une fenêtre de 20 × 4 de cet écran :
 - CGRAM : é, è, ê, à, `\` (5Ch = yen dans la ROM A00 du LCD), ç, ù, ô ;
 - fin : premier octet LCD du 8088 (son menu reprend le LCD) ou RESET du 8088.
 
+## Tic d'horloge (pont 2.3)
+
+Solution-01 n'a pas de minuterie 8253. Pour un système qui en a besoin (ELKS/Minix : ordonnancement,
+lecture du clavier), le pont envoie un tic toutes les 54,925 ms après la commande `30h` (le BIOS la donne
+à l'amorçage d'un système, et `31h` au démarrage de la ROM). Le tic est l'octet `9Ch` sur l'étiquette du
+clavier PS/2 ; le BIOS le reconnaît avant le clavier, compte `0040:006C` et appelle l'INT 1Ch (pas pendant
+ses propres services : sa pile n'est pas réentrante). Voir `Solution-01/elks/README_fr.md`.
+
 ## Réglages du BIOS (pont 2.2)
 
 Le BIOS de réglages de la ROM 1.7 (Échap au démarrage, voir `Solution-01/README.md`) confie ses réglages
@@ -228,6 +236,8 @@ PlatformIO : `Adafruit SPIFlash` et `SdFat - Adafruit Fork`.
 | `2Dh` | CONSOLE AU LCD (2.1) : le LCD montre la fenêtre 20 × 4 de l'écran du terminal (voir plus haut) ; sans réponse |
 | `2Eh` | RÉGLAGES DU BIOS (2.2) → 16 octets (voir « Réglages du BIOS ») |
 | `2Fh`, 16 octets | ÉCRIRE les réglages du BIOS (gardés dans la flash interne) → état (0 = ok, 4 = erreur d'écriture) |
+| `30h` | TIC D'HORLOGE (2.3) en marche, sans réponse : l'octet `9Ch`, étiqueté clavier PS/2 (absent du jeu 2), toutes les 54,925 ms (18,2065 Hz, l'IRQ 0 du PC). Le BIOS de la ROM 2.0 en fait l'INT 08h du PC (`0040:006C`, puis INT 1Ch). Arrêté au reset du 8088 |
+| `31h` | TIC D'HORLOGE arrêté (2.3). Un pont plus ancien ignore `30h` et `31h` |
 | `25h` | USB ON : le PC prend le disque (lecteur de masse) → état ; état 9 = pile USB sans lecteur de masse |
 | `26h` | USB OFF : le pont reprend le disque (remonte le volume) → état |
 

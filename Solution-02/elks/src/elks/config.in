@@ -20,6 +20,7 @@ mainmenu_option next_comment
 		bool 'Compaq DeskPro Hardware (fast mode)' CONFIG_HW_COMPAQFAST n
 		bool 'MK-88 Hardware (IRQ 3 keyboard)' CONFIG_HW_MK88 n
 		bool 'Solution-02 breadboard (early 8259 EOI, software UART)' CONFIG_HW_SOLUTION02 n
+		bool 'Solution-01 breadboard (8255 decoded by A7, 8259 by A5: no direct FDC/IDE ports)' CONFIG_HW_SOLUTION01 n
 		bool 'i286 protected mode (experimental)' CONFIG_286_PMODE n
 
 		comment 'Devices'

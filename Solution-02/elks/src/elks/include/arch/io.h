@@ -1,7 +1,20 @@
 #ifndef __ARCH_8086_IO_H
 #define __ARCH_8086_IO_H
 
+#include <autoconf.h>     /* CONFIG_HW_SOLUTION01 (IO_DELAY_PORT) */
+
 #define	port_MAX	0xFFFF
+
+/*
+ * I/O delay of the *_p macros: a write to port 80h (POST port on a PC). On the Solution-01
+ * breadboard, port 80h is the data port of the 8255 that talks to the bridge (decoded by A7
+ * alone): every delay sent a byte to the bridge. There, use 4Fh (A7 = A5 = 0: no device).
+ */
+#ifdef CONFIG_HW_SOLUTION01
+#define IO_DELAY_PORT "$0x4F"
+#else
+#define IO_DELAY_PORT "$0x80"
+#endif
 
 #ifdef __ia16__
 
@@ -31,28 +44,28 @@
 
 #define outb_p(value,port)                \
         asm volatile ("outb %%al,%%dx\n"  \
-                      "outb %%al,$0x80\n" \
+                      "outb %%al," IO_DELAY_PORT "\n" \
                         : /* no output */ \
                         :"Ral" ((unsigned char)(value)),"d" (port))
 
 #define inb_p(port) __extension__ ({      \
         unsigned char _v;                 \
         asm volatile ("inb %%dx,%%al\n"   \
-                      "outb %%al,$0x80\n" \
+                      "outb %%al," IO_DELAY_PORT "\n" \
                         :"=Ral" (_v)      \
                         :"d" (port));     \
         _v; })
 
 #define outw_p(value,port)                \
         asm volatile ("outw %%ax,%%dx\n"  \
-                      "outb %%al,$0x80\n" \
+                      "outb %%al," IO_DELAY_PORT "\n" \
                         : /* no output */ \
                         :"a" ((unsigned short)(value)),"d" (port))
 
 #define inw_p(port) __extension__ ({      \
         unsigned short _v;                \
         asm volatile ("inw %%dx,%%ax\n"   \
-                      "outb %%al,$0x80\n" \
+                      "outb %%al," IO_DELAY_PORT "\n" \
                         :"=a" (_v)        \
                         :"d" (port));     \
         _v; })

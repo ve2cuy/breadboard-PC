@@ -332,12 +332,13 @@ check('INT 13h AH=08h: pas de disque -> AH = AAh', st['res'][0].cf and st['res']
 # ---------------------------------------------------------------- INT 1Ah: horloge
 bridge = H.BridgeModel()                       # 2026-09-20 12:34:56.78
 total_cs = ((12 * 3600 + 34 * 60 + 56) * 100 + 78)
-ticks = total_cs * 91 // 500
+ticks = (total_cs * 11931 + (total_cs * 52390 >> 16)) >> 16                 # ROM 1.8: 18,2065 ticks/s (avant: * 91 // 500 = 18,2/s)
+assert 0 <= total_cs * 1193180 / 6553600 - ticks < 2   # le compteur du 8253 du PC, au tick pres (troncatures)
 st = run([case(0x1A, ax=0x0000), case(0x1A, ax=0x0200), case(0x1A, ax=0x0400),
           case(0x1A, ax=0x0300, cx=0x2359, dx=0x3000), case(0x1A, ax=0x0500, cx=0x2031, dx=0x1225),
           case(0x1A, ax=0x0900)], bridge=bridge)
 r = st['res']
-check('INT 1Ah AH=00h: ticks depuis minuit (18,2 par seconde), AL = 0', not r[0].cf and r[0].al == 0 and (r[0].cx << 16 | r[0].dx) == ticks and frame_ok(r[0]),
+check('INT 1Ah AH=00h: ticks depuis minuit (18,2065 par seconde), AL = 0', not r[0].cf and r[0].al == 0 and (r[0].cx << 16 | r[0].dx) == ticks and frame_ok(r[0]),
       '%x:%x vs %x' % (r[0].cx, r[0].dx, ticks))
 check('INT 1Ah AH=02h: heure BCD 12:34:56', not r[1].cf and r[1].cx == 0x1234 and (r[1].dx >> 8) == 0x56 and (r[1].dx & 0xFF) == 0, '%x %x' % (r[1].cx, r[1].dx))
 check('INT 1Ah AH=04h: date BCD 20 26-09-20', not r[2].cf and r[2].cx == 0x2026 and r[2].dx == 0x0920, '%x %x' % (r[2].cx, r[2].dx))
@@ -358,7 +359,20 @@ st = run([case(0x16, ax=0x0000)] * 6 + [case(0x16, ax=0x0200)], uart_in=b'\x1b[A
 r = st['res']
 check('INT 16h: fleche haut (ESC [ A) = 4800h, gauche = 4B00h', r[0].ax == 0x4800 and r[1].ax == 0x4B00, '%x %x' % (r[0].ax, r[1].ax))
 check('INT 16h: DEL -> retour arriere 0E08h, Entree 1C0Dh, A = 1E41h', r[2].ax == 0x0E08 and r[3].ax == 0x1C0D and r[4].ax == 0x1E41, '%x %x %x' % (r[2].ax, r[3].ax, r[4].ax))
-check('INT 16h: Ctrl-C = 2E03h; indicateurs (AH=02h) = 0', r[5].ax == 0x2E03 and r[6].al == 0, '%x %x' % (r[5].ax, r[6].ax))
+check('INT 16h: Ctrl-C = 2E03h; indicateurs (AH=02h) = 20h (Verr. Num)', r[5].ax == 0x2E03 and r[6].al == 0x20, '%x %x' % (r[5].ax, r[6].ax))
+# clavier PS/2 (ROM 1.8, lib/kbd.asm): Maj + a, Ctrl + c, fleche haut (E0 75); tout relache -> indicateurs 20h
+st = run([case(0x16, ax=0x0000)] * 3 + [case(0x16, ax=0x0200)],
+         ps2_in=bytes([0x12, 0x1C, 0xF0, 0x1C, 0xF0, 0x12, 0x14, 0x21, 0xF0, 0x21, 0xF0, 0x14, 0xE0, 0x75]))
+r = st['res']
+check('INT 16h, clavier PS/2: Maj+a = 1E41h, Ctrl+c = 2E03h, fleche haut = 4800h, indicateurs 20h',
+      [x.ax for x in r[:3]] == [0x1E41, 0x2E03, 0x4800] and r[3].al == 0x20, ' '.join('%x' % x.ax for x in r))
+# Maj gauche tenue + 8 = '*'; Verr. Maj; indicateurs 62h; Maj + Verr. Maj + a = 'a'; pave numerique 0
+st = run([case(0x16, ax=0x0000), case(0x16, ax=0x0000), case(0x16, ax=0x0200), case(0x16, ax=0x0000)],
+         ps2_in=bytes([0x12, 0x3E, 0x58, 0xF0, 0x58, 0x1C, 0x70]))
+r = st['res']
+check('INT 16h, clavier PS/2: Maj+8 = 092Ah, Maj+Verr.Maj + a = 1E61h (indicateurs 62h), pave 0 = 5230h',
+      r[0].ax == 0x092A and r[1].ax == 0x1E61 and r[2].al == 0x62 and r[3].ax == 0x5230,
+      ' '.join('%x' % x.ax for x in r))
 check('INT 16h: ESC seul (ESC puis rien) = 011Bh', run([case(0x16, ax=0x0000)], uart_in=b'\x1b')['res'][0].ax == 0x011B)
 check('INT 16h AH=10h (clavier etendu) = AH=00h', run([case(0x16, ax=0x1000)], uart_in=b'z')['res'][0].ax == 0x2C7A)
 

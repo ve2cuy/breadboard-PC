@@ -428,6 +428,62 @@ void do_settime(struct tm *tm)
             cmos_settime(tm);
 }
 
+#ifdef CONFIG_HW_SOLUTION01
+/*
+ * Solution-01 breadboard: ports 70h/71h reach the 8259 (decoded by A5 alone), there is no
+ * mc146818. The real-time clock is the one of the STM32 bridge, read and set through the
+ * ROM BIOS: INT 1Ah AH=02h/04h (BCD, as on the AT), AH=03h/05h.
+ */
+static unsigned int bios_1a(unsigned int ax, unsigned int *cx, unsigned int *dx)
+{
+    unsigned int c = *cx, d = *dx;
+
+    __asm__ volatile ("int $0x1a" : "+a" (ax), "+c" (c), "+d" (d) : : "cc", "memory");
+    *cx = c;
+    *dx = d;
+    return ax;
+}
+
+static int bcd2bin(unsigned int b)
+{
+    b &= 0xFF;
+    return (b & 15) + (b >> 4) * 10;
+}
+
+static unsigned int bin2bcd(int v)
+{
+    return ((v / 10) << 4) + v % 10;
+}
+
+void cmos_gettime(struct tm *tm)
+{
+    unsigned int cx = 0, dx = 0;
+
+    bios_1a(0x0400, &cx, &dx);          /* CH century, CL year, DH month, DL day */
+    tm->tm_year = bcd2bin(cx >> 8) * 100 + bcd2bin(cx) - 1900;
+    tm->tm_mon = bcd2bin(dx >> 8);      /* 1-12, as cmos_gettime below */
+    tm->tm_mday = bcd2bin(dx);
+    cx = dx = 0;
+    bios_1a(0x0200, &cx, &dx);          /* CH hours, CL minutes, DH seconds */
+    tm->tm_hour = bcd2bin(cx >> 8);
+    tm->tm_min = bcd2bin(cx);
+    tm->tm_sec = bcd2bin(dx >> 8);
+    tm->tm_wday = 0;
+}
+
+void cmos_settime(struct tm *tmp)
+{
+    unsigned int y = tmp->tm_year + 1900, cx, dx;
+
+    cx = (bin2bcd(tmp->tm_hour) << 8) | bin2bcd(tmp->tm_min);
+    dx = bin2bcd(tmp->tm_sec) << 8;
+    bios_1a(0x0300, &cx, &dx);
+    cx = (bin2bcd(y / 100) << 8) | bin2bcd(y % 100);
+    dx = (bin2bcd(tmp->tm_mon + 1) << 8) | bin2bcd(tmp->tm_mday);
+    bios_1a(0x0500, &cx, &dx);
+}
+#else /* CONFIG_HW_SOLUTION01 */
+
 #if defined(CONFIG_ARCH_IBMPC) || defined(CONFIG_ARCH_SOLO86)
 unsigned char cmos_read(unsigned char reg)
 {
@@ -518,6 +574,7 @@ void cmos_settime(struct tm *tmp)
     cmos_write(10, save_freq_select);
     cmos_write(11, save_control);
 }
+#endif /* CONFIG_HW_SOLUTION01 */
 #endif
 
 /****************************************************************************/

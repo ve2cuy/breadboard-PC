@@ -39,6 +39,11 @@
 //     afficher. La frequence obtenue est ecrite au terminal ("[Pont] Horloge 8088: ...").
 //     2Eh = LIRE les reglages du BIOS (pont 2.2) -> 16 octets; 2Fh + 16 octets = les ECRIRE (gardes dans
 //     la flash interne du STM32, voir cfgSave) -> etat (0 = ok, 4 = erreur d'ecriture). Voir "REGLAGES".
+//     30h / 31h = TIC d'horloge marche / arret (pont 2.3, sans reponse): Solution-01 n'a pas de 8253; le pont
+//     envoie l'octet TICK_CODE (9Ch, etiquette clavier PS/2, absent du jeu 2) toutes les 54,925 ms (18,2065 Hz,
+//     l'IRQ0 du PC). Le BIOS du 8088 en fait l'INT 08h du PC: 0040:006C puis INT 1Ch (ELKS: CONFIG_TIMER_INT1C).
+//     32h (pont 2.4) = meme tic a 100 Hz (10 ms, le 8253 d'ELKS sur un PC; le BIOS la demande quand ELKS
+//     l'appelle par INT 1Ah AH=E0h). Arret au reset du 8088.
 //
 // CABLAGE (voir le tableau du README.md)
 //   D0-D3 <-> PB12-PB15 et D4-D7 <-> PB6-PB9  <->  8255 PA0-PA7 (bus de donnees)
@@ -122,7 +127,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 2
-#define FW_VERSION_MINOR 2
+#define FW_VERSION_MINOR 4
 #define FW_XSTR(x) #x
 #define FW_STR(x)  FW_XSTR(x)                // FW_STR(FW_VERSION_MINOR) -> "9"
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
@@ -993,6 +998,14 @@ static void conStart();                    // console au LCD (commande 2Dh, pont
 // Automate des commandes du canal 3: un octet d'operation, puis ses arguments.
 static uint32_t uartHoldUntil = 0;         // pas d'octet UART avant cette date (ms): LINE_DELAY_MS, CMD_HOLD_MS
 static uint8_t cmdBuf[264], cmdLen = 0;
+// Tic d'horloge (pont 2.3, commandes 30h/31h)
+const uint8_t  TICK_CODE = 0x9C;
+const uint32_t TICK_US = 54925;            // 65536 / 1 193 180 Hz (30h)
+const uint32_t TICK100_US = 10000;         // 100 Hz (32h, pont 2.4)
+static uint32_t tickUs = TICK_US;
+static bool     tickOn = false;
+static uint32_t tickNext = 0;
+static uint8_t  tickPend = 0;              // tics dus, pas encore envoyes (4 au plus)
 static uint32_t cmdT = 0;
 static int cmdNeed() {                     // nombre total d'octets de la commande en cours
   switch (cmdBuf[0]) {
@@ -1043,11 +1056,16 @@ static void cmdByte(uint8_t v) {
   else if (op == 0x2C) clockExec(cmdBuf[1]);
   else if (op == 0x2D) { conStart(); cmdLen = 0; return; }   // console au LCD: sans reponse ni collage
   else if (op == 0x2E || op == 0x2F) cfgExec(op, cmdBuf + 1);   // reglages du BIOS (pont 2.2)
+  else if (op == 0x30 || op == 0x32) {                                   // tic (pont 2.3; 32h: 100 Hz, 2.4)
+    tickUs = op == 0x32 ? TICK100_US : TICK_US;
+    tickOn = true; tickPend = 0; tickNext = micros() + tickUs;
+  }
+  else if (op == 0x31) { tickOn = false; tickPend = 0; }
   // Le 8088 est occupe avec sa commande: pas de collage pour l'instant - SEULEMENT pour les commandes
   // longues (disque, fichiers, USB: op >= 10h, sauf 2Ch). Les commandes courtes (ping, heure, version,
   // horloge) n'en ont pas besoin: l'ecran Information lit l'heure toutes les ~170 ms a 7,38 MHz (moins
   // de CMD_HOLD_MS) - le terminal etait alors muet en permanence (Echap sans effet, PS/2 normal).
-  if (op >= 0x10 && op != 0x2C && op != 0x2E) uartHoldUntil = millis() + CMD_HOLD_MS;
+  if (op >= 0x10 && op != 0x2C && op != 0x2E && (op < 0x30 || op > 0x32)) uartHoldUntil = millis() + CMD_HOLD_MS;
   cmdLen = 0;
 }
 
@@ -1619,6 +1637,8 @@ static void reset8088Pulse() {
   uartHoldUntil = 0;
   lcdCon = false;                          // le menu du 8088 reprend le LCD
   navPfxN = 0;
+  tickOn = false;                          // plus de tic (le BIOS les redemande a l'amorcage d'un systeme)
+  tickPend = 0;
   // Le 8088 exige un RESET d'au moins 4 cycles d'horloge: 10 ms, ou 5 cycles si l'horloge est plus
   // lente (pont 2.0: 5 s a 1 Hz). L'USB reste servi pendant l'attente.
   uint32_t ms = RESET8088_PULSE_MS;
@@ -1790,6 +1810,11 @@ void loop() {
     termDrain();
 #endif
   if (resetRequest) reset8088Pulse();
+  if (tickOn && (int32_t)(micros() - tickNext) >= 0) {   // tic d'horloge du 8088 (pont 2.3)
+    tickNext += tickUs;
+    if ((int32_t)(micros() - tickNext) > (int32_t)(8 * tickUs)) tickNext = micros() + tickUs;     // tres en retard
+    if (tickPend < 4) tickPend++;
+  }
   if (clockRequest) {                      // raccourci de l'horloge (clavier PS/2 ou terminal)
     noInterrupts();
     uint8_t a = clockRequest;
@@ -1898,6 +1923,10 @@ void loop() {
 #if DEBUG_FS
       UsbSerial.print("[tx] "); UsbSerial.print(v, HEX); UsbSerial.print(" ibf="); UsbSerial.print(dbgIbfAfter); UsbSerial.print("\r\n");
 #endif
+      markSent();
+    } else if (tickPend && ps2Quiet(BUS_QUIET_US)) {               // tic (pont 2.3): etiquette clavier PS/2
+      tickPend--;
+      sendTo8088(0, TICK_CODE);
       markSent();
     } else if (ps2Head != ps2Tail && ps2Quiet(KBD_QUIET_US)) {
       ps2Pop(v);

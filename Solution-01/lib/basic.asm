@@ -56,6 +56,17 @@
 %include "lib/bridge.asm"               ; rtc_get / rtc_set (horloge du pont); le banc d'essai
                                         ; les remplace par des simulacres
 %endif
+%ifdef BASIC_TEST
+%ifndef KBD_ASM
+kbd_poll:                               ; banc d'essai: pas de clavier PS/2
+        stc
+        ret
+kbd_reset:
+        ret
+%endif
+%else
+%include "lib/kbd.asm"                  ; clavier PS/2 -> caracteres (ROM 1.8)
+%endif
 
 ; --- numeros d'erreur (numerotation GW-BASIC) ---
 ERR_NF  equ     1                       ; NEXT without FOR
@@ -336,6 +347,7 @@ basic_run:
         mov     word [b_stkbase], B_STK
         mov     byte [b_kh], 0
         mov     byte [b_kt], 0
+        call    kbd_reset               ; Maj/Ctrl/Alt relaches (le menu ne les suit pas)
         mov     byte [b_brk], 0
         mov     byte [b_tron], 0
         mov     byte [b_fmode], 0       ; aucun fichier de donnees ouvert
@@ -496,12 +508,22 @@ bas_rawin:
 .got:
         ret
 
-; bas_inkey: octet du terminal sans attendre. CF=1 si aucun; sinon AL.
+; bas_inkey: octet du terminal ou du clavier PS/2 sans attendre. CF=1 si aucun; sinon AL.
 bas_inkey:
+        call    bas_kpop
+        jnc     .r
+        call    bas_hwkey
+        jnc     .r
+        jmp     bas_kpop                ; une fleche du clavier PS/2 a pu remplir la file
+.r:
+        ret
+
+; bas_kpop: octet de la file des touches. CF=1 si elle est vide; sinon AL. Preserve BX.
+bas_kpop:
         push    bx
         mov     bl, [b_kh]
         cmp     bl, [b_kt]
-        je      .hw
+        je      .vide
         xor     bh, bh
         mov     al, [b_kq + bx]
         inc     bl
@@ -510,28 +532,13 @@ bas_inkey:
         pop     bx
         clc
         ret
-.hw:
+.vide:
         pop     bx
-        call    uart_rx_available
-        jc      .none
-        call    uart_rx_byte
-        clc
-        ret
-.none:
         stc
         ret
 
-; bas_chkbrk: surveille le terminal entre deux instructions: Ctrl-C = Break,
-; Ctrl-X = menu, autre octet = mis en file (15 touches) pour INKEY$/INPUT$
-; (les suivantes sont perdues si la file est pleine). Detruit AX.
-bas_chkbrk:
-        call    uart_rx_available
-        jc      .ret
-        call    uart_rx_byte
-        cmp     al, 3
-        je      bas_break
-        cmp     al, 18h
-        je      bas_exit
+; bas_kpush: AL -> file des touches (perdu si elle est pleine). Preserve tout.
+bas_kpush:
         push    bx
         mov     bl, [b_kt]
         xor     bh, bh
@@ -543,6 +550,58 @@ bas_chkbrk:
         mov     [b_kt], bl
 .full:
         pop     bx
+        ret
+
+; bas_hwkey (ROM 1.8): octet du clavier PS/2 (lib/kbd.asm), sinon du terminal, sans attendre.
+; CF=1 si aucun; sinon AL. Les fleches du clavier PS/2 deviennent ESC [ A/B/C/D, comme celles du
+; terminal: elles vont dans la file (CF=1 ici, bas_kpop les rend). Detruit AX.
+bas_hwkey:
+        call    kbd_poll
+        jc      .uart
+        or      al, al
+        jnz     .r                      ; caractere (CF = 0)
+        push    bx
+        mov     bx, bas_arrows
+.f:
+        cmp     byte [cs:bx], 0
+        je      .ign                    ; autre touche sans caractere: ignoree
+        cmp     ah, [cs:bx]
+        je      .hit
+        add     bx, 2
+        jmp     .f
+.hit:
+        mov     al, 1Bh
+        call    bas_kpush
+        mov     al, '['
+        call    bas_kpush
+        mov     al, [cs:bx + 1]
+        call    bas_kpush
+.ign:
+        pop     bx
+        stc
+        ret
+.uart:
+        call    uart_rx_available
+        jc      .r
+        call    uart_rx_byte
+        clc
+.r:
+        ret
+
+bas_arrows:
+        db      48h, 'A', 50h, 'B', 4Dh, 'C', 4Bh, 'D', 0
+
+; bas_chkbrk: surveille le terminal et le clavier PS/2 entre deux instructions: Ctrl-C = Break,
+; Ctrl-X = menu, autre octet = mis en file (15 touches) pour INKEY$/INPUT$
+; (les suivantes sont perdues si la file est pleine). Detruit AX.
+bas_chkbrk:
+        call    bas_hwkey
+        jc      .ret
+        cmp     al, 3
+        je      bas_break
+        cmp     al, 18h
+        je      bas_exit
+        call    bas_kpush
         jmp     bas_chkbrk
 .ret:
         ret

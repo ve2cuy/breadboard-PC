@@ -7,7 +7,7 @@ masquage d'IR1 pendant les commandes au pont (scrutation), le redemarrage a chau
 
 Usage (depuis la racine de Solution-01):  python tests/rom_test.py [--complet]   (ou: make test-rom)
 """
-import os, re, sys
+import os, re, subprocess, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 import rom_sim as S
 
@@ -154,6 +154,125 @@ st = S.run_rom([(S.MENU, b'4'), (b'5) BIOS', b'5'), (b'Entree : enregistrer', b'
                 (b'Sous-menu Configuration', b'')], bridge=br, tail_blocks=50_000)
 check('BIOS: pont < 2.2 (2Eh sans reponse): defauts, rien envoye, message', st['done']
       and not any(op == 0x2F for op, _ in br.log), st['out'][-300:])
+
+# --- clavier PS/2 complet (ROM 1.8, lib/kbd.asm): saisie au BASIC et au DOS (INT 16h), Maj suivie ---
+def raw(*b):
+    return [(S.PC_TAG_PS2, x) for x in b]
+keys = S.ps2(0x4D, 0x2D, 0x43, 0x31, 0x2C, 0x29, 0x36) + raw(0x12) + S.ps2(0x3E) + raw(0xF0, 0x12) + S.ps2(0x3D, 0x5A)
+br = S.H.BridgeModel(cfg=[1, 0, 1, 1, 0xD0, 0xC8, 0x48, 0] + [0] * 8)
+st = S.run_rom([(b'Ok', keys), (b' 42', b'SYSTEM\r'), (S.MENU, b'')], bridge=br, tail_blocks=50_000, count=300_000_000)
+check('Clavier PS/2: "print 6*7" tape au BASIC (Maj + 8 = *) -> 42', st['done'] and b'print 6*7' in st['out'],
+      st['out'][-300:])
+ver = raw(0x12) + S.ps2(0x2A, 0x24, 0x2D) + raw(0xF0, 0x12) + S.ps2(0x5A)
+st = S.run_rom([(S.MENU, b'3'), (b'4) DOS 2.1', b'4'), (b'(RTC)', b''), (b'B>', ver), (b'DOS Version', b'DATE\r\r'),
+                (b'Enter new date', b'')], tail_blocks=50_000, count=1_500_000_000)
+out = st['out'].decode('latin-1')
+check('Clavier PS/2: DOS 2.1 de la ROM, "VER" (Maj + v e r) par INT 16h', st['done'] and 'B>VER' in out, out[-300:])
+check('SETTIME: l AUTOEXEC du DOS de la ROM regle la date et l heure d apres la RTC (DATE: 9-20-2026)',
+      st['done'] and 'SETTIME: 20-09-2026 12:34:' in out and 'Current date is Sun  9-20-2026' in out
+      and 'Enter new date' not in out.split('DATE')[0], out[-400:])
+
+# --- SETTIME (ROM 1.8, dos/SETTIME.EXE) sous PC-DOS 2.1 et MS-DOS 3.30: date et heure du DOS = RTC du pont.
+# --- (aussi: compteur de ticks a 18,2065/s et faux passages de minuit - INT 1Ah AH=00h/01h, lib/bios.asm) ---
+import gen_settime as G
+for image, dos3 in (('pcdos2_1.img', False), ('Dos33-d1.IMG', True)):
+    if not os.path.exists(os.path.join(DOS, image)):
+        continue
+    disque = G.ajouter_fat12(img(image), 'SETTIME.EXE', open(os.path.join(S.ROOT, 'dos', 'SETTIME.EXE'), 'rb').read())
+    cases, mem = S.boot_image('D.IMG')
+    st = S.run_bios(cases, mem, S.dos_script(dos3, [b'settime\r', b'date\r\r', b'time\r\r']),
+                    bridge=S.H.BridgeModel(files={'D.IMG': disque}), tail_blocks=200_000)
+    out = st['out'].decode('latin-1')
+    fin = out[out.rfind('settime'):]
+    check('SETTIME sous %s: date 9-20-2026 (sans jour de trop) et heure 12:34:5x' % image,
+          st['done'] and 'SETTIME: 20-09-2026 12:34:5' in fin and 'Current date is Sun  9-20-2026' in fin
+          and 'Current time is 12:34:5' in fin, fin[-400:])
+
+# --- EDIT.COM (ROM 1.9, dos/EDIT.ASM): editeur plein ecran. Au DOS de la ROM: saisie, haut/bas (colonne
+# --- gardee), Debut/Fin, Suppr (joint deux lignes), tabulation, PgPrec/PgSuiv, Echap + N, F2; ecriture sur
+# --- A: (ROM) refusee proprement (pas d'"Abort, Retry"); puis sous MS-DOS 3.30 et PC-DOS 2.1, par les
+# --- numeros de fichier et par les FCB (chemin du DOS 1.x, force par -dFORCE_FCB) ---
+E = b'\x1b'
+UP, DOWN, HOME, END, PGUP, PGDN, DEL, F2 = (E + b'[A', E + b'[B', E + b'[H', E + b'[F', E + b'[5~', E + b'[6~',
+                                            E + b'[3~', E + b'OQ')
+lignes = b''.join(b'L%d\r' % i for i in range(60))
+st = S.run_rom([(S.MENU, b'3'), (b'4) DOS 2.1', b'4'), (b'(RTC)', b''),
+                (b'B>', b'EDIT T.TXT\r'),
+                (b'quitter', b'Ligne 1\rLigne 2\r\tfin' + UP + UP + HOME + b'X' + END + b'Y' + DOWN + DEL + b'L' + E),
+                (b'(O/N', b'o'), (b'B>', b'TYPE T.TXT\r'), (b'fin', b''),
+                (b'B>', b'EDIT LONG.TXT\r'), (b'quitter', lignes + PGUP + PGUP + b'Z' + PGDN + b'W' + E),
+                (b'(O/N', E), (b'quitter', E + b'[12~'), (b'B>', b'TYPE LONG.TXT\r'), (b'L59', b''),
+                (b'B>', b'EDIT A:NEUF.TXT\r'), (b'quitter', b'abc' + F2), (b'Une touche', b'x'), (b'quitter', E),
+                (b'(O/N', b'n'), (b'B>', b'')], tail_blocks=50_000, count=3_000_000_000)
+out = st['out'].decode('latin-1')
+t1 = out[out.find('TYPE T.TXT'):]
+t2 = out[out.find('TYPE LONG.TXT'):]
+t3 = out[out.find('EDIT A:NEUF'):]
+check('EDIT: saisie, fleches, Debut/Fin, Suppr, tabulation, Echap + O enregistre (DOS de la ROM)',
+      st['done'] and 'XLigne 1Y\r\nLigne 2L        fin' in t1, repr(t1[:80]))
+check('EDIT: PgPrec/PgSuiv sur 60 lignes, Echap puis Echap continue, F2 de PuTTY (ESC [ 12~) enregistre',
+      st['done'] and 'ZL14' in t2 and 'LW37' in t2, t2[:200])
+check('EDIT: enregistrer sur A: (ROM) -> message, pas d Abort/Retry, Echap + N quitte sans enregistrer',
+      st['done'] and 'Impossible de creer' in t3 and 'Abort' not in t3, repr(t3[-300:]))
+subprocess.run(['nasm', '-f', 'bin', '-dFORCE_FCB', 'dos/EDIT.ASM', '-o', 'build/EDITFCB.COM'], cwd=S.ROOT, check=True)
+for image, dos3 in (('Dos33-d1.IMG', True), ('pcdos2_1.img', False)):
+    if not os.path.exists(os.path.join(DOS, image)):
+        continue
+    for prog, src in ((b'EDIT', 'dos/EDIT.COM'), (b'EDITFCB', 'build/EDITFCB.COM')):
+        disque = G.ajouter_fat12(img(image), prog.decode() + '.COM', open(os.path.join(S.ROOT, src), 'rb').read())
+        script = S.dos_script(dos3, [])[:-2] + [
+            (b'A>', prog + b' T.TXT\r'), (b'quitter', b'un\rdeux' + UP + HOME + b'>' + F2),
+            (b'A>', prog + b' T.TXT\r'), (b'quitter', END + b'<' + F2), (b'A>', b'TYPE T.TXT\r'), (b'deux', b'')]
+        cases, mem = S.boot_image('D.IMG')
+        st = S.run_bios(cases, mem, script, bridge=S.H.BridgeModel(files={'D.IMG': disque}), tail_blocks=200_000)
+        out = st['out'].decode('latin-1')
+        check('EDIT sous %s (%s): creer, rouvrir, modifier' % (image, 'FCB, DOS 1.x' if prog == b'EDITFCB' else 'numeros de fichier'),
+              st['done'] and '>un<\r\ndeux' in out[out.find('TYPE T.TXT'):], out[-300:])
+
+# --- ELKS / Minix (ROM 2.0, pont 2.3, Solution-01/elks): image construite par elks/construire.ps1, copiee en
+# --- PC-DOS/ELKS-0.9.2/fd360-minix-s01.img (hors de git). Le tic du pont (30h, 9Ch) -> INT 1Ch -> ELKS
+# --- (CONFIG_TIMER_INT1C): clavier par INT 16h, horloge par INT 1Ah (clock), aucun port du 8255/8259 touche
+# --- hors du BIOS (80h-83h par outb_p, 3F2h, 3FBh, 70h, 61h...): seuls 4Fh (pause d'E/S) et 510h ---
+elks = os.path.join(DOS, 'ELKS-0.9.2', 'fd360-minix-s01.img')
+if os.path.exists(elks):
+    cases, mem = S.boot_image('E.IMG')
+    br = S.H.BridgeModel(files={'E.IMG': img(os.path.join('ELKS-0.9.2', 'fd360-minix-s01.img'))})
+    st = S.run_bios(cases, mem, [(b'login:', b'root\r'), (b'# ', b'ls /\r'), (b'# ', b'date\r'), (b'# ', b'')],
+                    bridge=br, defines=('RAM_512K',), tail_blocks=300_000)
+    out = st['out'].decode('latin-1')
+    fin = out[out.find('login:'):]
+    check('ELKS (Minix): login root, ls /, date = RTC du pont (2026), tic du pont en marche',
+          st['done'] and 'root' in fin and 'bootopts' in fin and 'Sep 20 12:3' in fin and '2026' in fin
+          and br.tick_on and st.get('ticks', 0) > 50, fin[-400:])
+    check('ELKS (Minix): tic a 100 Hz demande au BIOS (INT 1Ah AH=E0h -> pont 32h, ROM 2.2)',
+          getattr(br, 'tick_fast', False) and any(op == 0x32 for op, _ in br.log), sorted({hex(op) for op, _ in br.log}))
+    check('ELKS (Minix): aucun port du 8255/8259 hors de ceux du BIOS (pas de 70h, 80h par outb_p, 3FBh...)',
+          st['badports'] <= {0x4F, 0x510} and not st.get('etranger8255'),
+          '%s 8255 hors ROM: %s' % (sorted(hex(p) for p in st['badports']), st.get('etranger8255')))
+
+# --- menu principal: 5) Boot from disk (ROM 2.3): la liste des images (comme USB Disk -> 3), Echap -> menu ---
+br = S.H.BridgeModel(files={'ELKSS01.IMG': bytes(368640)})
+st = S.run_rom([(S.MENU, b'5'), (b'(Echap = annuler)', b'\x1b'), (S.MENU, b'')], bridge=br, tail_blocks=50_000,
+               count=400_000_000)
+out = st['out'].decode('latin-1')
+liste = out[out.find('5) Boot from disk'):]
+check('Menu principal: 5) Boot from disk = liste des images (DOS 2.1 de la ROM, ELKSS01.IMG), Echap -> menu',
+      st['done'] and 'ELKSS01' in liste and 'PC-DOS 2.1' in liste and liste.count('5) Boot from disk') >= 2, liste[-400:])
+
+# --- date et heure de la RTC (ROM 1.8): format affiche, date impossible redemandee, annee sur 2 chiffres,
+# --- Entree = valeur actuelle, Echap = rien envoye ---
+br = S.H.BridgeModel()
+st = S.run_rom([(S.MENU, b'4'), (b'3) Heure et date', b'3'), (b'Date (JJ-MM-AAAA): ', b'31022026'),
+                (b'Date invalide', b''), (b'Date (JJ-MM-AAAA): ', b'2711'), (b'27-11-', b'26\r'),
+                (b'Heure (HH:MM:SS): ', b'14\r05'), (b'envoyees au pont', b'')],
+               bridge=br, tail_blocks=50_000, count=400_000_000)
+check('Date et heure: 31-02 refuse puis 27-11-26 -> 2026, minutes gardees (Entree) -> pont',
+      st['done'] and list(br.clock[:7]) == [0xEA, 0x07, 11, 27, 14, 34, 5], str(list(br.clock)) + st['out'][-300:].decode('latin-1'))
+br = S.H.BridgeModel()
+st = S.run_rom([(S.MENU, b'4'), (b'3) Heure et date', b'3'), (b'Date (JJ-MM-AAAA): ', b'1\x1b'), (b'rien n', b'')],
+               bridge=br, tail_blocks=50_000, count=400_000_000)
+check('Date et heure: Echap annule (rien envoye au pont)', st['done'] and not any(op == 2 for op, _ in br.log),
+      st['out'][-300:])
 
 # --- ROM COMPLETE (option --complet: plusieurs minutes) ---
 if '--complet' in sys.argv:

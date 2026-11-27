@@ -105,6 +105,10 @@ FS_CLOCK        equ     2Ch
 FS_LCD_CON      equ     2Dh             ; pont 2.1: le LCD montre la console (sans reponse; voir l'en-tete)
 FS_CFG_GET      equ     2Eh             ; pont 2.2: reglages du BIOS -> 16 octets
 FS_CFG_PUT      equ     2Fh             ; pont 2.2: + 16 octets -> etat
+FS_TICK_ON      equ     30h             ; pont 2.3: le pont envoie un tic (TICK_CODE) toutes les 54,9 ms; sans reponse
+FS_TICK_OFF     equ     31h             ; pont 2.3: plus de tic. (Un pont plus ancien ignore ces deux octets.)
+FS_TICK_100     equ     32h             ; pont 2.4: tic a 100 Hz (ELKS: HZ = 100), par INT 1Ah AH=E0h AL=1
+TICK_CODE       equ     9Ch             ; le tic: octet etiquete "clavier PS/2" (PC0 = 0) absent du jeu 2 du clavier
 
 FSE_OK          equ     0
 FSE_NOTREADY    equ     1               ; pas de flash ou pas de systeme de fichiers
