@@ -468,14 +468,17 @@ static void fsCloseAll() {
   if (dirOpen)  { dirRoot.close(); dirOpen = false; }
 }
 
-// Geometrie CHS du disque C: (pont 2.0). Le BIOS du 8088 annonce 255 tetes x 63 secteurs
-// (INT 13h AH=08h, Solution-01/lib/bios.asm) et DOS convertit chaque secteur logique en CHS avec
-// les champs "secteurs par piste" et "tetes" du BPB. SdFat 2.3 (FatFormatter::initPbs) les laisse
-// a 0 (les versions precedentes y mettaient 63 et 255) et ecrit le MBR en 2 tetes x 32 secteurs:
-// sous DOS 6, DIR C: lisait des secteurs au hasard (repertoire fait d'octets 00h, 01h, 02h...).
-// fsFixGeometry remet BPB et MBR en 255 x 63, apres FORMAT et a chaque montage (en place, sans
-// toucher aux fichiers). Ne fait rien sans MBR (secteur 0 = secteur de demarrage, "superfloppy"
-// d'un formatage par Windows: DOS ne peut de toute facon pas s'en servir comme disque dur).
+// Secteur de demarrage du disque C: pour DOS (pont 2.0). SdFat 2.3 (FatFormatter::initPbs) ecrit
+// un nom OEM de 8 ESPACES: DOS 6 y cherche une version ("MSDOS5.0", "IBM  3.3"...), juge sans elle
+// le secteur de demarrage invalide et calcule sa propre disposition du volume (vu sur le materiel,
+// INT 21h AH=32h: grappes de 8 secteurs, FAT12 de 6 secteurs, racine au secteur 13 au lieu de 65):
+// DIR C: lisait la FAT comme repertoire. Les mesures sur le materiel (2026-11-26) l'ont montre:
+// nom OEM "MSDOS5.0" = DIR C: correct. fsFixBoot, apres FORMAT et a chaque montage (en place, sans
+// toucher aux fichiers): nom OEM "MSDOS5.0" s'il est vide; nombre total de secteurs dans le champ
+// 16 bits s'il tient (comme FORMAT de DOS; SdFat le met dans le champ 32 bits); geometrie
+// 255 tetes x 63 secteurs, celle du BIOS du 8088 (INT 13h AH=08h), dans le BPB (SdFat 2.3 y laisse
+// 0) et le MBR (SdFat l'ecrit en 2 x 32). Rien sans MBR (secteur 0 = secteur de demarrage,
+// "superfloppy" d'un formatage par Windows: DOS ne peut pas s'en servir comme disque dur).
 static void chs255x63(uint8_t *chs, uint32_t lba) {
   uint32_t c = lba / (255UL * 63UL), r = lba % (255UL * 63UL);
   uint8_t h = (uint8_t)(r / 63), s = (uint8_t)(r % 63 + 1);
@@ -487,7 +490,7 @@ static void chs255x63(uint8_t *chs, uint32_t lba) {
 static uint32_t le32(const uint8_t *p) {
   return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
-static void fsFixGeometry() {
+static void fsFixBoot() {
   static uint8_t sec[512];
   if (!flashOk || !flash.readBlocks(0, sec, 1)) return;
   if (sec[510] != 0x55 || sec[511] != 0xAA) return;
@@ -506,11 +509,21 @@ static void fsFixGeometry() {
     flash.writeBlocks(0, sec, 1);
   }
   if (flash.readBlocks(start, sec, 1) && sec[510] == 0x55 && sec[511] == 0xAA &&
-      sec[11] == 0x00 && sec[12] == 0x02 &&
-      (sec[24] != 63 || sec[25] != 0 || sec[26] != 255 || sec[27] != 0)) {
-    sec[24] = 63; sec[25] = 0;             // secteurs par piste (BPB, 18h)
-    sec[26] = 255; sec[27] = 0;            // tetes (BPB, 1Ah)
-    flash.writeBlocks(start, sec, 1);
+      sec[11] == 0x00 && sec[12] == 0x02) {
+    bool w = false;
+    if (memcmp(sec + 3, "        ", 8) == 0) { memcpy(sec + 3, "MSDOS5.0", 8); w = true; }   // nom OEM
+    uint32_t t32 = le32(sec + 32);
+    if (sec[19] == 0 && sec[20] == 0 && t32 > 0 && t32 < 65536) {       // total: champ 16 bits (13h)
+      sec[19] = (uint8_t)t32; sec[20] = (uint8_t)(t32 >> 8);
+      memset(sec + 32, 0, 4);
+      w = true;
+    }
+    if (sec[24] != 63 || sec[25] != 0 || sec[26] != 255 || sec[27] != 0) {
+      sec[24] = 63; sec[25] = 0;           // secteurs par piste (BPB, 18h)
+      sec[26] = 255; sec[27] = 0;          // tetes (BPB, 1Ah)
+      w = true;
+    }
+    if (w) flash.writeBlocks(start, sec, 1);
   }
   flash.syncBlocks();
 }
@@ -523,7 +536,7 @@ static bool fsFormat() {
   FatFormatter formatter;
   bool ok = formatter.format(&flash, secBuf, nullptr);
   flash.syncBlocks();
-  if (ok) fsFixGeometry();                 // BPB et MBR en 255 x 63, comme le BIOS du 8088
+  if (ok) fsFixBoot();                     // secteur de demarrage lisible par DOS (nom OEM...)
   fsOk = ok && fatfs.begin(&flash);
   return fsOk;
 }
@@ -582,7 +595,7 @@ static void fsMount() {
     flashGeneric = flashOk;
   }
   if (flashOk) flashUnprotect();
-  fsFixGeometry();                         // disque formate par SdFat 2.3: geometrie reparee en place
+  fsFixBoot();                             // disque formate par SdFat 2.3: repare en place pour DOS
   fsOk = flashOk && fatfs.begin(&flash);
   if (flashOk && !fsOk && flashLooksBlank()) fsFormat();
 }
