@@ -93,7 +93,8 @@ class BridgeModel:
     """Le PONT (STM32) vu du 8088: automate des commandes du canal 3 (lib/bridge.asm).
     Horloge (00h PING, 01h LIRE, 02h REGLER) et disque (10h-19h) avec un dictionnaire de
     fichiers. mute = pont absent (aucune reponse); ready = False: 'disque non pret'."""
-    def __init__(self, files=None, mute=False, ready=True, free=1_000_000, nsec=16384, usb_ok=True, bad_reads=0):
+    def __init__(self, files=None, mute=False, ready=True, free=1_000_000, nsec=16384, usb_ok=True, bad_reads=0,
+                 cfg=None, cfg_ok=True):
         self.clock = [0xEA, 0x07, 9, 20, 12, 34, 56, 78]     # 2026-09-20 12:34:56.78
         self.files = {k.upper(): bytearray(v) for k, v in (files or {}).items()}
         self.mute, self.ready, self.free = mute, ready, free
@@ -110,6 +111,10 @@ class BridgeModel:
         self.bad_reads = bad_reads   # nombre de LECTURES de secteur dont un octet est altere en route (test des sommes de controle)
         self.corrupt_now = False
         self.clock_hz = 4770000  # horloge du 8088 DEMANDEE (commande 2Ch, pont 1.7)
+        # reglages du BIOS (2Eh/2Fh, pont 2.2): accueil de 1 s ici (5 s sur le vrai pont) pour des essais courts
+        self.cfg = bytearray(cfg if cfg is not None else [1, 0, 0, 1, 0xD0, 0xC8, 0x48, 0] + [0] * 8)
+        self.cfg_ok = cfg_ok     # False: pont < 2.2 (2Eh sans reponse)
+        self.cfg_writes = 0
 
     def _need(self):
         c = self.cmd
@@ -120,8 +125,10 @@ class BridgeModel:
             return 8
         if op in (0x21, 0x24):
             return 5
-        if op in (0x25, 0x26, 0x28, 0x2B, 0x2D):
+        if op in (0x25, 0x26, 0x28, 0x2B, 0x2D, 0x2E):
             return 1
+        if op == 0x2F and self.cfg_ok:
+            return 17
         if op == 0x2C:
             return 2
         if op == 0x27:
@@ -181,6 +188,14 @@ class BridgeModel:
             self.clock_hz = hz
             real = 96000000 // (96000000 // hz)               # diviseur entier du minuteur (96 MHz)
             return [real & 0xFF, (real >> 8) & 0xFF, (real >> 16) & 0xFF, real >> 24]
+        if op == 0x2E:                                    # reglages du BIOS (pont 2.2)
+            return list(self.cfg) if self.cfg_ok else []
+        if op == 0x2F:
+            if not self.cfg_ok:
+                return []
+            self.cfg = bytearray(c[1:17])
+            self.cfg_writes += 1
+            return [0]
         if op == 0x2D:                                    # console au LCD (pont 2.1): sans reponse
             self.lcd_con = getattr(self, 'lcd_con', 0) + 1
             return []

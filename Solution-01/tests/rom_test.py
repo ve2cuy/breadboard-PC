@@ -128,6 +128,33 @@ for hz, txt in ((1, b'    1 Hz '), (500, b'  500 Hz '), (250000, b'  250 kHz'), 
     check('Clock speed a %d Hz: "%s" au sous-menu puis au menu principal' % (hz, txt.decode()),
           st['done'] and out.count(txt + b'\r\n') >= 2, out[-300:])
 
+# --- BIOS de reglages (ROM 1.7, pont 2.2): Echap au demarrage, enregistrement, demarrage automatique ---
+br = S.H.BridgeModel()
+st = S.run_rom([(b'ESC pour lancer le BIOS', b'\x1b'), (b'Entree : enregistrer', b'1'), (b'Entree : enregistrer', b'4'),
+                (b'Entree : enregistrer', b'5'), (b'Entree : enregistrer', b'\r'), (S.MENU, b'')], bridge=br, tail_blocks=50_000)
+out = st['out'].decode('latin-1')
+check('BIOS: Echap au demarrage, 3 reglages changes, Entree les envoie au pont (2Fh), puis le menu',
+      st['done'] and 'Reglages enregistres' in out and bytes(br.cfg[:8]) == bytes([1, 1, 1, 1, 0x40, 0x4B, 0x4C, 0])
+      and br.cfg_writes == 1, out[-300:] + ' ' + bytes(br.cfg).hex())
+br = S.H.BridgeModel()
+st = S.run_rom([(S.MENU, b'4'), (b'5) BIOS', b'5'), (b'Entree : enregistrer', b'2'), (b'Entree : enregistrer', b'\x1b'),
+                (b'Sous-menu Configuration', b'')], bridge=br, tail_blocks=50_000)
+out = st['out'].decode('latin-1')
+check('BIOS: Configuration 5), Echap annule (rien envoye au pont)', st['done'] and br.cfg_writes == 0
+      and 'Console LCD dans le DOS ........ Non' in out, out[-300:])
+br = S.H.BridgeModel(cfg=[1, 0, 1, 1, 0xD0, 0xC8, 0x48, 0] + [0] * 8)
+st = S.run_rom([(b'Ok', b'PRINT 6*7\r'), (b' 42', b'SYSTEM\r'), (S.MENU, b'')], bridge=br, tail_blocks=50_000)
+check('BIOS: demarrage dans GW-BASIC (console au LCD demandee, 2Dh), SYSTEM -> menu',
+      st['done'] and getattr(br, 'lcd_con', 0) == 1, st['out'][-300:])
+br = S.H.BridgeModel(cfg=[1, 1, 1, 1, 0xD0, 0xC8, 0x48, 0] + [0] * 8)
+st = S.run_rom([(b'Ok', b'SYSTEM\r'), (S.MENU, b'')], bridge=br, tail_blocks=50_000)
+check('BIOS: console LCD du BASIC coupee -> pas de 2Dh', st['done'] and getattr(br, 'lcd_con', 0) == 0, st['out'][-300:])
+br = S.H.BridgeModel(cfg_ok=False)
+st = S.run_rom([(S.MENU, b'4'), (b'5) BIOS', b'5'), (b'Entree : enregistrer', b'\r'), (b'NON enregistres', b''),
+                (b'Sous-menu Configuration', b'')], bridge=br, tail_blocks=50_000)
+check('BIOS: pont < 2.2 (2Eh sans reponse): defauts, rien envoye, message', st['done']
+      and not any(op == 0x2F for op, _ in br.log), st['out'][-300:])
+
 # --- ROM COMPLETE (option --complet: plusieurs minutes) ---
 if '--complet' in sys.argv:
     if os.path.exists(os.path.join(DOS, 'pcdos2_1.img')):

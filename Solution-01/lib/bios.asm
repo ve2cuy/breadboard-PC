@@ -1140,6 +1140,8 @@ bios_rom_mount:
         call    bios_equip
         call    bios_ramb_off
 %ifdef RAM_512K
+        test    byte [CFG_FLAGS], CFG_F_NO_RAMB
+        jnz     .sans_b                 ; ROM 1.7: B: coupe dans les reglages du BIOS (toute la RAM au DOS)
         cld
         mov     bx, RAMB_SEG            ; B: tout a zero, secteur par secteur
         mov     dx, DOS_ROM_TOTAL
@@ -1172,6 +1174,7 @@ bios_rom_mount:
         mov     word [es:0413h], RAMB_KB
         mov     ax, 0261h               ; 2 disquettes
         call    bios_equip
+.sans_b:
 %endif
         pop     es
         pop     di
@@ -1902,8 +1905,11 @@ int19h_handler:
         mov     bl, 80h
 .jump:
         ; --- saut a l'amorce: DL = BL (80h disque dur, 0 disquette), DS = ES = 0, pile 0000:7C00, interruptions ---
+        test    byte [CFG_FLAGS], CFG_F_NO_LCD_DOS
+        jnz     .sans_con               ; ROM 1.7: console au LCD coupee dans les reglages du BIOS
         mov     al, FS_LCD_CON          ; pont 2.1: le LCD montre la console (fenetre 20x4, Maj + fleches)
         call    bridge_tx
+.sans_con:
         cli
         xor     ax, ax
         mov     ds, ax
@@ -2048,8 +2054,11 @@ dos_menu:
         mov     ds, ax
         mov     es, ax
         cld
+        test    byte [CFG_FLAGS], CFG_F_NO_LCD_DOS
+        jnz     .sans_con
         mov     al, FS_LCD_CON          ; pont 2.1: la liste au LCD aussi (console, Maj + fleches)
         call    bridge_tx
+.sans_con:
         mov     si, dm_title
         call    bios_puts
         xor     bp, bp                  ; BP = nombre d'images trouvees

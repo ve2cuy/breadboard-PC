@@ -129,6 +129,36 @@ l'amorçage d'un DOS), le LCD montre une fenêtre de 20 × 4 de cet écran :
 - CGRAM : é, è, ê, à, `\` (5Ch = yen dans la ROM A00 du LCD), ç, ù, ô ;
 - fin : premier octet LCD du 8088 (son menu reprend le LCD) ou RESET du 8088.
 
+## Réglages du BIOS (pont 2.2)
+
+Le BIOS de réglages de la ROM 1.7 (Échap au démarrage, voir `Solution-01/README.md`) confie ses réglages
+au pont : 16 octets, lus par `2Eh` et écrits par `2Fh`.
+
+| Octet | Contenu |
+|---|---|
+| 0 | version (1) |
+| 1 | drapeaux, 0 = tout actif : bit 0 pas de console LCD dans le BASIC, bit 1 pas dans le DOS, bit 2 pas de disque B: en RAM, bit 3 pas de témoin du disque |
+| 2 | démarrage : 0 menu, 1 GW-BASIC, 2 DOS 2.1 de la ROM, 3 disque C: |
+| 3 | durée de l'écran d'accueil, 1-5 s (5 par défaut) |
+| 4-7 | horloge du 8088 à la mise sous tension du pont, en Hz (4 770 000 par défaut) |
+| 8-15 | réservés (0) |
+
+- Le STM32F411 n'a pas d'EEPROM. Le pont en émule une dans le **secteur 7 de sa flash interne**
+  (`0x08060000`, 128 Ko ; le programme fait ~77 Ko).
+  - Chaque enregistrement fait 32 octets : magique `CFG1`, les 16 octets, un contrôle. Il s'ajoute
+    après le dernier ; au démarrage, le pont prend le dernier enregistrement valide.
+  - Le secteur n'est effacé que plein, soit environ tous les 4 000 enregistrements. L'effacement dure
+    ~1 s, pendant laquelle le pont est figé.
+  - Le magique s'écrit en dernier : un enregistrement interrompu par une coupure n'est jamais pris.
+  - Des valeurs hors bornes sont remplacées par celles par défaut.
+- Le pont applique lui-même l'horloge (au `setup`, avant de libérer le RESET du 8088) et le témoin du
+  disque. Le reste est lu par le 8088.
+- Logique essayée sur le PC (WSL, g++) avec une flash simulée :
+  - 5 000 enregistrements avec relecture, dont un débordement du secteur ;
+  - une flash pleine de déchets au départ ;
+  - des valeurs hors bornes ;
+  - une coupure au milieu d'un enregistrement.
+
 ## Horloge temps réelle (RTC) et commandes du canal 3
 
 > ✅ **Validé sur le matériel** : `TIME$` et `DATE$` (lecture et réglage) depuis le BASIC.
@@ -196,6 +226,8 @@ PlatformIO : `Adafruit SPIFlash` et `SdFat - Adafruit Fork`.
 | `2Bh` | SOMME de contrôle : somme (16 bits) des 512 octets du tampon → 2 octets (poids faible d'abord). Le 8088 la demande après chaque secteur lu (`21h`/`29h`), la compare à celle des octets reçus et relit le secteur (3 essais) si elles diffèrent |
 | `2Ch`, action | HORLOGE du 8088 : `0` lire (ne rien changer), `1` +0,1 MHz, `2` -0,1 MHz, `3` +1 MHz, `4` -1 MHz (bornes 1-10 MHz), `5` → 4,77 MHz (défaut), `6` → 8 MHz, `7` → 7,2 MHz (1.4), `8` → 2,35 MHz (1.7), `9` / `10` → valeur suivante / précédente de la suite 1-2-5 (1 Hz-10 MHz), `11` → 1 Hz (2.0) (la ROM traduit les touches du sous-menu Clock speed en ces codes : table `clock_key_action`, `Solution-01/solution-01.asm`) → 4 octets (fréquence **réellement générée** en Hz, poids faible d'abord — lue dans les registres ARR/PSC du minuteur après coup, **pas** la fréquence demandée : un écart de plusieurs % a été mesuré à l'oscilloscope loin de 4,77 MHz, l'arrondi entier du prescaler/de l'ARR devenant significatif à ces fréquences) |
 | `2Dh` | CONSOLE AU LCD (2.1) : le LCD montre la fenêtre 20 × 4 de l'écran du terminal (voir plus haut) ; sans réponse |
+| `2Eh` | RÉGLAGES DU BIOS (2.2) → 16 octets (voir « Réglages du BIOS ») |
+| `2Fh`, 16 octets | ÉCRIRE les réglages du BIOS (gardés dans la flash interne) → état (0 = ok, 4 = erreur d'écriture) |
 | `25h` | USB ON : le PC prend le disque (lecteur de masse) → état ; état 9 = pile USB sans lecteur de masse |
 | `26h` | USB OFF : le pont reprend le disque (remonte le volume) → état |
 

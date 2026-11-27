@@ -56,6 +56,10 @@
 ;                           (tout ce que le 8088 envoie a l'UART) et en montre une fenetre de 20x4 au LCD, qui
 ;                           suit le curseur; Maj + fleches du clavier PS/2 la deplacent (et ne vont pas au 8088).
 ;                           Fin au premier octet LCD du 8088 (menu) ou au RESET. Un pont plus ancien l'ignore.
+;   2Eh                     REGLAGES du BIOS (pont 2.2) -> 16 octets (voir lib/setup.asm). Un pont plus ancien ne
+;                           repond pas.
+;   2Fh + 16 octets         ECRIRE les reglages (gardes dans la flash interne du pont) -> etat (0 = ok). JAMAIS
+;                           envoye a un pont plus ancien (qui prendrait les 16 octets pour des commandes).
 ; La RTC du STM32 ne gere que 2000-2099. Un pont sans ces commandes (UNO) ne repond
 ; pas: les routines rendent CF = 1 apres le delai (environ 0,5 s a 4,77 MHz par
 ; unite de delai).
@@ -99,6 +103,8 @@ FS_IMG_WRITE    equ     2Ah
 FS_SEC_SUM      equ     2Bh
 FS_CLOCK        equ     2Ch
 FS_LCD_CON      equ     2Dh             ; pont 2.1: le LCD montre la console (sans reponse; voir l'en-tete)
+FS_CFG_GET      equ     2Eh             ; pont 2.2: reglages du BIOS -> 16 octets
+FS_CFG_PUT      equ     2Fh             ; pont 2.2: + 16 octets -> etat
 
 FSE_OK          equ     0
 FSE_NOTREADY    equ     1               ; pas de flash ou pas de systeme de fichiers
@@ -399,6 +405,59 @@ fs_dir_first:
         jmp     fs_cmd0
 
 ; fs_format: formate le disque (DETRUIT tout) -> AL = etat
+; cfg_bridge_get: reglages du pont (2Eh) -> SS:CFG_OFF (15 octets: l'octet 15, CFG_OK, est au 8088).
+; CF = 1: pas de reponse (pont < 2.2; delai court, ~1 s). Preserve tout sauf AX, F.
+cfg_bridge_get:
+        push    cx
+        push    dx
+        push    bp
+        call    fs_begin
+        mov     al, FS_CFG_GET
+        call    bridge_tx
+        mov     bp, CFG_OFF
+        mov     cx, 16
+.l:
+        mov     dx, 2
+        call    bridge_rx_get_t
+        jc      .e
+        cmp     bp, CFG_OK
+        je      .n
+        mov     [bp], al
+.n:
+        inc     bp
+        loop    .l
+        clc
+.e:
+        pop     bp
+        pop     dx
+        pop     cx
+        jmp     fs_end
+
+; cfg_bridge_put: SS:CFG_OFF -> pont (2Fh + 16 octets; l'octet 15 part a 0) -> AL = etat. CF = 1: delai.
+; Seulement si le pont a repondu a 2Eh (CFG_OK). Preserve tout sauf AX, F.
+cfg_bridge_put:
+        push    cx
+        push    dx
+        push    bp
+        call    fs_begin
+        mov     al, FS_CFG_PUT
+        call    bridge_tx
+        mov     bp, CFG_OFF
+        mov     cx, 15
+.s:
+        mov     al, [bp]
+        call    bridge_tx
+        inc     bp
+        loop    .s
+        xor     al, al
+        call    bridge_tx
+        mov     dx, FS_WAIT_FMT         ; (secteur plein: le pont efface sa page de flash, ~1 s)
+        call    bridge_rx_get_t
+        pop     bp
+        pop     dx
+        pop     cx
+        jmp     fs_end
+
 fs_format:
         push    dx
         call    fs_begin

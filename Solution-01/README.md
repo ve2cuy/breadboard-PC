@@ -1230,6 +1230,53 @@ au terminal. Le 8088 n'y passe donc aucun temps, même à 1 Hz.
 - La ROM l'active par la commande `2Dh` du pont, à l'amorçage d'un DOS. Le menu (premier envoi au LCD) ou un
   RESET y met fin. Un pont plus ancien ignore cette commande.
 
+### BIOS de réglages (ROM 1.7, pont 2.2)
+
+Au démarrage, l'écran d'accueil affiche **« Appuyer sur ESC pour lancer le BIOS »** pendant 5 s (terminal ;
+`ESC: lancer le BIOS` au LCD). **Échap** à ce moment ouvre l'écran de réglages : clavier PS/2 ou terminal, et
+une touche tenue enfoncée dès la mise sous tension suffit, car elle se répète. Le même écran est aussi
+accessible par `Configuration → 5) BIOS (reglages)`.
+
+```
+=== BIOS : reglages (gardes par le pont, flash de la Black Pill) ===
+
+  1) Console LCD dans le BASIC ...... Oui
+  2) Console LCD dans le DOS ........ Oui
+  3) Disque B: en RAM (DOS en ROM) .. Oui
+  4) Demarrage ...................... Menu
+  5) Horloge du 8088 au demarrage ... 4,77 MHz
+  6) Ecran d'accueil ................ 5 s
+  7) Temoin du disque (pont) ........ Oui
+  8) Date et heure
+```
+
+| Réglage | Valeurs | Effet |
+|---|---|---|
+| Console LCD dans le BASIC | Oui / Non | GW-BASIC et Tiny BASIC : le LCD montre la fenêtre 20 × 4 de l'écran du terminal, Maj + flèches pour la déplacer (comme le DOS). Non : l'écran fixe du BASIC |
+| Console LCD dans le DOS | Oui / Non | Idem pendant le DOS et la liste des images (voir [Le DOS sur le LCD](#le-dos-sur-le-lcd-pont-21)) |
+| Disque B: en RAM | Oui / Non | Non : pas de disque de 180 Ko en RAM avec le DOS de la ROM, toute la RAM va au DOS (`INT 12h`) |
+| Démarrage | Menu / GW-BASIC / DOS 2.1 (ROM) / Disque C: | Ce qui suit l'écran d'accueil. Après le BASIC (`SYSTEM`) ou un échec d'amorçage : le menu |
+| Horloge au démarrage | 1, 2, 2,34, 4,77, 5, 7,2, 8, 10 MHz | Fréquence que le **pont** donne au 8088 à sa mise sous tension |
+| Écran d'accueil | 1 à 5 s | Durée du message « Appuyer sur ESC… » |
+| Témoin du disque | Oui / Non | LED de la Black Pill à chaque accès au disque |
+| Date et heure | — | L'écran `Configuration → 3) Heure et date` |
+
+- **Touches** : `1`-`8` changent la ligne (valeur suivante) ; `D` remet les valeurs par défaut ; **Entrée**
+  enregistre et quitte ; **Échap** quitte sans rien changer. Au LCD, une ligne à la fois : flèches haut/bas
+  pour en choisir une.
+- Après l'écran de réglages ouvert au démarrage, c'est toujours le **menu** qui suit, et non le démarrage
+  automatique : c'est le moyen d'en sortir si le démarrage choisi ne convient plus.
+- **Où sont gardés les réglages** : la Black Pill n'a pas d'EEPROM. Le pont 2.2 en émule une dans le
+  **dernier secteur de sa flash interne** (secteur 7, 128 Ko, que le programme n'atteint pas). Voir
+  `REGLAGES` dans `arduino/8088_bridge_stm32/src/main.cpp`.
+  - Le 8088 lit les réglages au démarrage (commande `2Eh`) dans `VAR_SEG:FC3Eh-FC4Dh` et les y réécrit
+    par `2Fh`.
+  - La valeur 0 vaut « défaut » partout : une RAM effacée, ou un pont plus ancien qui ne répond pas,
+    donnent le comportement d'avant la ROM 1.7. Avec un tel pont, l'écran de réglages agit pour la
+    session seulement (message en jaune).
+- Code : `lib/setup.asm`. Essais : `tests/rom_test.py` (Échap au démarrage, enregistrement, démarrage dans
+  le BASIC, ancien pont) ; le stockage du pont a été essayé sur le PC avec une flash simulée.
+
 ## RAM de 512 Ko
 
 Le montage peut recevoir une **AS6C4008** (512 Ko) à la place de la HM628128 (128 Ko). Les deux puces ont le
@@ -1406,7 +1453,11 @@ principal (voir plus bas) ; sa liste commence par `0) PC-DOS 2.1 ... (ROM)`, off
 2) Test CPU speed
 3) Heure et date
 4) Information
+5) BIOS (reglages)
 ```
+
+`5) BIOS (reglages)` ouvre l'écran de réglages décrit dans
+[BIOS de réglages](#bios-de-réglages-rom-17-pont-22).
 
 `1) Clock speed` affiche la **fréquence courante** de l'horloge du 8088 —
 générée par le pont STM32 (`PA3`, PWM matériel `TIM2` canal 4), qui a

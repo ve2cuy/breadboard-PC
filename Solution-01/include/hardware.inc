@@ -227,6 +227,19 @@ PS2_RX_BUF_OFF      equ 0FC2Ch  ; (16 octets: 0FC2Ch-0FC3Bh)
 
 UART_RX_HEAD_OFF    equ 0FC3Ch  ; (octet)
 UART_RX_TAIL_OFF    equ 0FC3Dh  ; (octet)
+
+; --- reglages du BIOS (ROM 1.7, lib/setup.asm): 16 octets 0FC3Eh-0FC4Dh, copie de ceux du pont (2Eh/2Fh);
+; --- 0 = valeur par defaut partout (RAM effacee = comportement d'avant la ROM 1.7)
+CFG_OFF             equ 0FC3Eh  ; version (1)
+CFG_FLAGS           equ 0FC3Fh  ; (octet) CFG_F_NO_*
+CFG_BOOT            equ 0FC40h  ; (octet) 0 menu, 1 GW-BASIC, 2 DOS 2.1 de la ROM, 3 disque C:
+CFG_SPLASH          equ 0FC41h  ; (octet) ecran d'accueil, secondes (1-5; 0 = 1)
+CFG_CLOCK           equ 0FC42h  ; (double mot) horloge du 8088 au demarrage du pont (Hz)
+CFG_OK              equ 0FC4Dh  ; (octet) 1 = le pont garde les reglages (pont 2.2+); jamais envoye
+CFG_F_NO_LCD_BASIC  equ 01h     ; pas de console au LCD dans les BASIC
+CFG_F_NO_LCD_DOS    equ 02h     ; pas de console au LCD dans le DOS
+CFG_F_NO_RAMB       equ 04h     ; pas de disque B: en RAM (DOS de la ROM)
+CFG_F_NO_DISKLED    equ 08h     ; temoin d'acces au disque du pont eteint
 UART_RX_BUF_OFF     equ 0FD00h  ; (256 octets: 0FD00h-0FDFFh, 255 utiles; indices d'un octet:
                                 ; l'enroulement est celui de l'octet. Ex-tampon de 16 octets: un collage
                                 ; de code BASIC le saturait pendant la tokenisation d'une ligne)

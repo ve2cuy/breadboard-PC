@@ -275,16 +275,23 @@ start:
         ; plutot que i2c_lcd_goto/i2c_lcd_print directement - premier usage
         ; reel de l'interface "esprit BIOS" (voir int10h_handler,
         ; README.md) ---
+        call    cfg_load                ; ROM 1.7: reglages du BIOS gardes par le pont (defauts sans reponse)
         call    i2c_lcd_init
         gotoxy  0, 0, LCDI2C
         print   lcd_txt_splash_l1, LCDI2C
         gotoxy  1, 0, LCDI2C
         print   lcd_txt_splash_l2, LCDI2C
         gotoxy  2, 0, LCDI2C
-        print   lcd_txt_splash_l3, LCDI2C
+        print   lcd_txt_setup_hint, LCDI2C      ; ROM 1.7: "Echap = BIOS" (etait une ligne de tirets)
         gotoxy  3, 0, LCDI2C
         print   lcd_txt_splash_l4, LCDI2C
-        delay_ms (1*SECONDE)
+        call    boot_wait               ; ROM 1.7: duree de l'accueil (reglages); CF = 1: Echap -> BIOS
+        jnc     .pas_bios
+        call    bios_setup
+        cls
+        print   txt_auteur, UART
+        jmp     .main_menu              ; apres l'ecran de reglages: le menu (pas le demarrage automatique)
+.pas_bios:
 
         ; --- Bandeau d'identification: affiche une seule fois, avant
         ; d'entrer dans le menu (remplace l'ancienne boucle POST
@@ -293,6 +300,7 @@ start:
         ; comportement normal) ---
         cls                     ; efface l'ecran du terminal (ANSI)
         print   txt_auteur, UART
+        call    boot_auto               ; ROM 1.7: demarrage choisi dans les reglages (revient pour le menu)
 
 ; ============================================================
 ; Menu principal / sous-menus
@@ -357,6 +365,8 @@ start:
 
         cmp     al, '1'
         jne     .basic_2
+        call    lcd_console_basic       ; ROM 1.7: console au LCD (reglages), sinon l'ecran fixe
+        jnc     .tb_go
         call    i2c_lcd_init
         gotoxy  0, 0, LCDI2C
         print   lcd_txt_tb_l1, LCDI2C
@@ -364,21 +374,14 @@ start:
         print   lcd_txt_tb_l2, LCDI2C
         gotoxy  2, 0, LCDI2C
         print   lcd_txt_tb_l3, LCDI2C
+.tb_go:
         call    tiny_basic              ; lib/tiny_basic.asm - interagit par le terminal UART;
                                          ; retourne ici par BYE ou Ctrl-X (DS=CS restaure)
         jmp     .basic_menu
 .basic_2:
         cmp     al, '2'
         jne     .basic_esc
-        call    i2c_lcd_init
-        gotoxy  0, 0, LCDI2C
-        print   lcd_txt_bas_l1, LCDI2C
-        gotoxy  1, 0, LCDI2C
-        print   lcd_txt_bas_l2, LCDI2C
-        gotoxy  2, 0, LCDI2C
-        print   lcd_txt_bas_l3, LCDI2C
-        call    basic_run               ; lib/basic.asm - BASIC "GW-BASIC-like", terminal UART;
-                                         ; retourne ici par SYSTEM, BYE ou Ctrl-X (DS=CS restaure)
+        call    run_gwbasic
         jmp     .basic_menu
 .basic_esc:
         cmp     al, 27
@@ -617,13 +620,36 @@ start:
         jmp     .config_menu
 .config_4:
         cmp     al, '4'
-        jne     .config_esc
+        jne     .config_5
         call    information_action      ; ecran recapitulatif (date/heure, versions, RAM, disque, CPU) - voir plus bas
+        jmp     .config_menu
+.config_5:
+        cmp     al, '5'
+        jne     .config_esc
+        call    bios_setup              ; ROM 1.7: reglages du BIOS (lib/setup.asm)
         jmp     .config_menu
 .config_esc:
         cmp     al, 27
         jne     .config_menu
         jmp     .main_menu
+
+; ------------------------------------------------------------
+; run_gwbasic: le BASIC type GW (menu Basic, et demarrage automatique des reglages): console au LCD si
+; elle est active (reglages du BIOS), sinon l'ecran fixe du BASIC. Preserve tout.
+; ------------------------------------------------------------
+run_gwbasic:
+        call    lcd_console_basic
+        jnc     .go
+        call    i2c_lcd_init
+        gotoxy  0, 0, LCDI2C
+        print   lcd_txt_bas_l1, LCDI2C
+        gotoxy  1, 0, LCDI2C
+        print   lcd_txt_bas_l2, LCDI2C
+        gotoxy  2, 0, LCDI2C
+        print   lcd_txt_bas_l3, LCDI2C
+.go:
+        call    basic_run               ; lib/basic.asm - BASIC "GW-BASIC-like", terminal UART;
+        ret                             ; retourne ici par SYSTEM, BYE ou Ctrl-X (DS=CS restaure)
 
 ; ============================================================
 ; test_ram
@@ -4806,8 +4832,8 @@ cpu_test_show_result:
 
 ; --- constantes pour clock_datetime_action/information_action, plus bas ---
 BIOS_VERSION_MAJOR equ 1                ; version du BIOS/ROM affichee par
-BIOS_VERSION_MINOR equ 6                ; "4) Information" - correspond a
-                                         ; "Version 1.6" du splash (lcd_txt_splash_l2,
+BIOS_VERSION_MINOR equ 7                ; "4) Information" - correspond a
+                                         ; "Version 1.7" du splash (lcd_txt_splash_l2,
                                          ; plus bas) - A MAINTENIR MANUELLEMENT en
                                          ; phase avec lui si l'un des 2 change
 DISK_TOTAL_KB       equ 8192            ; capacite NOMINALE de la flash SPI du pont
@@ -6503,6 +6529,7 @@ int10h_print_string:
 %include "lib/bridge.asm"
 %include "lib/isr.asm"
 %include "lib/bios.asm"
+%include "lib/setup.asm"
 %include "lib/tiny_basic.asm"
 %include "lib/basic.asm"
 
@@ -6672,6 +6699,7 @@ txt_menu_config:        db      27,'[36m','--- Configuration Submenu ---',27,'[0
                         db      '2) Test CPU speed',13,10
                         db      '3) Set date and time',13,10
                         db      '4) Information',13,10
+                        db      '5) BIOS setup',13,10
                         db      '(Esc: back to main menu)',13,10,13,10,0
 
 txt_menu_clock_head:    db      27,'[36m','--- Clock speed ---',27,'[0m',13,10,0
@@ -6912,6 +6940,7 @@ txt_menu_config:        db      27,'[36m','--- Sous-menu Configuration ---',27,'
                         db      '2) Test CPU speed',13,10
                         db      '3) Heure et date',13,10
                         db      '4) Information',13,10
+                        db      '5) BIOS (reglages)',13,10
                         db      '(Echap: retour au menu principal)',13,10,13,10,0
 
 ; ---- option "1) Clock speed" du sous-menu Configuration (clock_speed_action
@@ -7116,7 +7145,7 @@ txt_dump_seg_off_sep:   db      ':0x', 0
 
 ; ---- ecran de demarrage (3 secondes, une seule fois - voir start:) ----
 lcd_text lcd_txt_splash_l1, 'Breadboard 8088', 20
-lcd_text lcd_txt_splash_l2, 'Version 1.6', 20
+lcd_text lcd_txt_splash_l2, 'Version 1.7', 20
 lcd_txt_splash_l3:      times   20 db '-'       ; remplissage '-' (pas ' ') - hors macro
                         db      0
 lcd_text lcd_txt_splash_l4, '(c) VE2CUY 2026', 20
@@ -7177,7 +7206,7 @@ lcd_text lcd_txt_menu_usb_l4, '4) DOS 2.1 (ROM)', 20
 ; ---- date/time" - est bilingue, voir plus haut) ----
 lcd_text lcd_txt_menu_config_l1, '1) Clock speed', 20
 lcd_text lcd_txt_menu_config_l2, '2) Test CPU speed', 20
-lcd_text lcd_txt_menu_config_l4, '4) Information', 20
+lcd_text lcd_txt_menu_config_l4, '4) Info  5) BIOS', 20
 
 ; ---- option "1) Clock speed" (voir clock_speed_action) - ligne 0 (index
 ; ---- 0, gotoxy) reste libre: clock_show y ecrit "N.NN MHz" (la frequence

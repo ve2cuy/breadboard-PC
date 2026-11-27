@@ -37,6 +37,8 @@
 //     terminal = valeur suivante / precedente de la suite 1-2-5 (1, 2, 5, 10 Hz ... 1, 2, 5,
 //     10 MHz); Ctrl+Alt+Debut / Ctrl-] 0 = 4,77 MHz; Ctrl+Alt+Fin / Ctrl-] 1 = 1 Hz; Ctrl-] ? =
 //     afficher. La frequence obtenue est ecrite au terminal ("[Pont] Horloge 8088: ...").
+//     2Eh = LIRE les reglages du BIOS (pont 2.2) -> 16 octets; 2Fh + 16 octets = les ECRIRE (gardes dans
+//     la flash interne du STM32, voir cfgSave) -> etat (0 = ok, 4 = erreur d'ecriture). Voir "REGLAGES".
 //
 // CABLAGE (voir le tableau du README.md)
 //   D0-D3 <-> PB12-PB15 et D4-D7 <-> PB6-PB9  <->  8255 PA0-PA7 (bus de donnees)
@@ -120,7 +122,7 @@
 // affichee telle quelle a l'utilisateur. A incrementer manuellement lors de
 // changements notables a ce fichier.
 #define FW_VERSION_MAJOR 2
-#define FW_VERSION_MINOR 1
+#define FW_VERSION_MINOR 2
 #define FW_XSTR(x) #x
 #define FW_STR(x)  FW_XSTR(x)                // FW_STR(FW_VERSION_MINOR) -> "9"
 // Le clavier envoie 0F0h puis le code de la touche COUP SUR COUP. Toute impulsion
@@ -417,11 +419,107 @@ static void clockReport() {
   UsbSerial.print(t);
 }
 
+// ============================================================================
+// REGLAGES DU BIOS (pont 2.2): 16 octets gardes dans la flash INTERNE du STM32 - le F411 n'a pas
+// d'EEPROM: le secteur 7 (0x08060000, 128 Ko, que le programme n'atteint pas) en tient lieu. Chaque
+// enregistrement (32 octets: magique "CFG1", les 16 octets, controle, 8 octets a FFh) s'ajoute apres le
+// dernier; le secteur n'est efface (~1 s, le processeur attend) que plein, soit tous les ~4000
+// enregistrements. Le magique s'ecrit en DERNIER: un enregistrement interrompu n'est jamais pris.
+// Octets: 0 version (1); 1 drapeaux (CFG_F_NO_*: 0 = tout actif); 2 demarrage (0 menu, 1 GW-BASIC, 2 DOS 2.1 de la ROM,
+// 3 disque C:); 3 duree de l'ecran d'accueil (1-5 s, 5 par defaut); 4-7 horloge du 8088 au demarrage du pont (Hz);
+// 8-15 reserves (0). Le pont applique lui-meme l'horloge (setup) et le temoin du disque; le reste est
+// lu par le 8088 (commande 2Eh, Solution-01/lib/setup.asm).
+// ============================================================================
+#define CFG_ADDR        0x08060000UL
+#define CFG_SECTOR      7
+#define CFG_BYTES       0x20000UL
+#define CFG_REC         32
+#define CFG_MAGIC       0x31474643UL       // "CFG1"
+#define CFG_F_NO_LCD_BASIC 0x01            // PAS de console au LCD dans le BASIC (drapeaux a 0 = defauts,
+#define CFG_F_NO_LCD_DOS   0x02            //   comme une RAM effacee du cote du 8088)
+#define CFG_F_NO_RAMB      0x04            // pas de disque B: en RAM (DOS de la ROM)
+#define CFG_F_NO_DISKLED   0x08            // pas de temoin d'acces au disque (LED PC13)
+static uint8_t cfg[16];
+
+static uint32_t cfgHz() { uint32_t f; memcpy(&f, cfg + 4, 4); return f; }
+static void cfgDefaults() {
+  memset(cfg, 0, sizeof(cfg));
+  cfg[0] = 1;
+  cfg[3] = 5;                              // ecran d'accueil: 5 s ("Appuyer sur ESC pour lancer le BIOS")
+  uint32_t f = CLOCK_DEFAULT_HZ;
+  memcpy(cfg + 4, &f, 4);
+}
+static void cfgCheck() {                   // valeur hors bornes: celle par defaut
+  if (cfg[0] != 1) { cfgDefaults(); return; }
+  if (cfg[2] > 3) cfg[2] = 0;
+  if (cfg[3] < 1 || cfg[3] > 5) cfg[3] = 5;
+  uint32_t f = cfgHz();
+  if (f < CLOCK_MENU_MIN_HZ || f > CLOCK_MAX_HZ) { f = CLOCK_DEFAULT_HZ; memcpy(cfg + 4, &f, 4); }
+  memset(cfg + 8, 0, 8);
+}
+static uint32_t cfgSum(const uint32_t *d) { return 0xA5A5A5A5UL ^ d[0] ^ d[1] ^ d[2] ^ d[3]; }
+static void cfgLoad() {                    // le dernier enregistrement valide du secteur, sinon les defauts
+  cfgDefaults();
+  for (uint32_t a = CFG_ADDR; a < CFG_ADDR + CFG_BYTES; a += CFG_REC) {
+    const volatile uint32_t *r = (const volatile uint32_t *)a;
+    if (r[0] != CFG_MAGIC) continue;
+    uint32_t d[4] = { r[1], r[2], r[3], r[4] };
+    if (r[5] == cfgSum(d)) memcpy(cfg, d, 16);
+  }
+  cfgCheck();
+}
+static bool cfgBlank(uint32_t a) {
+  const volatile uint32_t *r = (const volatile uint32_t *)a;
+  for (int i = 0; i < CFG_REC / 4; i++) if (r[i] != 0xFFFFFFFFUL) return false;
+  return true;
+}
+static bool cfgSave() {
+  cfgCheck();
+  uint32_t a = CFG_ADDR;                   // apres le dernier emplacement utilise
+  for (uint32_t p = CFG_ADDR; p < CFG_ADDR + CFG_BYTES; p += CFG_REC)
+    if (!cfgBlank(p)) a = p + CFG_REC;
+  uint32_t d[4];
+  memcpy(d, cfg, 16);
+  bool ok = true;
+  HAL_FLASH_Unlock();
+  __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_EOP | FLASH_FLAG_OPERR | FLASH_FLAG_WRPERR | FLASH_FLAG_PGAERR |
+                         FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR);
+  if (a + CFG_REC > CFG_ADDR + CFG_BYTES) {          // plein: on efface le secteur
+    FLASH_EraseInitTypeDef e = {};
+    uint32_t bad = 0;
+    e.TypeErase = FLASH_TYPEERASE_SECTORS;
+    e.Sector = CFG_SECTOR;
+    e.NbSectors = 1;
+    e.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+    ok = HAL_FLASHEx_Erase(&e, &bad) == HAL_OK;
+    a = CFG_ADDR;
+  }
+  for (int i = 0; ok && i < 4; i++)
+    ok = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, a + 4 + 4 * i, d[i]) == HAL_OK;
+  if (ok) ok = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, a + 20, cfgSum(d)) == HAL_OK;
+  if (ok) ok = HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, a, CFG_MAGIC) == HAL_OK;
+  HAL_FLASH_Lock();
+  __HAL_FLASH_DATA_CACHE_DISABLE();         // le cache de donnees de la flash garde les anciennes valeurs
+  __HAL_FLASH_DATA_CACHE_RESET();
+  __HAL_FLASH_DATA_CACHE_ENABLE();
+  const volatile uint32_t *r = (const volatile uint32_t *)a;
+  return ok && r[0] == CFG_MAGIC && r[1] == d[0] && r[2] == d[1] && r[3] == d[2] && r[4] == d[3];
+}
+static void cfgExec(uint8_t op, const uint8_t *in) {   // in = les 16 octets de 2Fh
+  if (op == 0x2E) {
+    for (int i = 0; i < 16; i++) replyByte(cfg[i]);
+  } else {
+    memcpy(cfg, in, 16);
+    replyByte(cfgSave() ? 0 : 4);
+  }
+}
+
 // Temoin d'acces au disque (DISK_LED): diskLed() a chaque acces, diskLedPoll() l'eteint ensuite.
 static volatile uint32_t diskLedUntil = 0;
 static volatile bool diskLedLit = false;
 static inline void diskLed() {
 #if DISK_LED
+  if (cfg[1] & CFG_F_NO_DISKLED) return;  // pont 2.2: temoin coupe dans les reglages du BIOS
   GPIOC->BSRR = (1UL << (13 + 16));       // PC13 a 0: LED allumee
   diskLedLit = true;
   diskLedUntil = millis() + DISK_LED_MS;
@@ -905,6 +1003,7 @@ static int cmdNeed() {                     // nombre total d'octets de la comman
     case 0x22: return 2;
     case 0x23: return 34;
     case 0x2C: return 2;
+    case 0x2F: return 17;                  // reglages du BIOS (pont 2.2)
     case 0x12: return cmdLen >= 3 ? 3 + cmdBuf[2] : 3;
     case 0x14: return cmdLen >= 2 ? 2 + cmdBuf[1] : 2;
     case 0x18: return cmdLen >= 2 ? 2 + cmdBuf[1] : 2;
@@ -943,11 +1042,12 @@ static void cmdByte(uint8_t v) {
   else if (op == 0x2B) secSum();
   else if (op == 0x2C) clockExec(cmdBuf[1]);
   else if (op == 0x2D) { conStart(); cmdLen = 0; return; }   // console au LCD: sans reponse ni collage
+  else if (op == 0x2E || op == 0x2F) cfgExec(op, cmdBuf + 1);   // reglages du BIOS (pont 2.2)
   // Le 8088 est occupe avec sa commande: pas de collage pour l'instant - SEULEMENT pour les commandes
   // longues (disque, fichiers, USB: op >= 10h, sauf 2Ch). Les commandes courtes (ping, heure, version,
   // horloge) n'en ont pas besoin: l'ecran Information lit l'heure toutes les ~170 ms a 7,38 MHz (moins
   // de CMD_HOLD_MS) - le terminal etait alors muet en permanence (Echap sans effet, PS/2 normal).
-  if (op >= 0x10 && op != 0x2C) uartHoldUntil = millis() + CMD_HOLD_MS;
+  if (op >= 0x10 && op != 0x2C && op != 0x2E) uartHoldUntil = millis() + CMD_HOLD_MS;
   cmdLen = 0;
 }
 
@@ -1560,6 +1660,8 @@ static void initPins() {
 // ============================================================================
 void setup() {
   reset8088Hold();                         // le 8088 reste en RESET jusqu'a ce que le pont soit pret (fin de setup)
+  cfgLoad();                               // pont 2.2: reglages du BIOS (flash interne, lecture directe: rapide)
+  clockHz = cfgHz();                       // horloge au demarrage choisie dans le BIOS (4,77 MHz par defaut)
   clockSetup();                            // TOUT DE SUITE: le 8088 a besoin d'une horloge (aussi pendant son
                                             // reset) - avant tout ce qui suit (SPI/USB/RTC, lent)
 #ifdef USE_TINYUSB
